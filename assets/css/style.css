@@ -1,0 +1,307 @@
+:root {
+    --cf-blue: #0d6efd;
+    --cf-bg-color: #f0f2f5; /* Light grey */
+    --cf-card-bg-color: #ffffff;
+    --cf-border-color: #dee2e6;
+    --cf-text-color: #212529;
+    --cf-text-muted-color: #6c757d;
+    --cf-input-bg-color: #ffffff;
+    --cf-table-striped-bg: rgba(0, 0, 0, 0.05);
+    --cf-modal-bg: #ffffff;
+    --sidebar-width: 260px;
+    --sidebar-bg: var(--cf-card-bg-color); /* Light background */
+    --sidebar-link-color: var(--cf-text-muted-color); /* Dark text */
+    --sidebar-link-hover-color: var(--cf-text-color); /* Darker text on hover */
+    --sidebar-link-active-color: #ffffff;
+    --sidebar-link-active-bg: var(--cf-blue); /* Blue background for active link */
+}
+
+body.dark-mode {
+    --cf-blue: #3793ff;
+    --cf-bg-color: #121212;
+    --cf-card-bg-color: #1e1e1e;
+    --cf-border-color: #444;
+    --cf-text-color: #e0e0e0;
+    --cf-text-muted-color: #a0a0a0;
+    --cf-input-bg-color: #2a2a2a;
+    --cf-table-striped-bg: rgba(255, 255, 255, 0.05);
+    --cf-modal-bg: #2a2a2a;
+    --sidebar-bg: #1e1e1e;
+    --sidebar-link-color: var(--cf-text-muted-color);
+    --sidebar-link-hover-color: var(--cf-text-color);
+    --sidebar-link-active-bg: var(--cf-blue);
+}
+
+body {
+    background-color: var(--cf-bg-color);
+    color: var(--cf-text-color);
+}
+
+/* --- Sidebar --- */
+.sidebar {
+    width: var(--sidebar-width);
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 1000;
+    background-color: var(--sidebar-bg);
+    transition: all 0.3s;
+    overflow-y: auto;
+    border-right: 1px solid var(--cf-border-color);
+}
+
+.sidebar .navbar-brand {
+    padding: 1rem 1.5rem;
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: var(--cf-text-color); /* Changed from white to dark text for light mode */
+    display: block;
+    margin-bottom: 1rem;
+}
+
+body.dark-mode .sidebar .navbar-brand {
+    color: #fff; /* Restore white brand text for dark mode */
+}
+
+.sidebar-nav {
+    padding-left: 0;
+    margin-bottom: 0;
+    list-style: none;
+}
+
+.sidebar-nav .nav-item {
+    width: 100%;
+}
+
+.sidebar-nav .nav-link {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.65rem 1.5rem;
+    color: var(--sidebar-link-color);
+    font-weight: 500;
+    border-left: 3px solid transparent;
+    transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-nav .nav-link:hover {
+    color: var(--sidebar-link-hover-color);
+    background-color: var(--cf-table-striped-bg); /* Use a subtle grey for hover on light bg */
+    /* Add a subtle border color on hover for better feedback */
+    border-left-color: var(--sidebar-link-active-bg);
+}
+
+.sidebar-nav .nav-link.active {
+    color: var(--sidebar-link-active-color);
+    background-color: var(--sidebar-link-active-bg);
+    border-left-color: var(--sidebar-link-active-bg); /* Match the active background */
+    font-weight: bold; /* Make the active link's text bold */
+}
+
+.sidebar-nav .nav-link .bi {
+    margin-right: 0.75rem;
+    font-size: 1.1rem;
+    vertical-align: text-bottom;
+}
+
+.sidebar-header {
+    padding: 1.5rem 1.5rem 0.5rem;
+    font-size: .75rem;
+    font-weight: bold;
+    color: var(--cf-text-muted-color);
+    text-transform: uppercase;
+    letter-spacing: .05rem;
+}
+
+/* --- Sidebar Collapsed State --- */
+body.sidebar-collapsed .sidebar {
+    left: calc(-1 * var(--sidebar-width));
+}
+
+body.sidebar-collapsed .content-wrapper {
+    margin-left: 0;
+    width: 100%;
+}
+
+/* --- Content Area --- */
+.content-wrapper {
+    margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+    transition: margin-left 0.3s, width 0.3s;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: var(--cf-bg-color);
+}
+
+.top-navbar {
+    background-color: var(--cf-card-bg-color);
+    border-bottom: 1px solid var(--cf-border-color);
+    padding: 0.75rem 1.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 999;
+}
+
+#sidebar-toggle-btn {
+    color: var(--cf-text-color);
+    border: none;
+}
+
+body.dark-mode #sidebar-toggle-btn {
+    color: var(--cf-text-color);
+}
+
+.top-navbar .nav-link {
+    color: var(--cf-text-color);
+}
+
+.main-content {
+    flex: 1;
+    padding: 1.5rem;
+}
+
+.footer-fixed {
+    padding: 1rem 1.5rem;
+    background-color: var(--cf-card-bg-color);
+    border-top: 1px solid var(--cf-border-color);
+}
+
+/* General component styling */
+.card {
+    background-color: var(--cf-card-bg-color);
+    border: 1px solid var(--cf-border-color);
+}
+
+.card-header, .card-footer {
+    background-color: transparent;
+    border-color: var(--cf-border-color);
+}
+
+.table-actions { min-width: 160px; text-align: right; }
+
+.table-dashboard > tbody > tr > td {
+    vertical-align: middle;
+}
+
+.router-rule {
+    word-break: break-all;
+    white-space: normal;
+}
+
+/* Form Styling */
+.form-control, .form-select {
+    background-color: var(--cf-input-bg-color);
+    border-color: var(--cf-border-color);
+    color: var(--cf-text-color);
+}
+
+.form-control:focus, .form-select:focus {
+    background-color: var(--cf-input-bg-color);
+    border-color: var(--cf-blue);
+    color: var(--cf-text-color);
+    box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), .25);
+}
+
+/* Button Styling */
+.btn-primary {
+    --bs-btn-bg: var(--cf-blue);
+    --bs-btn-border-color: var(--cf-blue);
+    --bs-btn-hover-bg: #0b5ed7;
+    --bs-btn-hover-border-color: #0a58ca;
+}
+
+.badge.text-bg-primary {
+    background-color: var(--cf-blue) !important;
+}
+
+/* Dark mode specific overrides */
+body.dark-mode .table {
+    --bs-table-color: var(--cf-text-color);
+    --bs-table-border-color: var(--cf-border-color);
+    --bs-table-striped-bg: var(--cf-table-striped-bg);
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.075);
+}
+
+body.dark-mode .modal-content {
+    background-color: var(--cf-modal-bg);
+    color: var(--cf-text-color);
+    border-color: var(--cf-border-color);
+}
+
+body.dark-mode .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+body.dark-mode .dropdown-menu {
+    background-color: #2c3034;
+    border-color: var(--cf-border-color);
+    --bs-dropdown-link-color: #dee2e6;
+    --bs-dropdown-link-hover-color: #fff;
+    --bs-dropdown-link-hover-bg: #343a40;
+}
+
+body.dark-mode .text-muted {
+    color: var(--cf-text-muted-color) !important;
+}
+
+/* --- Responsive Design --- */
+@media (max-width: 992px) {
+    /* On smaller screens, the content always takes full width */
+    .content-wrapper {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+    /* The sidebar overlays the content instead of pushing it */
+    .sidebar {
+        z-index: 1031; /* Higher than top-navbar */
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15);
+    }
+}
+
+/* assets/css/style.css */
+
+/* ... (CSS yang sudah ada) ... */
+
+.table thead th.sortable {
+    cursor: pointer;
+    position: relative;
+    padding-right: 1.5rem; /* Make space for arrows */
+}
+
+.table thead th.sortable::after,
+.table thead th.sortable::before {
+    content: '';
+    position: absolute;
+    right: 0.5rem;
+    font-size: 0.8em;
+    opacity: 0.2;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.table thead th.sortable::before {
+    content: '▲';
+    top: 50%;
+    transform: translateY(-120%);
+}
+
+.table thead th.sortable::after {
+    content: '▼';
+    top: 50%;
+    transform: translateY(20%);
+}
+
+.table thead th.sortable:hover::before,
+.table thead th.sortable:hover::after {
+    opacity: 0.6;
+}
+
+.table thead th.sortable.asc::before,
+.table thead th.sortable.desc::after {
+    opacity: 1;
+    color: var(--cf-blue);
+}

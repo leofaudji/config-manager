@@ -1,0 +1,147 @@
+---
+http:
+  routers:
+    router-api-car:
+      rule: Host(`car-api.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-api-car
+    router-api-log:
+      rule: Host(`api-log.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-api-log
+    router-api-token:
+      rule: Host(`get-token.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-api-token
+    router-demo:
+      rule: Host(`demo.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-demo
+    router-flutter:
+      rule: Host(`flutter.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-flutter
+    router-ibank-sejati:
+      rule: Host(`ibank-sejati.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-ibank-sejati
+    router-minio-api:
+      rule: Host(`minioapi.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-minio-api
+    router-minio-storage:
+      rule: Host(`miniostorage.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-minio
+    router-nbs:
+      rule: Host(`nbs.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-nbs
+    router-test:
+      rule: Host(`test.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-test
+    router-test2:
+      rule: Host(`test2.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-test2
+    router-test33:
+      rule: Host(`test3.sis1.dev`)
+      entryPoints:
+        - web
+      service: service-test3
+      middlewares:
+        - ip-whitelist@file
+        - header@file
+  services:
+    service-api-car:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.2.2.169:8085
+    service-api-log:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.2.2.169:3000
+    service-api-token:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.2.2.169:4000
+    service-demo:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.1.3.121:80
+    service-flutter:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.2.3.122:80
+    service-ibank-sejati:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.1.2.194
+    service-minio:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.1.7.74:9001
+    service-minio-api:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.1.7.74:9000
+    service-nbs:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.1.8.66:80
+    service-test:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.1.12.164:80
+          - url: http://10.1.12.165:80
+          - url: http://10.1.12.166:80
+          - url: http://10.1.12.168:80
+          - url: http://10.1.12.170:80
+          - url: http://10.1.12.171:80
+          - url: http://10.1.12.172:80
+    service-test2:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.2.2.2:80
+          - url: http://10.2.2.22:80
+    service-test3:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: http://10.10.10.10:80
+  middlewares:
+    header:
+      headers:
+        customRequestHeaders:
+          X-Custom-Header: value
+    ip-whitelist:
+      ipWhiteList:
+        sourceRange:
+          - 127.0.0.1/32
+          - 192.168.1.7
+serversTransports:
+  dsm-transport:
+    insecureSkipVerify: true

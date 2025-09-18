@@ -1,0 +1,11 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    RewriteBase /config-manager/
+    # Arahkan semua permintaan ke index.php jika file atau direktori yang diminta tidak ada.
+    RewriteRule "(^|/)\." - [F]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    #RewriteRule ^ index.php [L]
+    RewriteRule ^(.*)$ index.php [L]
+</IfModule>

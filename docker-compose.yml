@@ -1,0 +1,44 @@
+version: '3.8'
+services:
+  traefik-manager:
+    image: php8.3-fpm:latest
+    container_name: traefik-manager
+    restart: unless-stopped
+    ports:
+      - "8080"
+    volumes:
+      - ${DEFAULT_COMPOSE_PATH:-./compose-files}:/var/www/html/compose-files
+    environment:
+      DB_SERVER: db
+      DB_NAME: traefik_manager
+      DB_USERNAME: tm_user
+      DB_PASSWORD: tm_password
+      YAML_OUTPUT_PATH: /var/www/html/traefik-configs/dynamic.yml
+      DEFAULT_COMPOSE_PATH: ${DEFAULT_COMPOSE_PATH:-/var/www/html/compose-files}
+      LAUNCHER_DEFAULT_HOST_PORT: ${LAUNCHER_DEFAULT_HOST_PORT:-80}
+      LAUNCHER_DEFAULT_CONTAINER_PORT: ${LAUNCHER_DEFAULT_CONTAINER_PORT:-80}
+    depends_on:
+      - db
+    networks:
+      - traefik-manager-net
+
+  db:
+    image: mysql:8.0
+    container_name: traefik-manager-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: traefik_manager
+      MYSQL_USER: tm_user
+      MYSQL_PASSWORD: tm_password
+      MYSQL_ROOT_PASSWORD: root_password_change_me
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - traefik-manager-net
+
+networks:
+  traefik-manager-net:
+    driver: bridge
+volumes:
+  db_data:
+    driver: local

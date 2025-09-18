@@ -1,0 +1,20 @@
+# Abaikan file dan direktori kontrol versi Git
+.git
+.gitignore
+
+# Abaikan file konfigurasi Docker itu sendiri
+Dockerfile
+docker-compose.yml
+traefik.yml
+
+# Abaikan file environment lokal (penting untuk keamanan)
+.env
+
+# Abaikan direktori yang di-mount atau berisi data runtime
+compose-files/
+traefik-configs/
+letsencrypt/
+
+# Abaikan file dokumentasi
+README.md
+CHANGELOG.md
