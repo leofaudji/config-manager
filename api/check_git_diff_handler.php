@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../../includes/bootstrap.php';
-require_once __DIR__ . '/../../includes/GitHelper.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/GitHelper.php';
 
 header('Content-Type: application/json');
 
@@ -52,9 +52,12 @@ try {
         }
     }
 
-    // 6. Get the status and diff
+    // 6. Add all changes to the staging area to correctly calculate diff for new/deleted files
+    $git->execute("add -A", $repo_path);
+
+    // 7. Get the status and diff from the staging area
     $status_output = $git->getStatus($repo_path);
-    $diff_output = $git->getDiff($repo_path);
+    $diff_output = $git->getDiff($repo_path, true); // Pass true for staged diff
 
     $changes = array_filter(explode("\n", $status_output));
     $changes_count = count($changes);

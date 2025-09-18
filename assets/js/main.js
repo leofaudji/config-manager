@@ -522,37 +522,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // --- Sync Stacks to Git Button ---
-    const syncStacksBtn = document.getElementById('sync-stacks-btn');
-    if (syncStacksBtn) {
-        syncStacksBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (!confirm('Are you sure you want to sync all application stacks to the configured Git repository? This will overwrite existing files in the repo.')) {
-                return;
-            }
-
-            const originalBtnText = this.innerHTML;
-            this.disabled = true;
-            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Syncing...`;
-
-            fetch(`${basePath}/api/stacks/sync-to-git`, {
-                method: 'POST'
-            })
-            .then(response => response.json().then(data => ({ ok: response.ok, data })))
-            .then(({ ok, data }) => {
-                showToast(data.message, ok);
-            })
-            .catch(error => {
-                showToast(error.message || 'An unknown error occurred during sync.', false);
-            })
-            .finally(() => {
-                this.disabled = false;
-                this.innerHTML = originalBtnText;
-            });
-        });
-    }
-
-
     // --- Dashboard Widgets Logic ---
     function loadDashboardWidgets() {
         const widgets = [
@@ -570,8 +539,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Check if we are on the dashboard page by looking for one of the widgets
         if (!document.getElementById(widgets[0])) {
+            // Before returning, check for the sync button and run the git status check
+            // This handles pages that are not the dashboard but have the header with the sync button.
+            if (document.getElementById('sync-stacks-btn')) {
+                checkGitSyncStatus();
+            }
             return;
         }
+
+        // If on dashboard, also run the git status check
+        checkGitSyncStatus();
 
         fetch(`${basePath}/api/dashboard-stats`)
             .then(response => response.json())
@@ -646,6 +623,128 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (el) el.textContent = 'Error';
                 });
             });
+    }
+
+    // --- Sync Stacks to Git Logic ---
+    const syncStacksBtn = document.getElementById('sync-stacks-btn');
+    const syncGitModalEl = document.getElementById('syncGitModal');
+
+    // Function to check for pending git changes and update the UI
+    function checkGitSyncStatus() {
+        if (!syncStacksBtn) return;
+
+        const syncBadge = document.getElementById('sync-badge');
+        if (!syncBadge) return;
+
+        fetch(`${basePath}/api/stacks/check-git-diff`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success' && result.changes_count > 0) {
+                    syncBadge.textContent = result.changes_count;
+                    syncBadge.style.display = 'block';
+                    syncBadge.classList.add('blinking-badge');
+
+                    // Store diff data and set button to open modal
+                    syncStacksBtn.dataset.diff = result.diff;
+                    syncStacksBtn.setAttribute('data-bs-toggle', 'modal');
+                    syncStacksBtn.setAttribute('data-bs-target', '#syncGitModal');
+                } else {
+                    // No changes, ensure button has default (direct sync) behavior
+                    syncBadge.style.display = 'none';
+                    syncBadge.classList.remove('blinking-badge');
+                    syncStacksBtn.removeAttribute('data-bs-toggle');
+                    syncStacksBtn.removeAttribute('data-bs-target');
+                    syncStacksBtn.dataset.diff = '';
+                }
+            })
+            .catch(error => {
+                console.error('Error checking Git sync status:', error);
+            });
+    }
+
+    if (syncGitModalEl) {
+        // Logic for when the modal is shown
+        syncGitModalEl.addEventListener('show.bs.modal', function () {
+            const diffOutputContainer = document.getElementById('git-diff-output');
+            const diffString = syncStacksBtn.dataset.diff || '';
+
+            diffOutputContainer.innerHTML = ''; // Clear previous diff
+
+            if (diffString.trim() === '') {
+                diffOutputContainer.innerHTML = '<div class="alert alert-info">No changes to display.</div>';
+            } else {
+                const diff2htmlUi = new Diff2HtmlUI(diffOutputContainer, diffString, {
+                    drawFileList: true,
+                    matching: 'lines',
+                    outputFormat: 'side-by-side'
+                });
+                diff2htmlUi.draw();
+            }
+        });
+
+        // Logic for the confirm button inside the modal
+        const confirmSyncBtn = document.getElementById('confirm-git-sync-btn');
+        if (confirmSyncBtn) {
+            confirmSyncBtn.addEventListener('click', function() {
+                // This button now triggers the actual sync
+                const originalBtnText = this.innerHTML;
+                this.disabled = true;
+                this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Syncing...`;
+
+                fetch(`${basePath}/api/stacks/sync-to-git`, {
+                    method: 'POST'
+                })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    showToast(data.message, ok);
+                    bootstrap.Modal.getInstance(syncGitModalEl).hide();
+                    if (ok) {
+                        // After successful sync, re-check status to hide badge
+                        checkGitSyncStatus();
+                    }
+                })
+                .catch(error => {
+                    showToast(error.message || 'An unknown error occurred during sync.', false);
+                })
+                .finally(() => {
+                    this.disabled = false;
+                    this.innerHTML = originalBtnText;
+                });
+            });
+        }
+    }
+
+    // The main click handler for the "Sync Stacks to Git" button
+    if (syncStacksBtn) {
+        syncStacksBtn.addEventListener('click', function(e) {
+            // If the button is NOT set to open a modal (i.e., no changes found)
+            if (this.getAttribute('data-bs-toggle') !== 'modal') {
+                e.preventDefault();
+                if (!confirm('No pending changes detected. Do you still want to force a sync? This will pull latest changes and commit if there are any discrepancies.')) {
+                    return;
+                }
+
+                const originalBtnText = this.innerHTML;
+                this.disabled = true;
+                this.innerHTML = `<i class="bi bi-git"></i> <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Syncing...`;
+
+                fetch(`${basePath}/api/stacks/sync-to-git`, {
+                    method: 'POST'
+                })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    showToast(data.message, ok);
+                })
+                .catch(error => {
+                    showToast(error.message || 'An unknown error occurred during sync.', false);
+                })
+                .finally(() => {
+                    this.disabled = false;
+                    this.innerHTML = originalBtnText;
+                });
+            }
+            // If it IS set to open a modal, Bootstrap's JS will handle it, so we do nothing.
+        });
     }
 
     // --- Initial Data Load ---

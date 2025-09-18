@@ -1,7 +1,7 @@
     </main> <!-- end main-content -->
 
     <footer class="footer-fixed">
-        <p class="mb-0 text-center text-muted">&copy; <?= date('Y') ?> Config Manager</p>
+        <p class="mb-0 text-center text-muted">&copy; <?= date('Y') ?> Config Manager v<?= APP_VERSION ?> | <a href="<?= base_url('/changelog') ?>">Changelog</a></p>
     </footer>
 
 </div> <!-- end content-wrapper -->

@@ -43,6 +43,7 @@ $router->get('/middlewares', 'pages/middleware_management.php', ['auth', 'admin'
 $router->get('/services', 'pages/service_management.php', ['auth', 'admin']);
 $router->get('/settings', 'pages/settings.php', ['auth', 'admin']);
 $router->get('/health-check', 'pages/health_check.php', ['auth', 'admin']);
+$router->get('/changelog', 'pages/changelog.php', ['auth']);
 $router->get('/templates', 'pages/template_management.php', ['auth', 'admin']);
 $router->get('/app-launcher', 'pages/app_launcher.php', ['auth', 'admin']);
 $router->get('/hosts', 'pages/host_management.php', ['auth', 'admin']);
@@ -85,7 +86,7 @@ $router->get('/api/hosts/{id}/containers/{container_id}/stats', 'api/container_s
 $router->get('/api/hosts/{host_id}/stacks/{stack_name}/spec', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->post('/api/git/test', 'api/git_test_handler.php', ['auth', 'admin']);
 $router->post('/api/stacks/sync-to-git', 'api/sync_stacks_to_git_handler.php', ['auth', 'admin']);
-$router->get('/api/stacks/check-git-diff', 'api/stacks/check_git_diff_handler.php', ['auth', 'admin']);
+$router->get('/api/stacks/check-git-diff', 'api/check_git_diff_handler.php', ['auth', 'admin']);
 $router->post('/api/git/test-compose-path', 'api/git_compose_test_handler.php', ['auth', 'admin']);
 $router->post('/api/app-launcher/deploy', 'api/app_launcher_handler.php', ['auth', 'admin']);
 $router->post('/api/app-launcher/preview', 'api/app_launcher_preview_handler.php', ['auth', 'admin']);

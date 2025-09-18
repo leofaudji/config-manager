@@ -117,6 +117,8 @@ class GitHelper
                 $this->execute("fetch origin", $repoPath, $isSsh);
                 $this->execute("reset --hard origin/" . escapeshellarg($this->branch), $repoPath, $isSsh);
                 $this->execute("pull origin " . escapeshellarg($this->branch), $repoPath, $isSsh);
+                // Clean any untracked files from previous operations to ensure a pristine state for diffing
+                $this->execute("clean -fdx", $repoPath, $isSsh);
             }
         }
 
@@ -165,16 +167,18 @@ class GitHelper
     /**
      * Gets the output of `git diff` for the working directory.
      * @param string $repoPath The path to the local repository.
+     * @param bool $staged Whether to show staged changes instead of working directory changes.
      * @return string The diff output.
      * @throws Exception
      */
-    public function getDiff(string $repoPath): string
+    public function getDiff(string $repoPath, bool $staged = false): string
     {
         if (!is_dir($repoPath)) {
             throw new Exception("Repository path does not exist: {$repoPath}");
         }
         $isSsh = str_starts_with($this->repoUrl, 'git@');
-        return $this->execute("diff", $repoPath, $isSsh);
+        $command = $staged ? "diff --staged" : "diff";
+        return $this->execute($command, $repoPath, $isSsh);
     }
 
     /**
@@ -213,7 +217,7 @@ class GitHelper
      * @return string The output from the command.
      * @throws Exception If the command fails.
      */
-    private function execute(string $command, ?string $workingDir = null, bool $isSsh = false, ?string $overrideSshKeyPath = null): string
+    public function execute(string $command, ?string $workingDir = null, bool $isSsh = false, ?string $overrideSshKeyPath = null): string
     {
         $originalDir = null;
         if ($workingDir) {

@@ -15,3 +15,8 @@ if (!defined('YAML_OUTPUT_PATH')) {
 if (!defined('TRAEFIK_API_URL')) {
     define('TRAEFIK_API_URL', Config::get('TRAEFIK_API_URL', 'http://localhost:8080'));
 }
+
+// Define APP_VERSION from CHANGELOG.md or fallback
+if (!defined('APP_VERSION')) {
+    define('APP_VERSION', '3.0.0');
+}
