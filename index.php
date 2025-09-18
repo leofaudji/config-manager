@@ -57,6 +57,7 @@ $router->get('/services/{id}/edit', 'pages/service_form.php', ['auth', 'admin'])
 $router->get('/services/{clone_id}/clone', 'pages/service_form.php', ['auth', 'admin']);
 $router->get('/servers/new', 'pages/server_form.php', ['auth', 'admin']); // Form tambah server ke service
 $router->get('/servers/{id}/edit', 'pages/server_form.php', ['auth', 'admin']);
+$router->get('/stack-changes', 'pages/stack_changes.php', ['auth', 'admin']);
 $router->get('/hosts/new', 'pages/host_form.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/edit', 'pages/host_form.php', ['auth', 'admin']);
 $router->get('/hosts/{clone_id}/clone', 'pages/host_form.php', ['auth', 'admin']);
@@ -83,6 +84,7 @@ $router->get('/api/templates/{id}', 'api/template_handler.php', ['auth', 'admin'
 $router->get('/api/hosts/{id}/containers', 'api/host_detail_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->post('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', 'admin']);
+$router->get('/api/stack-changes', 'api/stack_changes_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/stats', 'api/container_stats_stream_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{host_id}/stacks/{stack_name}/spec', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->post('/api/git/test', 'api/git_test_handler.php', ['auth', 'admin']);

@@ -276,6 +276,7 @@ try {
 
         } elseif ($action === 'delete') {
             $stack_name = $_POST['stack_name'] ?? '';
+            $git_sync_warning = '';
 
             if (empty($stack_name)) {
                 throw new InvalidArgumentException("Stack name is required for deletion.");
@@ -327,8 +328,44 @@ try {
             $stmt_delete_db->execute();
             $stmt_delete_db->close();
 
+            // Log the deletion to the new stack_change_log table
+            $stmt_log_change = $conn->prepare(
+                "INSERT INTO stack_change_log (host_id, stack_name, change_type, details, changed_by) VALUES (?, ?, 'deleted', ?, ?)"
+            );
+            $changed_by = $_SESSION['username'] ?? 'system';
+            $stack_type = $is_swarm_manager ? 'Swarm' : 'Standalone';
+            $details = "Stack removed from host ({$stack_type}).";
+            $stmt_log_change->bind_param("isss", $host_id, $stack_name, $details, $changed_by);
+            $stmt_log_change->execute();
+            $stmt_log_change->close();
+
+            // --- Sync deletion to Git repository ---
+            $git_enabled = (bool)get_setting('git_integration_enabled', false);
+            if ($git_enabled) {
+                $repo_path_for_delete = null; // Define to be accessible in finally
+                try {
+                    $git = new GitHelper();
+                    $repo_path_for_delete = $git->setupRepository();
+
+                    $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+                    $directory_to_remove = "{$safe_host_name}/{$stack_name}";
+                    $commit_message = "Remove stack '{$stack_name}' from host '{$host['name']}'";
+
+                    $git->removeAndPush($repo_path_for_delete, $directory_to_remove, $commit_message);
+
+                } catch (Exception $git_e) {
+                    // If the Git operation fails, log it and append a warning to the success message.
+                    error_log("Config Manager: Failed to sync stack deletion to Git for '{$stack_name}'. Error: " . $git_e->getMessage());
+                    $git_sync_warning = " Warning: Failed to sync deletion to Git repository. Please check logs.";
+                } finally {
+                    if (isset($git) && isset($repo_path_for_delete) && !$git->isPersistentPath($repo_path_for_delete)) {
+                        $git->cleanup($repo_path_for_delete);
+                    }
+                }
+            }
+
             log_activity($_SESSION['username'], 'Stack Deleted', "Deleted stack '{$stack_name}' on host '{$host['name']}'.");
-            echo json_encode(['status' => 'success', 'message' => "Stack successfully deleted."]);
+            echo json_encode(['status' => 'success', 'message' => "Stack successfully deleted." . $git_sync_warning]);
         } else {
             throw new InvalidArgumentException("Invalid action specified.");
         }

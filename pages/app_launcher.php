@@ -62,6 +62,9 @@ require_once __DIR__ . '/../includes/header.php';
 
                                 <input type="radio" class="btn-check" name="source_type" id="source_type_hub_image" value="hub" autocomplete="off">
                                 <label class="btn btn-outline-primary" for="source_type_hub_image"><i class="bi bi-box-seam me-2"></i>From Docker Hub</label>
+
+                                <input type="radio" class="btn-check" name="source_type" id="source_type_editor" value="editor" autocomplete="off">
+                                <label class="btn btn-outline-primary" for="source_type_editor"><i class="bi bi-code-square me-2"></i>From Editor</label>
                             </div>
                             <hr>
                             <!-- Git Repository -->
@@ -120,6 +123,14 @@ require_once __DIR__ . '/../includes/header.php';
                                 <div class="mb-3">
                                     <input type="text" class="form-control" id="image_name_hub" name="image_name_hub" placeholder="e.g., ubuntu:latest, my-registry/my-app:1.2">
                                     <small class="form-text text-muted">Enter the full image name. Use the search above to find public images.</small>
+                                </div>
+                            </div>
+                            <!-- Editor -->
+                            <div id="editor-source-section" style="display: none;">
+                                <div class="mb-3">
+                                    <label for="compose_content_editor" class="form-label">Docker Compose Content <span class="text-danger">*</span></label>
+                                    <textarea class="form-control font-monospace" id="compose_content_editor" name="compose_content_editor" rows="15" placeholder="version: '3.8'\nservices:\n  my-app:\n    image: nginx:latest"></textarea>
+                                    <small class="form-text text-muted">Paste or write your `docker-compose.yml` content here.</small>
                                 </div>
                             </div>
                         </div>
@@ -330,6 +341,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const sourceTypeGitRadio = document.getElementById('source_type_git');
     const sourceTypeLocalImageRadio = document.getElementById('source_type_local_image');
     const sourceTypeHubImageRadio = document.getElementById('source_type_hub_image');
+    const sourceTypeEditorRadio = document.getElementById('source_type_editor');
     const gitSourceSection = document.getElementById('git-source-section');
     const localImageSourceSection = document.getElementById('local-image-source-section');
     const hubImageSourceSection = document.getElementById('hub-image-source-section');
@@ -337,6 +349,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const imageNameSelect = document.getElementById('image_name_select');
     const imageNameHubInput = document.getElementById('image_name_hub');
     const composePathInput = document.getElementById('compose_path');
+    const editorSourceSection = document.getElementById('editor-source-section');
+    const composeContentEditor = document.getElementById('compose_content_editor');
     const hostPortInput = document.getElementById('host_port');
     const containerPortInput = document.getElementById('container_port');
     const launchBtn = document.getElementById('launch-app-btn');
@@ -418,11 +432,13 @@ document.addEventListener('DOMContentLoaded', function() {
         gitSourceSection.style.display = 'none';
         localImageSourceSection.style.display = 'none';
         hubImageSourceSection.style.display = 'none';
+        editorSourceSection.style.display = 'none';
 
         // Make all inputs not required first
         gitUrlInput.required = false;
         imageNameSelect.required = false;
         imageNameHubInput.required = false;
+        composeContentEditor.required = false;
 
         if (sourceTypeLocalImageRadio.checked) {
             localImageSourceSection.style.display = 'block';
@@ -430,6 +446,9 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (sourceTypeHubImageRadio.checked) {
             hubImageSourceSection.style.display = 'block';
             imageNameHubInput.required = true;
+        } else if (sourceTypeEditorRadio.checked) {
+            editorSourceSection.style.display = 'block';
+            composeContentEditor.required = true;
         } else { // Git is checked by default
             gitSourceSection.style.display = 'block';
             gitUrlInput.required = true;
@@ -440,6 +459,7 @@ document.addEventListener('DOMContentLoaded', function() {
     sourceTypeGitRadio.addEventListener('change', toggleSourceSections);
     sourceTypeLocalImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeHubImageRadio.addEventListener('change', toggleSourceSections);
+    sourceTypeEditorRadio.addEventListener('change', toggleSourceSections);
 
     function updateHostVolumePath() {
         const selectedHostOption = hostSelect.options[hostSelect.selectedIndex];
@@ -479,6 +499,8 @@ document.addEventListener('DOMContentLoaded', function() {
             sourceValid = imageNameSelect.value.trim() !== '';
         } else if (sourceTypeHubImageRadio.checked) {
             sourceValid = imageNameHubInput.value.trim() !== '';
+        } else if (sourceTypeEditorRadio.checked) {
+            sourceValid = composeContentEditor.value.trim() !== '';
         }
 
         const hostPort = hostPortInput.value.trim();
@@ -754,8 +776,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!imageName) return null;
             service.image = imageName;
         } else {
-            // Preview for Git source is not supported as it requires fetching the file.
-            return 'git'; 
+            // Preview for Git/Editor source is not supported client-side as it requires fetching/parsing.
+            return 'server-side'; 
         }
 
         // Add container_name if not a swarm manager
@@ -814,8 +836,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const containerPath = row.querySelector('.container-volume-path').value.trim();
 
             if (containerPath && hostPath) {
-                const suffix = containerPath.replace(/^\/+|\/+$/g, '').replace(/[^a-zA-Z0-9_.-]/g, '_');
-                const volumeName = `${stackName}_${suffix || 'data'}`;
+                // Generate volume name based on container path only. Docker-compose will prefix it with the project name.
+                const volumeName = containerPath.replace(/^\/+|\/+$/g, '').replace(/[^a-zA-Z0-9_.-]/g, '_') || 'data';
 
                 if (!service.volumes) service.volumes = [];
                 service.volumes.push(`${volumeName}:${containerPath}`);
@@ -866,7 +888,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let previewPromise;
 
         if (sourceTypeLocalImageRadio.checked || sourceTypeHubImageRadio.checked) {
-            // Client-side generation for 'image' source
+            // Client-side generation for simple 'image' sources
             const composeObject = buildComposeObject();
             if (!composeObject) {
                 showToast('Please specify an Image to generate a preview.', false);
@@ -877,14 +899,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const yamlString = jsyaml.dump(composeObject, { indent: 2 });
             previewPromise = Promise.resolve(yamlString);
 
-        } else { // Git source is the only other option
-            if (!formData.get('git_url')) {
+        } else { // Git or Editor source
+            if (sourceTypeGitRadio.checked && !formData.get('git_url')) {
                 showToast('Please enter a Git URL to generate a preview.', false);
                 this.disabled = false;
                 this.innerHTML = originalBtnContent;
                 return;
             }
-            // Server-side generation for 'git' source
+            if (sourceTypeEditorRadio.checked && !formData.get('compose_content_editor')) {
+                showToast('Please enter compose content to generate a preview.', false);
+                this.disabled = false;
+                this.innerHTML = originalBtnContent;
+                return;
+            }
+            // Server-side generation for 'git' or 'editor' source
             previewPromise = fetch(`${basePath}/api/app-launcher/preview`, {
                 method: 'POST',
                 body: formData

@@ -118,8 +118,8 @@ class AppLauncherHelper
                         if (!str_starts_with($container_path, '/')) {
                             $container_path = '/' . $container_path;
                         }
-                        $suffix = preg_replace('/[^\w.-]+/', '_', trim($container_path, '/'));
-                        $volume_name = preg_replace('/[^a-zA-Z0-9_.-]/', '', $stack_name) . '_' . ($suffix ?: 'data');
+                        // Generate volume name based on container path only. Docker-compose will prefix it with the project name.
+                        $volume_name = preg_replace('/[^\w.-]+/', '_', trim($container_path, '/')) ?: 'data';
 
                         if (!isset($compose_data['services'][$service_key]['volumes'])) $compose_data['services'][$service_key]['volumes'] = [];
                         $compose_data['services'][$service_key]['volumes'][] = $volume_name . ':' . $container_path;

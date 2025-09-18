@@ -47,7 +47,10 @@
                 <a class="nav-link" href="<?= base_url('/hosts') ?>"><i class="bi bi-hdd-network-fill"></i> Hosts</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/app-launcher') ?>"><i class="bi bi-rocket-launch-fill"></i> App Launcher</a>
+                <a class="nav-link" href="<?= base_url('/app-launcher') ?>"><i class="bi bi-rocket-takeoff"></i> App Launcher</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/stack-changes') ?>"><i class="bi bi-calendar-week"></i> Stack Changes</a>
             </li>
 
             <li class="sidebar-header">Traefik</li>

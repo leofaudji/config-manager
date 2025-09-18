@@ -165,6 +165,32 @@ class GitHelper
     }
 
     /**
+     * Removes a directory from the repository, commits, and pushes the change.
+     * @param string $repoPath The path to the local repository.
+     * @param string $directoryToRemove The relative path of the directory to remove inside the repo.
+     * @param string $commitMessage The commit message.
+     * @throws Exception
+     */
+    public function removeAndPush(string $repoPath, string $directoryToRemove, string $commitMessage): void
+    {
+        if (!is_dir($repoPath)) {
+            throw new Exception("Repository path does not exist: {$repoPath}");
+        }
+
+        $fullPathToRemove = $repoPath . '/' . $directoryToRemove;
+
+        if (file_exists($fullPathToRemove)) {
+            // Physically remove the directory from the working tree.
+            $this->cleanup($fullPathToRemove);
+
+            // The existing commitAndPush method will stage the deletion and push.
+            $this->commitAndPush($repoPath, $commitMessage);
+        } else {
+            error_log("GitHelper: Path '{$directoryToRemove}' not found in repo working tree at '{$repoPath}', skipping removal from Git.");
+        }
+    }
+
+    /**
      * Gets the output of `git diff` for the working directory.
      * @param string $repoPath The path to the local repository.
      * @param bool $staged Whether to show staged changes instead of working directory changes.

@@ -137,6 +137,14 @@ try {
         if (empty($compose_data['networks'])) unset($compose_data['networks']);
 
         $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
+    } elseif ($source_type === 'editor') {
+        $compose_content_from_editor = $_POST['compose_content_editor'] ?? '';
+        if (empty($compose_content_from_editor)) {
+            throw new InvalidArgumentException("Compose content from editor is required for preview.");
+        }
+        $compose_data = DockerComposeParser::YAMLLoad($compose_content_from_editor);
+        AppLauncherHelper::applyFormSettings($compose_data, $form_params, $host, $is_swarm_manager);
+        $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
     } else {
         throw new InvalidArgumentException("Invalid source type specified for preview.");
     }

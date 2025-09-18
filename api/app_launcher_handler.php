@@ -207,6 +207,14 @@ try {
         if (empty($compose_data['networks'])) unset($compose_data['networks']);
 
         $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
+    } elseif ($source_type === 'editor') {
+        $compose_content_from_editor = $_POST['compose_content_editor'] ?? '';
+        if (empty($compose_content_from_editor)) {
+            throw new Exception("Compose content from editor is required.");
+        }
+        $compose_data = DockerComposeParser::YAMLLoad($compose_content_from_editor);
+        AppLauncherHelper::applyFormSettings($compose_data, $form_params, $host, $is_swarm_manager);
+        $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
     } else {
         throw new Exception("Invalid source type specified.");
     }
@@ -277,7 +285,7 @@ try {
                 // The original temporary repo at $repo_path will be cleaned up by the 'finally' logic.
             } else {
                 // Use the temporary cloned repo path directly for deployment.
-                $deployment_dir = $repo_path;
+                $deployment_dir = $repo_path; // This is a temporary path
                 $temp_dir = $deployment_dir; // Mark it for cleanup.
                 $repo_path = null; // Prevent double cleanup.
             }
@@ -288,7 +296,7 @@ try {
             if (file_put_contents($compose_file_full_path, $compose_content) === false) throw new Exception("Could not write modified compose file to: " . $compose_file_full_path);
 
         } else {
-            // For 'image' source, we only need to create a directory with a single compose file.
+            // For 'image', 'hub', or 'editor' source, we only need to create a directory with a single compose file.
             if ($is_persistent_path) {
                 $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
                 $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
@@ -447,6 +455,49 @@ try {
     $stmt_stack->bind_param("issss", $host_id, $stack_name, $source_type, $compose_file_to_save, $deployment_details_json);
     $stmt_stack->execute();
     $stmt_stack->close();
+
+    // Log the change to the new stack_change_log table
+    $change_type = $is_update ? 'updated' : 'created';
+    
+    // Build a more descriptive details string
+    $details_parts = [];
+    if ($source_type === 'git') {
+        $details_parts[] = "Source: Git repo '{$git_url}' (branch: {$git_branch})";
+        if ($build_from_dockerfile) {
+            $details_parts[] = "Built from Dockerfile.";
+        }
+    } elseif ($source_type === 'image') {
+        $details_parts[] = "Source: Host image '" . ($_POST['image_name_local'] ?? 'N/A') . "'";
+    } elseif ($source_type === 'hub') {
+        $details_parts[] = "Source: Docker Hub image '" . ($_POST['image_name_hub'] ?? 'N/A') . "'";
+    } elseif ($source_type === 'editor') {
+        $details_parts[] = "Source: From Editor";
+    }
+
+    if ($replicas) $details_parts[] = "Replicas: {$replicas}";
+    if ($cpu) $details_parts[] = "CPU: {$cpu}";
+    if ($memory) $details_parts[] = "Memory: {$memory}";
+    if ($network) $details_parts[] = "Network: {$network}";
+    if ($host_port && $container_port) $details_parts[] = "Port: {$host_port}:{$container_port}";
+
+    if (!empty($volume_paths)) {
+        $vol_count = count($volume_paths);
+        $details_parts[] = "{$vol_count} volume(s) mapped.";
+    }
+
+    $log_details_for_stack_change = implode(' | ', $details_parts);
+    if (empty($log_details_for_stack_change)) {
+        $log_details_for_stack_change = ($is_update ? "Stack configuration updated." : "New stack deployed.");
+    }
+
+    $stmt_log_change = $conn->prepare(
+        "INSERT INTO stack_change_log (host_id, stack_name, change_type, details, changed_by) VALUES (?, ?, ?, ?, ?)"
+    );
+    $changed_by = $_SESSION['username'] ?? 'system';
+    $stmt_log_change->bind_param("issss", $host_id, $stack_name, $change_type, $log_details_for_stack_change, $changed_by);
+    $stmt_log_change->execute();
+    $stmt_log_change->close();
+    stream_message("Stack change logged to history.");
 
     stream_message("Database record saved.");
 

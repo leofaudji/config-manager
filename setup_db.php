@@ -47,7 +47,19 @@ $default_password_hash = password_hash('password', PASSWORD_DEFAULT);
 $webhook_token = bin2hex(random_bytes(32)); // Generate a secure random token
 
 $sql = "
-DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `application_stacks`, `docker_hosts`, `host_stats_history`;
+DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`;
+
+CREATE TABLE `stack_change_log` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `host_id` int(11) NOT NULL,
+  `stack_name` varchar(255) NOT NULL,
+  `change_type` enum('created','updated','deleted') NOT NULL,
+  `details` text DEFAULT NULL,
+  `changed_by` varchar(50) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `host_id_created_at` (`host_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `settings` (
   `setting_key` varchar(50) NOT NULL,
@@ -117,7 +129,8 @@ CREATE TABLE `application_stacks` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `host_id_stack_name` (`host_id`,`stack_name`),
-  CONSTRAINT `application_stacks_ibfk_1` FOREIGN KEY (`host_id`) REFERENCES `docker_hosts` (`id`) ON DELETE CASCADE
+  CONSTRAINT `application_stacks_ibfk_1` FOREIGN KEY (`host_id`) REFERENCES `docker_hosts` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `stack_change_log_ibfk_1` FOREIGN KEY (`host_id`) REFERENCES `docker_hosts` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `configuration_templates` (

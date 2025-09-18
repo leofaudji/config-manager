@@ -1637,4 +1637,5 @@ if (editUserModal) {
         updateLiveClock(); // Initial call
         setInterval(updateLiveClock, 1000); // Update every second
     }
+
 });

@@ -9,22 +9,22 @@ Format file ini didasarkan pada [Keep a Changelog](https://keepachangelog.com/en
 ### Added
 
 - **App Launcher**: Fitur utama baru untuk men-deploy aplikasi dari berbagai sumber.
-  - Mendukung deployment dari repositori Git, image yang sudah ada di host, dan Docker Hub (lengkap dengan fitur pencarian).
-  - Menampilkan log deployment secara *real-time* di dalam modal.
-  - Memungkinkan konfigurasi dinamis untuk port, volume (termasuk multiple volume), network (dengan saran IP), dan sumber daya (CPU/Memori).
-  - Secara otomatis mengatur `container_name` dan `hostname` untuk identifikasi yang lebih baik pada host standalone.
-  - Secara otomatis menambahkan `restart_policy` untuk meningkatkan keandalan layanan.
+    - Mendukung deployment dari repositori Git, image yang sudah ada di host, dan Docker Hub (lengkap dengan fitur pencarian).
+    - Menampilkan log deployment secara *real-time* di dalam modal.
+    - Memungkinkan konfigurasi dinamis untuk port, volume (termasuk multiple volume), network (dengan saran IP), dan sumber daya (CPU/Memori).
+    - Secara otomatis mengatur `container_name` dan `hostname` untuk identifikasi yang lebih baik pada host standalone.
+    - Secara otomatis menambahkan `restart_policy` untuk meningkatkan keandalan layanan.
 - **Build from Dockerfile**: Menambahkan opsi pada App Launcher (sumber Git) untuk membangun image Docker langsung di host tujuan menggunakan `Dockerfile` yang ada di repositori.
 - **Live Container Stats**: Menambahkan tombol "Live Stats" pada setiap kontainer yang berjalan, menampilkan grafik penggunaan CPU dan Memori secara *real-time* di dalam modal, dengan *refresh rate* yang dapat diatur (5, 30, 60 detik).
 - **Stack & Image Tracking**:
-  - Halaman "Application Stacks" kini menampilkan kolom "Source" yang informatif (Git, Host Image, Docker Hub, dll.).
-  - Halaman "Host Images" kini menampilkan kolom "Used By" untuk menunjukkan stack mana yang menggunakan image tersebut.
+    - Halaman "Application Stacks" kini menampilkan kolom "Source" yang informatif (Git, Host Image, Docker Hub, dll.).
+    - Halaman "Host Images" kini menampilkan kolom "Used By" untuk menunjukkan stack mana yang menggunakan image tersebut.
 - **Git Integration Enhancements**:
-  - **Sync Stacks to Git**: Fitur baru untuk mem-backup semua file `docker-compose.yml` dari stack yang dikelola ke repositori Git terpusat.
-  - **Connection Test**: Menambahkan tombol "Test Connection" di halaman "Settings" untuk memvalidasi URL repositori Git (HTTPS dan SSH) sebelum disimpan.
+    - **Sync Stacks to Git**: Fitur baru untuk mem-backup semua file `docker-compose.yml` dari stack yang dikelola ke repositori Git terpusat.
+    - **Connection Test**: Menambahkan tombol "Test Connection" di halaman "Settings" untuk memvalidasi URL repositori Git (HTTPS dan SSH) sebelum disimpan.
 - **Validasi Real-time**:
-  - App Launcher kini memvalidasi duplikasi nama stack secara *real-time* saat pengguna mengetik.
-  - Menambahkan validasi di sisi server untuk mencegah error deployment akibat duplikasi nama kontainer.
+    - App Launcher kini memvalidasi duplikasi nama stack secara *real-time* saat pengguna mengetik.
+    - Menambahkan validasi di sisi server untuk mencegah error deployment akibat duplikasi nama kontainer.
 
 ### Changed
 

@@ -6,6 +6,35 @@
 
 </div> <!-- end content-wrapper -->
 
+<!-- Stack Change Detail Modal -->
+<div class="modal fade" id="stackChangeDetailModal" tabindex="-1" aria-labelledby="stackChangeDetailModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="stackChangeDetailModalLabel">Stack Change Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="row">
+          <dt class="col-sm-3">Stack Name</dt>
+          <dd class="col-sm-9" id="detail-stack-name"></dd>
+          <dt class="col-sm-3">Change Type</dt>
+          <dd class="col-sm-9" id="detail-change-type"></dd>
+          <dt class="col-sm-3">Timestamp</dt>
+          <dd class="col-sm-9" id="detail-created-at"></dd>
+          <dt class="col-sm-3">Changed By</dt>
+          <dd class="col-sm-9" id="detail-changed-by"></dd>
+          <dt class="col-sm-3">Details</dt>
+          <dd class="col-sm-9"><pre><code id="detail-details" class="font-monospace"></code></pre></dd>
+        </dl>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container" style="z-index: 1100">
     <!-- Toasts will be appended here by JavaScript -->
