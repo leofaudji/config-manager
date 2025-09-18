@@ -2,7 +2,11 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 $conn = Database::getInstance()->getConnection();
 
-$is_edit = false;
+$page_mode = 'add';
+$page_title = 'Add Docker Host';
+$form_action = base_url('/hosts/new');
+$submit_button_text = 'Save Host';
+
 $host = [
     'id' => '',
     'name' => '',
@@ -18,8 +22,8 @@ $host = [
     'registry_password' => ''
 ];
 
-if (isset($_GET['id'])) {
-    $is_edit = true;
+if (isset($_GET['id'])) { // Edit Mode
+    $page_mode = 'edit';
     $id = $_GET['id'];
     $stmt = $conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
     $stmt->bind_param("i", $id);
@@ -29,18 +33,57 @@ if (isset($_GET['id'])) {
         $host = $result->fetch_assoc();
     }
     $stmt->close();
+    $page_title = 'Edit Docker Host';
+    $form_action = base_url('/hosts/' . $host['id'] . '/edit');
+    $submit_button_text = 'Update Host';
+
+} elseif (isset($_GET['clone_id'])) { // Clone Mode
+    $page_mode = 'clone';
+    $id = $_GET['clone_id'];
+    $stmt = $conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows === 0) {
+        header('Location: ' . base_url('/hosts?status=error&message=' . urlencode('Host to clone not found.')));
+        exit;
+    }
+    $host = $result->fetch_assoc();
+    $stmt->close();
+
+    $original_name = $host['name'];
+
+    // Suggest a new unique name
+    $clone_count = 1;
+    do {
+        $new_name = $original_name . '-clone' . ($clone_count > 1 ? $clone_count : '');
+        $stmt_check = $conn->prepare("SELECT id FROM docker_hosts WHERE name = ?");
+        $stmt_check->bind_param("s", $new_name);
+        $stmt_check->execute();
+        $name_exists = $stmt_check->get_result()->num_rows > 0;
+        $stmt_check->close();
+        $clone_count++;
+    } while ($name_exists);
+
+    $host['name'] = $new_name;
+    $host['id'] = ''; // This will be a new entry
+    $host['docker_api_url'] = ''; // API URL must be unique, so clear it.
+
+    $page_title = 'Clone Host: ' . htmlspecialchars($original_name);
+    $form_action = base_url('/hosts/new'); // Submit to the 'add' endpoint
+    $submit_button_text = 'Save as New Host';
 }
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
-<h3><?= $is_edit ? 'Edit' : 'Add' ?> Docker Host</h3>
+<h3><?= $page_title ?></h3>
 <p class="text-muted">Configure a remote Docker host to enable remote container management.</p>
 <hr>
 
 <div class="card">
     <div class="card-body">
-        <form id="main-form" action="<?= base_url($is_edit ? '/hosts/' . $host['id'] . '/edit' : '/hosts/new') ?>" method="POST" data-redirect="/hosts">
+        <form id="main-form" action="<?= $form_action ?>" method="POST" data-redirect="/hosts">
             <input type="hidden" name="id" value="<?= htmlspecialchars($host['id']) ?>">
             
             <div class="mb-3">
@@ -115,7 +158,7 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <a href="<?= base_url('/hosts') ?>" class="btn btn-secondary">Cancel</a>
-            <button type="submit" class="btn btn-primary"><?= $is_edit ? 'Update Host' : 'Save Host' ?></button>
+            <button type="submit" class="btn btn-primary"><?= $submit_button_text ?></button>
         </form>
     </div>
 </div>

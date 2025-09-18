@@ -59,6 +59,7 @@ $router->get('/servers/new', 'pages/server_form.php', ['auth', 'admin']); // For
 $router->get('/servers/{id}/edit', 'pages/server_form.php', ['auth', 'admin']);
 $router->get('/hosts/new', 'pages/host_form.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/edit', 'pages/host_form.php', ['auth', 'admin']);
+$router->get('/hosts/{clone_id}/clone', 'pages/host_form.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/details', 'pages/host_dashboard.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/containers', 'pages/host_containers.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/stacks', 'pages/host_stacks.php', ['auth', 'admin']);

@@ -89,9 +89,35 @@ try {
         $success_message = 'Host successfully created.';
     }
 
+    $folder_creation_warning = '';
     if ($stmt->execute()) {
+            
+        if (!$is_edit) {
+            $base_compose_path = get_setting('default_compose_path');
+            if (!empty($base_compose_path)) {
+                // Sanitize host name to be safe for directory creation
+                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $name);
+                if (!empty($safe_host_name)) {
+                    $host_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name;
+                    if (!is_dir($host_dir)) { 
+                        // Attempt to create the directory. Suppress errors as we will handle them.
+                        if (!@mkdir($host_dir, 0755, true) && !is_dir($host_dir)) {
+                            // If mkdir fails, and the directory still doesn't exist, create a warning.
+                            $folder_creation_warning = " Warning: Failed to create host directory at '{$host_dir}'. Please check permissions of the parent directory.";
+                            error_log("Config Manager: Failed to create host directory at {$host_dir}. Please check permissions of the parent directory '{$base_compose_path}'.");
+                        } else {
+                            // If mkdir succeeded, now set permissions and ownership.
+                            @chmod($host_dir, 0777); // Apply a+rwx as requested
+                            @chown($host_dir, 'www-data');
+                            @chgrp($host_dir, 'www-data');
+                        }
+                    }
+                }
+            }
+        }
+
         log_activity($_SESSION['username'], $log_action, $log_details);
-        echo json_encode(['status' => 'success', 'message' => $success_message]);
+        echo json_encode(['status' => 'success', 'message' => $success_message . $folder_creation_warning]);
     } else {
         throw new Exception('Database operation failed: ' . $stmt->error);
     }

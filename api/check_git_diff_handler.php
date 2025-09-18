@@ -33,16 +33,21 @@ try {
     $repo_path = $git->setupRepository();
 
     // 4. Get all managed application stacks from the database
-    $stacks_result = $conn->query("SELECT stack_name, compose_file_path FROM application_stacks");
+    $stacks_result = $conn->query("SELECT s.stack_name, s.compose_file_path, h.name as host_name FROM application_stacks s JOIN docker_hosts h ON s.host_id = h.id");
 
     // 5. Loop through stacks and copy their compose files to the repo
     while ($stack = $stacks_result->fetch_assoc()) {
+        $host_name = $stack['host_name'];
         $stack_name = $stack['stack_name'];
         $compose_filename = $stack['compose_file_path'];
-        $source_compose_file = rtrim($base_compose_path, '/') . "/{$stack_name}/{$compose_filename}";
+        
+        // Sanitize host name for filesystem safety, consistent with other handlers
+        $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host_name);
+        $source_compose_file = rtrim($base_compose_path, '/') . "/{$safe_host_name}/{$stack_name}/{$compose_filename}";
 
         if (file_exists($source_compose_file)) {
-            $destination_dir_in_repo = "{$repo_path}/{$stack_name}";
+            // Also group by host in the git repo for clarity
+            $destination_dir_in_repo = "{$repo_path}/{$safe_host_name}/{$stack_name}";
             $destination_file_in_repo = "{$destination_dir_in_repo}/{$compose_filename}";
             
             if (!is_dir($destination_dir_in_repo)) {

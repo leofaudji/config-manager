@@ -1499,7 +1499,6 @@ document.addEventListener('DOMContentLoaded', function () {
     // Initialize tooltips on static elements present on page load
     const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
     [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
-});
 
 // --- Service Health Status Logic ---
 function updateServiceStatus() {
@@ -1615,3 +1614,27 @@ if (editUserModal) {
         });
     }
 }
+
+    // --- Live Clock in Header ---
+    const clockElement = document.getElementById('live-clock');
+    if (clockElement) {
+        const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+        function updateLiveClock() {
+            const now = new Date();
+            const dayName = days[now.getDay()];
+            const day = now.getDate().toString().padStart(2, '0');
+            const monthName = months[now.getMonth()];
+            const year = now.getFullYear();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
+
+            clockElement.textContent = `${dayName}, ${day} ${monthName} ${year} ${hours}:${minutes}:${seconds}`;
+        }
+
+        updateLiveClock(); // Initial call
+        setInterval(updateLiveClock, 1000); // Update every second
+    }
+});

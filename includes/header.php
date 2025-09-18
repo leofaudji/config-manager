@@ -104,8 +104,11 @@
                     <span class="visually-hidden">pending changes</span>
                 </span>
             </button>
-             <a href="<?= base_url('/generate') ?>" class="btn btn-success"><i class="bi bi-rocket-takeoff"></i> Generate & Deploy</a>
+             <a href="<?= base_url('/generate') ?>" class="btn btn-success me-3"><i class="bi bi-rocket-takeoff"></i> Generate & Deploy</a>
             <?php endif; ?>
+            <div id="live-clock" class="text-muted small me-3 ms-auto fw-bold">
+                <!-- Clock will be inserted here by JavaScript -->
+            </div>
             <div class="nav-item dropdown ms-3">
                 <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                     <i class="bi bi-person-circle"></i> <?= htmlspecialchars($_SESSION['username']) ?>

@@ -77,7 +77,8 @@ try {
             }
 
             $compose_filename = $stack_record['compose_file_path'];
-            $full_compose_path = rtrim($base_compose_path, '/') . '/' . $stack_name . '/' . $compose_filename;
+            $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+            $full_compose_path = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name . '/' . $compose_filename;
 
             if (!file_exists($full_compose_path) || !is_readable($full_compose_path)) {
                 throw new Exception("Compose file '{$compose_filename}' not found at the persistent path '{$full_compose_path}'. The file may have been moved or deleted, or the persistent path was not set correctly during deployment.");
@@ -289,7 +290,8 @@ try {
                 if (empty($base_compose_path)) {
                     throw new Exception("Cannot delete stack. A 'Default Compose File Path' must be configured for the host to manage its stacks.");
                 }
-                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $stack_name;
+                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
                 if (!is_dir($deployment_dir)) {
                     throw new Exception("Deployment directory '{$deployment_dir}' not found. The stack might have been deployed without a persistent path or removed manually.");
                 }

@@ -552,6 +552,7 @@ elseif ($type === 'hosts') {
         $html .= '<td>' . $host['updated_at'] . '</td>';
         $html .= '<td class="text-end">';
         $html .= '<a href="' . base_url('/hosts/' . $host['id'] . '/details') . '" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Manage Host"><i class="bi bi-box-arrow-in-right"></i></a> ';
+        $html .= '<a href="' . base_url('/hosts/' . $host['id'] . '/clone') . '" class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Clone Host"><i class="bi bi-copy"></i></a> ';
         $html .= '<button class="btn btn-sm btn-outline-info test-connection-btn" data-id="' . $host['id'] . '" data-bs-toggle="tooltip" title="Test Connection"><i class="bi bi-plug-fill"></i></button> ';
         $html .= '<a href="' . base_url('/hosts/' . $host['id'] . '/edit') . '" class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Edit Host"><i class="bi bi-pencil-square"></i></a> ';
         $html .= '<button class="btn btn-sm btn-outline-danger delete-btn" data-id="' . $host['id'] . '" data-url="' . base_url('/hosts/' . $host['id'] . '/delete') . '" data-type="hosts" data-confirm-message="Are you sure you want to delete host \'' . htmlspecialchars($host['name']) . '\'?"><i class="bi bi-trash"></i></button>';

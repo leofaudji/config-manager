@@ -254,7 +254,8 @@ try {
             // For Git source, we need the entire repository content, not just the compose file.
             // $repo_path holds the path to the temporarily cloned repo.
             if ($is_persistent_path) {
-                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $stack_name;
+                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
                 // Ensure a clean state by removing the old directory if it exists.
                 if (is_dir($deployment_dir)) {
                     shell_exec("rm -rf " . escapeshellarg($deployment_dir));
@@ -289,7 +290,8 @@ try {
         } else {
             // For 'image' source, we only need to create a directory with a single compose file.
             if ($is_persistent_path) {
-                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $stack_name;
+                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
             } else {
                 $deployment_dir = rtrim(sys_get_temp_dir(), '/') . '/app_launcher_' . uniqid();
                 $temp_dir = $deployment_dir; // Mark for cleanup.
