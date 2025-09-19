@@ -142,9 +142,13 @@ try {
         if (empty($compose_content_from_editor)) {
             throw new InvalidArgumentException("Compose content from editor is required for preview.");
         }
-        $compose_data = DockerComposeParser::YAMLLoad($compose_content_from_editor);
-        AppLauncherHelper::applyFormSettings($compose_data, $form_params, $host, $is_swarm_manager);
-        $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
+        // Use Spyc for robust parsing and validation.
+        $compose_data = Spyc::YAMLLoad($compose_content_from_editor);
+        if (!is_array($compose_data) || !isset($compose_data['services'])) {
+            throw new InvalidArgumentException("Invalid YAML syntax or missing 'services' top-level key. Please check your indentation and formatting.");
+        }
+        // Use the original content from the editor for the preview to preserve formatting.
+        $compose_content = $compose_content_from_editor;
     } else {
         throw new InvalidArgumentException("Invalid source type specified for preview.");
     }

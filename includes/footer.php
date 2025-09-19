@@ -1,3 +1,7 @@
+<?php
+if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+// --- Start of non-AJAX wrapper ---
+?>
     </main> <!-- end main-content -->
 
     <footer class="footer-fixed">
@@ -200,3 +204,6 @@
 <script src="<?= base_url('assets/js/main.js') ?>"></script>
 </body>
 </html> 
+<?php
+} // --- End of non-AJAX wrapper ---
+?>

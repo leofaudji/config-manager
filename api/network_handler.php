@@ -378,13 +378,56 @@ try {
             echo json_encode(['status' => 'success', 'message' => "Image successfully deleted."]);
         } elseif ($action === 'delete_volume') {
             // DELETE volume
-            $volume_name = $_POST['volume_name'] ?? '';
-            if (empty($volume_name)) {
-                throw new InvalidArgumentException("Volume name is required for deletion.");
+            $volume_name = $_POST['volume_name'] ?? null;
+            $mountpoint = $_POST['mountpoint'] ?? null;
+            if (!$volume_name) throw new Exception("Volume name is required.");
+
+            // First, attempt to remove the directory on the host if a valid mountpoint is provided
+            if ($mountpoint && str_starts_with($mountpoint, '/')) { // Basic safety check
+                $parentDir = dirname($mountpoint);
+                $dirToRemove = basename($mountpoint);
+
+                // More safety checks to prevent accidental deletion of important directories
+                if (strlen($parentDir) > 1 && $parentDir !== '.' && $dirToRemove !== '..' && !empty($dirToRemove)) {
+                    // Build the environment variables for the docker command
+                    $env_vars = "DOCKER_HOST=" . escapeshellarg($host['docker_api_url']);
+                    $cert_dir = null; // For cleanup
+                    if ($host['tls_enabled']) {
+                        if (!file_exists($host['ca_cert_path']) || !file_exists($host['client_cert_path']) || !file_exists($host['client_key_path'])) {
+                            throw new Exception("One or more TLS certificate files for host '{$host['name']}' not found on the application server.");
+                        }
+                        
+                        $cert_dir = rtrim(sys_get_temp_dir(), '/') . '/docker_certs_' . uniqid();
+                        if (!mkdir($cert_dir, 0700, true)) throw new Exception("Could not create temporary cert directory.");
+                        
+                        copy($host['ca_cert_path'], $cert_dir . '/ca.pem');
+                        copy($host['client_cert_path'], $cert_dir . '/cert.pem');
+                        copy($host['client_key_path'], $cert_dir . '/key.pem');
+
+                        $env_vars .= " DOCKER_TLS_VERIFY=1 DOCKER_CERT_PATH=" . escapeshellarg($cert_dir);
+                    }
+
+                    // Use a temporary container to remove the directory on the remote host
+                    $command = "docker run --rm -v " . escapeshellarg("$parentDir:/data") . " alpine rm -rf " . escapeshellarg("/data/" . $dirToRemove);
+                    $full_command = 'env ' . $env_vars . ' ' . $command;
+                    
+                    exec($full_command . ' 2>&1', $output, $return_var);
+
+                    // Cleanup temporary cert directory
+                    if ($cert_dir && is_dir($cert_dir)) {
+                        shell_exec("rm -rf " . escapeshellarg($cert_dir));
+                    }
+
+                    if ($return_var !== 0) {
+                        // Log the error but don't stop the process. The main goal is to delete the Docker volume.
+                        error_log("Config Manager: Failed to delete volume directory '{$mountpoint}' on host '{$host['name']}'. Output: " . implode("\n", $output));
+                    }
+                }
             }
+            // Then, remove the volume from Docker
             $dockerClient->removeVolume($volume_name);
-            log_activity($_SESSION['username'], 'Volume Deleted', "Deleted volume '{$volume_name}' on host '{$host['name']}'.");
-            echo json_encode(['status' => 'success', 'message' => "Volume successfully deleted."]);
+            log_activity($_SESSION['username'], 'Volume Deleted', "Deleted volume '{$volume_name}' and its data on host '{$host['name']}'.");
+            echo json_encode(['status' => 'success', 'message' => "Volume '{$volume_name}' and its data have been deleted."]);
         } elseif ($action === 'create_volume') {
             // CREATE volume
             $name = trim($_POST['name'] ?? '');

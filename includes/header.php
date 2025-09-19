@@ -1,3 +1,7 @@
+<?php
+if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+// --- Start of non-AJAX wrapper ---
+?>
 <!doctype html>
 <html lang="en">
 <head>
@@ -26,6 +30,7 @@
     </script>
 </head>
 <body class="">
+<div id="loading-bar" class="loading-bar"></div>
 <script>
     // On small screens, default to collapsed. On large screens, respect localStorage.
     const isSmallScreen = window.innerWidth <= 992;
@@ -35,59 +40,149 @@
     }
 </script>
 <div class="sidebar">
-    <a class="navbar-brand" href="<?= base_url('/') ?>"><i class="bi bi-gear-wide-connected"></i> Config Manager</a>
+    <a class="navbar-brand" href="<?= base_url('/') ?>"><i class="bi bi-gear-wide-connected"></i> <span class="brand-text">Config Manager</span></a>
     <ul class="sidebar-nav">
         <li class="nav-item">
-            <a class="nav-link" href="<?= base_url('/') ?>"><i class="bi bi-speedometer2"></i> Dashboard</a>
+            <a class="nav-link" href="<?= base_url('/') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Dashboard">
+                <span class="icon-wrapper">
+                    <i class="bi bi-speedometer2 icon-default"></i>
+                    <i class="bi bi-speedometer icon-active"></i>
+                </span>
+                <span class="nav-link-text">Dashboard</span>
+            </a>
         </li>
 
         <?php if ($_SESSION['role'] === 'admin'): ?>
             <li class="sidebar-header">Container</li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/hosts') ?>"><i class="bi bi-hdd-network-fill"></i> Hosts</a>
+                <a class="nav-link" href="<?= base_url('/hosts') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Hosts">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-hdd-network-fill icon-default"></i>
+                        <i class="bi bi-hdd-network-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Hosts</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/app-launcher') ?>"><i class="bi bi-rocket-takeoff"></i> App Launcher</a>
+                <a class="nav-link" href="<?= base_url('/app-launcher') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="App Launcher">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-rocket-takeoff icon-default"></i>
+                        <i class="bi bi-rocket-takeoff-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">App Launcher</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/stack-changes') ?>"><i class="bi bi-calendar-week"></i> Stack Changes</a>
+                <a class="nav-link" href="<?= base_url('/stack-changes') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Stack Changes">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-calendar-week icon-default"></i>
+                        <i class="bi bi-calendar-week-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Stack Changes</span>
+                </a>
             </li>
 
             <li class="sidebar-header">Traefik</li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/routers') ?>"><i class="bi bi-sign-turn-right"></i> Routers</a>
+                <a class="nav-link" href="<?= base_url('/routers') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Routers">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-sign-turn-right icon-default"></i>
+                        <i class="bi bi-sign-turn-right-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Routers</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/services') ?>"><i class="bi bi-hdd-stack-fill"></i> Services</a>
+                <a class="nav-link" href="<?= base_url('/services') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Services">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-hdd-stack-fill icon-default"></i>
+                        <i class="bi bi-hdd-stack-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Services</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/middlewares') ?>"><i class="bi bi-puzzle-fill"></i> Middlewares</a>
+                <a class="nav-link" href="<?= base_url('/middlewares') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Middlewares">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-puzzle-fill icon-default"></i>
+                        <i class="bi bi-puzzle-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Middlewares</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/templates') ?>"><i class="bi bi-file-earmark-code-fill"></i> Config Templates</a>
+                <a class="nav-link" href="<?= base_url('/templates') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Config Templates">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-file-earmark-code-fill icon-default"></i>
+                        <i class="bi bi-file-earmark-code-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Config Templates</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/history') ?>"><i class="bi bi-clock-history"></i> Deployment History</a>
+                <a class="nav-link" href="<?= base_url('/history') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Deployment History">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-clock-history icon-default"></i>
+                        <i class="bi bi-clock-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Deployment History</span>
+                </a>
             </li>
 
             <li class="sidebar-header">System</li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/groups') ?>"><i class="bi bi-collection-fill"></i> Groups</a>
+                <a class="nav-link" href="<?= base_url('/groups') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Groups">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-collection-fill icon-default"></i>
+                        <i class="bi bi-collection-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Groups</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/users') ?>"><i class="bi bi-people-fill"></i> Users</a>
+                <a class="nav-link" href="<?= base_url('/users') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Users">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-people-fill icon-default"></i>
+                        <i class="bi bi-people-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Users</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/logs') ?>"><i class="bi bi-card-list"></i> Activity Log</a>
+                <a class="nav-link" href="<?= base_url('/logs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Activity Log">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-card-list icon-default"></i>
+                        <i class="bi bi-card-text icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Activity Log</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/settings') ?>"><i class="bi bi-sliders"></i> General Settings</a>
+                <a class="nav-link" href="<?= base_url('/settings') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="General Settings">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-sliders icon-default"></i>
+                        <i class="bi bi-sliders2 icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">General Settings</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/health-check') ?>"><i class="bi bi-heart-pulse-fill"></i> Health Check</a>
+                <a class="nav-link" href="<?= base_url('/health-check') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Health Check">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-heart-pulse-fill icon-default"></i>
+                        <i class="bi bi-heart-pulse-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Health Check</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/stats') ?>"><i class="bi bi-bar-chart-line-fill"></i> Statistics</a>
+                <a class="nav-link" href="<?= base_url('/stats') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Statistics">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-bar-chart-line-fill icon-default"></i>
+                        <i class="bi bi-bar-chart-line-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Statistics</span>
+                </a>
             </li>
         <?php endif; ?>
     </ul>
@@ -113,16 +208,17 @@
                 <!-- Clock will be inserted here by JavaScript -->
             </div>
             <div class="nav-item dropdown ms-3">
-                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-person-circle"></i> <?= htmlspecialchars($_SESSION['username']) ?>
-                </a>
+                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-person-circle"></i> <?= htmlspecialchars($_SESSION['username']) ?></a>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
                     <li><a class="dropdown-item" href="<?= base_url('/my-profile/change-password') ?>"><i class="bi bi-key-fill me-2"></i>Change My Password</a></li>
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="<?= base_url('/logout') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                    <li><a class="dropdown-item no-spa" href="<?= base_url('/logout') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
                 </ul>
             </div>
         </div>
     </nav>
 
     <main class="main-content">
+<?php
+} // --- End of non-AJAX wrapper ---
+?>

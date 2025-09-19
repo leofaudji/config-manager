@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/DockerClient.php';
 require_once __DIR__ . '/../includes/Spyc.php';
+require_once __DIR__ . '/../includes/GitHelper.php';
 
 header('Content-Type: application/json');
 
@@ -317,7 +318,10 @@ try {
                 $full_command = $env_vars . ' ' . $cd_command . ' && ' . $compose_down_command;
 
                 exec($full_command, $output, $return_var);
-                if ($return_var !== 0) throw new Exception("Docker-compose down command failed. Output: " . implode("\n", $output));
+                if ($return_var !== 0) {
+                    // Log the error but continue to attempt cleanup
+                    error_log("Docker-compose down command failed for stack '{$stack_name}' on host '{$host['name']}'. Output: " . implode("\n", $output));
+                }
 
                 shell_exec("rm -rf " . escapeshellarg($deployment_dir));
             }
@@ -351,7 +355,29 @@ try {
                     $directory_to_remove = "{$safe_host_name}/{$stack_name}";
                     $commit_message = "Remove stack '{$stack_name}' from host '{$host['name']}'";
 
-                    $git->removeAndPush($repo_path_for_delete, $directory_to_remove, $commit_message);
+                    $full_path_to_remove = $repo_path_for_delete . '/' . $directory_to_remove;
+
+                    if (file_exists($full_path_to_remove)) {
+                        // The directory exists, so we can remove it.
+                        $git_rm_command = "git -C " . escapeshellarg($repo_path_for_delete) . " rm -r -f " . escapeshellarg($directory_to_remove);
+                        exec($git_rm_command, $output, $return_var);
+                        if ($return_var !== 0) {
+                            throw new Exception("Git remove command failed. Output: " . implode("\n", $output));
+                        }
+
+                        // Check git status to see if there are changes to commit
+                        $git_status_command = "git -C " . escapeshellarg($repo_path_for_delete) . " status --porcelain";
+                        exec($git_status_command, $status_output, $status_return_var);
+
+                        if (!empty($status_output)) {
+                            // There are changes, so commit and push
+                            $git->configure($repo_path_for_delete);
+                            $git_commit_command = "git -C " . escapeshellarg($repo_path_for_delete) . " commit -m " . escapeshellarg($commit_message);
+                            exec($git_commit_command, $output, $return_var);
+                            if ($return_var !== 0) throw new Exception("Git commit command failed. Output: " . implode("\n", $output));
+                            $git->push($repo_path_for_delete);
+                        }
+                    }
 
                 } catch (Exception $git_e) {
                     // If the Git operation fails, log it and append a warning to the success message.

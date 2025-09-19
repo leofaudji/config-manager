@@ -133,7 +133,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const hostId = <?= $id ?>;
 
     // Fetch and render the chart
@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(error => console.error('Error fetching host dashboard stats:', error));
-});
+})();
 </script>
 
 <?php

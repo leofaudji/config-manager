@@ -146,7 +146,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const hostId = <?= $id ?>;
     const imagesContainer = document.getElementById('images-container');
     const pruneBtn = document.getElementById('prune-images-btn');
@@ -188,7 +188,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const originalBtnContent = refreshImagesBtn.innerHTML;
         refreshImagesBtn.disabled = true;
         refreshImagesBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing...`;
-        imagesContainer.innerHTML = '<tr><td colspan="7" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+        imagesContainer.classList.add('table-loading');
 
         const searchTerm = imageSearchInput.value.trim();
         fetch(`${basePath}/api/hosts/${hostId}/images?details=true&search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${limit}&sort=${currentSort}&order=${currentOrder}`)
@@ -260,6 +260,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .finally(() => {
                 refreshImagesBtn.disabled = false;
                 refreshImagesBtn.innerHTML = originalBtnContent;
+                imagesContainer.classList.remove('table-loading');
             });
     }
 
@@ -337,7 +338,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     completed++;
                     if (completed === total) {
                         showToast(`Bulk delete completed.`, true);
-                        setTimeout(reloadCurrentView, 2000);
+                        reloadCurrentView();
                     }
                 });
         });
@@ -667,7 +668,7 @@ document.addEventListener('DOMContentLoaded', function() {
         loadImages(initialPage, initialLimit);
     }
     initialize();
-});
+})();
 </script>
 
 <?php

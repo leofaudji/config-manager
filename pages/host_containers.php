@@ -123,8 +123,27 @@ require_once __DIR__ . '/../includes/host_nav.php';
   </div>
 </div>
 
+<!-- Exec Command Modal -->
+<div class="modal fade" id="execCommandModal" tabindex="-1" aria-labelledby="execCommandModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="execCommandModalLabel">Run Command in Container</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="input-group mb-3">
+            <input type="text" class="form-control" id="exec-command-input" placeholder="e.g., ls -l /app, env, cat /etc/hosts">
+            <button class="btn btn-primary" type="button" id="run-exec-command-btn">Run</button>
+        </div>
+        <pre><code id="exec-output-container" class="language-bash" style="max-height: 400px; display: block; overflow: auto;"></code></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const hostId = <?= $id ?>;
     const containerBody = document.getElementById('containers-container');
     const refreshBtn = document.getElementById('refresh-containers-btn');
@@ -157,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const originalBtnContent = refreshBtn.innerHTML;
         refreshBtn.disabled = true;
         refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
-        containerBody.innerHTML = '<tr><td colspan="8" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+        containerBody.classList.add('table-loading');
 
         const searchTerm = searchInput.value.trim();
         const fetchUrl = `${basePath}/api/hosts/${hostId}/containers?page=${page}&limit=${limit}&filter=${currentFilter}&search=${encodeURIComponent(searchTerm)}&sort=${currentSort}&order=${currentOrder}`;
@@ -199,6 +218,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .finally(() => {
                 refreshBtn.disabled = false;
                 refreshBtn.innerHTML = originalBtnContent;
+                containerBody.classList.remove('table-loading');
             });
     }
 
@@ -292,7 +312,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     completed++;
                     if (completed === total) {
                         showToast(`Bulk action '${action}' completed.`, true);
-                        setTimeout(reloadCurrentView, 2000);
+                        reloadCurrentView();
                     }
                 });
         });
@@ -607,6 +627,59 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // --- Exec Command Modal Logic ---
+    const execModalEl = document.getElementById('execCommandModal');
+    if (execModalEl) {
+        const execModal = new bootstrap.Modal(execModalEl);
+        const commandInput = document.getElementById('exec-command-input');
+        const runBtn = document.getElementById('run-exec-command-btn');
+        const outputContainer = document.getElementById('exec-output-container');
+        let currentContainerId = null;
+
+        execModalEl.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            currentContainerId = button.dataset.containerId;
+            const containerName = button.dataset.containerName;
+            document.getElementById('execCommandModalLabel').textContent = `Run Command in: ${containerName}`;
+            commandInput.value = 'ls -l'; // Default command
+            outputContainer.textContent = 'Ready to run command...';
+        });
+
+        const runExecCommand = () => {
+            const command = commandInput.value.trim();
+            if (!command || !currentContainerId) return;
+
+            runBtn.disabled = true;
+            runBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...`;
+            outputContainer.textContent = `Running: ${command}\n\n...`;
+
+            const formData = new FormData();
+            formData.append('command', command);
+
+            fetch(`${basePath}/api/hosts/${hostId}/containers/${currentContainerId}/exec`, { method: 'POST', body: formData })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    outputContainer.textContent = data.output || 'No output.';
+                    if (!ok) throw new Error(data.message);
+                })
+                .catch(error => {
+                    outputContainer.textContent += `\n\nERROR: ${error.message}`;
+                })
+                .finally(() => {
+                    runBtn.disabled = false;
+                    runBtn.innerHTML = 'Run';
+                });
+        };
+
+        runBtn.addEventListener('click', runExecCommand);
+        commandInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                runExecCommand();
+            }
+        });
+    }
+
     // --- Initial Load ---
     function initialize() {
         const initialPage = parseInt(localStorage.getItem(`host_${hostId}_containers_page`)) || 1;
@@ -622,7 +695,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     initialize();
-});
+})();
 </script>
 
 <?php

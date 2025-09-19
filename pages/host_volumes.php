@@ -157,7 +157,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
 </template>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const hostId = <?= $id ?>;
     const volumesContainer = document.getElementById('volumes-container');
     const pruneBtn = document.getElementById('prune-volumes-btn');
@@ -187,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const originalBtnContent = refreshBtn.innerHTML;
         refreshBtn.disabled = true;
         refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing...`;
-        volumesContainer.innerHTML = '<tr><td colspan="6" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+        volumesContainer.classList.add('table-loading');
 
         const searchTerm = searchInput.value.trim();
         fetch(`${basePath}/api/hosts/${hostId}/volumes?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${limit}&sort=${currentSort}&order=${currentOrder}`)
@@ -218,7 +218,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <td>${created}</td>
                                     <td class="text-end">
                                         <button class="btn btn-sm btn-outline-info view-volume-details-btn" data-bs-toggle="modal" data-bs-target="#viewVolumeDetailsModal" data-volume-name="${name}" title="View Details"><i class="bi bi-eye"></i></button>
-                                        <button class="btn btn-sm btn-outline-danger delete-volume-btn" data-volume-name="${name}" title="Remove Volume"><i class="bi bi-trash"></i></button>
+                                        <button class="btn btn-sm btn-outline-danger delete-volume-btn" data-volume-name="${name}" data-mountpoint="${mountpoint}" title="Remove Volume"><i class="bi bi-trash"></i></button>
                                     </td>
                                  </tr>`;
                     });
@@ -258,6 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .finally(() => {
                 refreshBtn.disabled = false;
                 refreshBtn.innerHTML = originalBtnContent;
+                volumesContainer.classList.remove('table-loading');
             });
     }
 
@@ -363,7 +364,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     completed++;
                     if (completed === total) {
                         showToast(`Bulk delete completed.`, true);
-                        setTimeout(reloadCurrentView, 2000);
+                        reloadCurrentView();
                     }
                 });
         });
@@ -400,8 +401,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!deleteBtn) return;
 
         const volumeName = deleteBtn.dataset.volumeName;
+        const mountpoint = deleteBtn.dataset.mountpoint; // Get the mountpoint path
 
-        if (!confirm(`Are you sure you want to delete the volume "${volumeName}"? This action cannot be undone and may break applications using it.`)) {
+        if (!confirm(`Are you sure you want to delete the volume "${volumeName}"? This will also permanently delete its data from the host at path: ${mountpoint}. This action cannot be undone.`)) {
             return;
         }
 
@@ -412,6 +414,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         formData.append('action', 'delete_volume');
         formData.append('volume_name', volumeName);
+        formData.append('mountpoint', mountpoint); // Send mountpoint to the API
 
         const url = `${basePath}/api/hosts/${hostId}/volumes`;
 
@@ -529,7 +532,7 @@ document.addEventListener('DOMContentLoaded', function() {
         loadVolumes(initialPage, initialLimit);
     }
     initialize();
-});
+})();
 </script>
 
 <?php

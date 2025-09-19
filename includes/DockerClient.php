@@ -468,4 +468,46 @@ class DockerClient
 
         return json_decode($response, true);
     }
+
+    /**
+     * Executes a command in a running container.
+     * @param string $containerId The ID of the container.
+     * @param string $command The command to execute.
+     * @return string The output of the command.
+     * @throws Exception
+     */
+    public function exec(string $containerId, string $command): string
+    {
+        $env_vars = "DOCKER_HOST=" . escapeshellarg($this->host['docker_api_url']);
+        $cert_dir = null;
+
+        if ($this->tlsEnabled) {
+            $cert_dir = rtrim(sys_get_temp_dir(), '/') . '/docker_certs_' . uniqid();
+            if (!mkdir($cert_dir, 0700, true)) {
+                throw new RuntimeException("Could not create temporary cert directory.");
+            }
+            
+            copy($this->caCertPath, $cert_dir . '/ca.pem');
+            copy($this->clientCertPath, $cert_dir . '/cert.pem');
+            copy($this->clientKeyPath, $cert_dir . '/key.pem');
+
+            $env_vars .= " DOCKER_TLS_VERIFY=1 DOCKER_CERT_PATH=" . escapeshellarg($cert_dir);
+        }
+
+        // The `sh -c` wrapper allows for more complex commands with pipes, etc.
+        $full_command = 'env ' . $env_vars . ' docker exec ' . escapeshellarg($containerId) . ' sh -c ' . escapeshellarg($command) . ' 2>&1';
+
+        exec($full_command, $output, $return_var);
+
+        // Cleanup temporary cert directory
+        if ($cert_dir && is_dir($cert_dir)) {
+            shell_exec("rm -rf " . escapeshellarg($cert_dir));
+        }
+
+        $output_string = implode("\n", $output);
+
+        if ($return_var !== 0) throw new RuntimeException("Command failed with exit code {$return_var}: " . $output_string);
+
+        return $output_string;
+    }
 }

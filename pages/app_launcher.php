@@ -12,8 +12,58 @@ $default_git_compose_path_from_settings = get_setting('default_git_compose_path'
 $launcher_default_host_port = Config::get('LAUNCHER_DEFAULT_HOST_PORT', '80');
 $launcher_default_container_port = Config::get('LAUNCHER_DEFAULT_CONTAINER_PORT', '80');
 
+// Check if a host is pre-selected from the URL
+$preselected_host_id = $_GET['host_id'] ?? null;
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
+
+<style>
+.editor-wrapper {
+    position: relative;
+    height: 350px;
+    background-color: #fff;
+}
+.dark-mode .editor-wrapper {
+    background-color: #212529;
+}
+#compose_content_editor, #editor-highlight-pre {
+    /* Common styles to look like a form-control */
+    margin: 0;
+    padding: .375rem .75rem;
+    border: 1px solid #ced4da;
+    border-radius: .375rem;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: .875em;
+    line-height: 1.5;
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: auto;
+    white-space: pre;
+    word-wrap: normal;
+}
+#compose_content_editor {
+    z-index: 2;
+    color: transparent;
+    background: transparent;
+    caret-color: #212529; /* Black caret */
+    resize: none;
+}
+#editor-highlight-pre {
+    z-index: 1;
+    pointer-events: none; /* Make it unclickable */
+}
+/* Adjust for dark mode */
+.dark-mode #compose_content_editor {
+    caret-color: #f8f9fa; /* White caret */
+}
+.dark-mode #compose_content_editor, .dark-mode #editor-highlight-pre {
+    border-color: #495057;
+}
+</style>
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2"><i class="bi bi-rocket-launch-fill"></i> App Launcher</h1>
@@ -35,9 +85,9 @@ require_once __DIR__ . '/../includes/header.php';
                     <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#appLauncherAccordion">
                         <div class="accordion-body">
                             <select class="form-select" id="host_id" name="host_id" required>
-                                <option value="" disabled selected>-- Choose a Docker Host --</option>
+                                <option value="" disabled <?= !$preselected_host_id ? 'selected' : '' ?>>-- Choose a Docker Host --</option>
                                 <?php while ($host = $hosts_result->fetch_assoc()): ?>
-                                    <option value="<?= $host['id'] ?>" data-volume-path="<?= htmlspecialchars($host['default_volume_path'] ?? '/opt/stacks') ?>"><?= htmlspecialchars($host['name']) ?></option>
+                                    <option value="<?= $host['id'] ?>" data-volume-path="<?= htmlspecialchars($host['default_volume_path'] ?? '/opt/stacks') ?>" <?= ($preselected_host_id == $host['id']) ? 'selected' : '' ?>><?= htmlspecialchars($host['name']) ?></option>
                                 <?php endwhile; ?>
                             </select>
                         </div>
@@ -129,8 +179,12 @@ require_once __DIR__ . '/../includes/header.php';
                             <div id="editor-source-section" style="display: none;">
                                 <div class="mb-3">
                                     <label for="compose_content_editor" class="form-label">Docker Compose Content <span class="text-danger">*</span></label>
-                                    <textarea class="form-control font-monospace" id="compose_content_editor" name="compose_content_editor" rows="15" placeholder="version: '3.8'\nservices:\n  my-app:\n    image: nginx:latest"></textarea>
-                                    <small class="form-text text-muted">Paste or write your `docker-compose.yml` content here.</small>
+                                    <div class="editor-wrapper">
+                                        <textarea id="compose_content_editor" name="compose_content_editor" placeholder="version: '3.8'&#10;services:&#10;  my-app:&#10;    image: nginx:latest" spellcheck="false"></textarea>
+                                        <pre id="editor-highlight-pre" aria-hidden="true"><code class="language-yaml" id="editor-highlight-code"></code></pre>
+                                    </div>
+                                    <small class="form-text text-muted">Paste or write your `docker-compose.yml` content here. Syntax highlighting is supported.</small>
+                                    <div id="yaml-validation-feedback" class="invalid-feedback d-block mt-1 fw-bold"></div>
                                 </div>
                             </div>
                         </div>
@@ -152,6 +206,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 <div class="invalid-feedback">Stack name must start with a letter or number and can only contain letters, numbers, underscores, periods, or hyphens.</div>
                                 <small class="form-text text-muted">A unique name for this application on the host.</small>
                             </div>
+                            <div id="step3-extra-config">
                             <hr>
                             <div class="row">
                                 <div class="col-md-4 mb-3">
@@ -205,6 +260,7 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="add-volume-btn"><i class="bi bi-plus-circle"></i> Add Volume Mapping</button>
                             <small class="form-text text-muted d-block mt-1">A persistent volume will be created on the host for each mapping. Container Path is required for each entry.</small>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -281,6 +337,16 @@ require_once __DIR__ . '/../includes/header.php';
             <li><strong>Eksekusi Jarak Jauh:</strong> Aplikasi menjalankan perintah <code>docker-compose -p {stack_name} up -d</code>. Host remote kemudian akan secara otomatis menarik (pull) image dari Docker Hub dan membuat kontainer.</li>
         </ol>
 
+        <hr>
+
+        <h5><span class="badge" style="background-color: #6f42c1; color: white;">Alur 4</span> Deployment dari Editor</h5>
+        <ol>
+            <li><strong>Menyalin Konten:</strong> Aplikasi ini mengambil konten YAML yang Anda tulis atau salin ke dalam editor.</li>
+            <li><strong>Membuat Direktori Proyek:</strong> Sebuah direktori permanen untuk stack Anda (misalnya, <code>/opt/stacks/my-app</code>) dibuat di <strong>server aplikasi ini</strong>.</li>
+            <li><strong>Menyimpan File Compose:</strong> Konten dari editor disimpan sebagai file <code>docker-compose.yml</code> di dalam direktori proyek tersebut.</li>
+            <li><strong>Eksekusi Jarak Jauh:</strong> Aplikasi menjalankan perintah <code>docker-compose -p {stack_name} up -d</code> yang menargetkan API Docker dari host standalone jarak jauh.</li>
+        </ol>
+
         <div class="alert alert-warning">
             <strong>Poin Kunci untuk Semua Alur:</strong> Direktori proyek yang berisi file <code>docker-compose.yml</code> <strong>harus tetap ada di server aplikasi ini</strong>. Menghapus direktori ini akan membuat aplikasi tidak mungkin mengelola (misalnya, memperbarui atau menghentikan) stack di kemudian hari.
         </div>
@@ -326,7 +392,7 @@ require_once __DIR__ . '/../includes/header.php';
 </template>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to avoid polluting global scope
     const mainForm = document.getElementById('main-form');
     const hostSelect = document.getElementById('host_id');
     const networkSelect = document.getElementById('network_name');
@@ -351,6 +417,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const composePathInput = document.getElementById('compose_path');
     const editorSourceSection = document.getElementById('editor-source-section');
     const composeContentEditor = document.getElementById('compose_content_editor');
+    const editorHighlightCode = document.getElementById('editor-highlight-code');
+    const editorHighlightPre = document.getElementById('editor-highlight-pre');
+    const step3Button = document.querySelector('button[aria-controls="collapseThree"]');
+    const step3Collapse = document.getElementById('collapseThree');
+    const step3ExtraConfig = document.getElementById('step3-extra-config');
     const hostPortInput = document.getElementById('host_port');
     const containerPortInput = document.getElementById('container_port');
     const launchBtn = document.getElementById('launch-app-btn');
@@ -376,6 +447,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const addVolumeBtn = document.getElementById('add-volume-btn');
     const volumesContainer = document.getElementById('volumes-container');
     const refreshNetworksBtn = document.getElementById('refresh-networks-btn');
+    const yamlFeedback = document.getElementById('yaml-validation-feedback');
 
     function ipToLong(ip) {
         if (!ip) return 0;
@@ -440,18 +512,25 @@ document.addEventListener('DOMContentLoaded', function() {
         imageNameHubInput.required = false;
         composeContentEditor.required = false;
 
+        // Enable Step 3 button if a host is selected.
+        step3Button.disabled = !hostSelect.value;
+
         if (sourceTypeLocalImageRadio.checked) {
             localImageSourceSection.style.display = 'block';
             imageNameSelect.required = true;
+            step3ExtraConfig.style.display = 'block';
         } else if (sourceTypeHubImageRadio.checked) {
             hubImageSourceSection.style.display = 'block';
             imageNameHubInput.required = true;
+            step3ExtraConfig.style.display = 'block';
         } else if (sourceTypeEditorRadio.checked) {
             editorSourceSection.style.display = 'block';
             composeContentEditor.required = true;
-        } else { // Git is checked by default
+            step3ExtraConfig.style.display = 'none'; // Hide extra config for editor
+        } else if (sourceTypeGitRadio.checked) { // Git is checked by default
             gitSourceSection.style.display = 'block';
             gitUrlInput.required = true;
+            step3ExtraConfig.style.display = 'block';
         }
         checkFormValidity();
     }
@@ -460,6 +539,40 @@ document.addEventListener('DOMContentLoaded', function() {
     sourceTypeLocalImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeHubImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeEditorRadio.addEventListener('change', toggleSourceSections);
+
+    // --- YAML Editor with Syntax Highlighting & Real-time Validation ---
+    if (composeContentEditor && editorHighlightCode && editorHighlightPre) {
+        const validateAndHighlight = () => {
+            const code = composeContentEditor.value;
+            
+            // Prism can sometimes miss the last line if it doesn't end with a newline.
+            // Appending a newline character ensures it gets processed.
+            editorHighlightCode.textContent = code + '\n'; 
+            Prism.highlightElement(editorHighlightCode);
+
+            // Real-time validation
+            try {
+                jsyaml.load(code);
+                yamlFeedback.textContent = '';
+                composeContentEditor.classList.remove('is-invalid');
+            } catch (e) {
+                yamlFeedback.textContent = e.message;
+                composeContentEditor.classList.add('is-invalid');
+            }
+            checkFormValidity(); // Re-check validity on every input
+        };
+
+        const syncScroll = () => {
+            editorHighlightPre.scrollTop = composeContentEditor.scrollTop;
+            editorHighlightPre.scrollLeft = composeContentEditor.scrollLeft;
+        };
+
+        composeContentEditor.addEventListener('input', debounce(validateAndHighlight, 200));
+
+        composeContentEditor.addEventListener('scroll', syncScroll);
+
+        updateHighlight(); // Initial highlight
+    }
 
     function updateHostVolumePath() {
         const selectedHostOption = hostSelect.options[hostSelect.selectedIndex];
@@ -503,20 +616,13 @@ document.addEventListener('DOMContentLoaded', function() {
             sourceValid = composeContentEditor.value.trim() !== '';
         }
 
-        const hostPort = hostPortInput.value.trim();
-        const containerPort = containerPortInput.value.trim();
-        const portsValid = !hostPort || !!containerPort;
-        
-        let networkIpValid = true;
-        if (networkSelect.value) { // If a network is selected
-            if (containerIpInput.value.trim() === '') {
-                networkIpValid = false;
-                containerIpInput.classList.add('is-invalid');
-            } else {
-                containerIpInput.classList.remove('is-invalid');
-            }
-        } else {
-            containerIpInput.classList.remove('is-invalid');
+        // If source is editor, validation is simpler
+        if (sourceTypeEditorRadio.checked) {
+            const isYamlValid = yamlFeedback.textContent === ''; // Check if validation message is empty
+            const isEditorValid = !!(hostId && stackName && stackNameValid && sourceValid && isYamlValid);
+            launchBtn.disabled = !isEditorValid;
+            previewBtn.disabled = !isEditorValid;
+            return;
         }
 
         let volumesValid = true;
@@ -533,18 +639,29 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // --- Existing validation for other source types ---
+        const hostPort = hostPortInput.value.trim();
+        const containerPort = containerPortInput.value.trim();
+        const portsValid = !hostPort || !!containerPort;
+        
+        let networkIpValid = true;
+        if (networkSelect.value) { // If a network is selected
+            if (containerIpInput.value.trim() === '') {
+                networkIpValid = false;
+                containerIpInput.classList.add('is-invalid');
+            } else {
+                containerIpInput.classList.remove('is-invalid');
+            }
+        } else {
+            containerIpInput.classList.remove('is-invalid');
+        }
+
         const isFormValid = hostId && stackName && stackNameValid && sourceValid && portsValid && volumesValid && networkIpValid;
 
         launchBtn.disabled = !isFormValid;
         previewBtn.disabled = !isFormValid;
 
         // Provide visual feedback
-        if (stackName && !stackNameValid) {
-            stackNameInput.classList.add('is-invalid');
-        } else {
-            stackNameInput.classList.remove('is-invalid');
-        }
-
         if (!portsValid) {
             document.getElementById('port-validation-feedback').style.display = 'block';
         } else {
@@ -586,11 +703,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Enable and open the next step
         const step2Button = document.querySelector('button[aria-controls="collapseTwo"]');
-        const step3Button = document.querySelector('button[aria-controls="collapseThree"]');
         step2Button.disabled = false;
-        step3Button.disabled = false;
         refreshNetworksBtn.disabled = false;
         bootstrap.Collapse.getOrCreateInstance(document.getElementById('collapseTwo')).show();
+        // Let toggleSourceSections handle the state of Step 3
+        toggleSourceSections();
 
         // Clear previous host's data and show loading states
         allContainers = [];
@@ -1241,7 +1358,12 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('deploymentLogModalLabel').textContent = 'Deployment Finished';
         }
     });
-});
+
+    // If a host is pre-selected from the URL, trigger the change event to load its data.
+    if (hostSelect.value) {
+        hostSelect.dispatchEvent(new Event('change'));
+    }
+})();
 </script>
 
 <?php

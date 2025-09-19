@@ -43,11 +43,8 @@ require_once __DIR__ . '/../includes/host_nav.php';
                     <button class="btn btn-outline-secondary reset-search-btn" type="button" title="Reset"><i class="bi bi-x-lg"></i></button>
                 </div>
             </form>
-            <a href="<?= base_url('/hosts/' . $id . '/deploy/git') ?>" class="btn btn-sm btn-outline-info" id="deploy-git-btn" data-bs-toggle="tooltip" title="Deploy a new stack from a Git repository.">
-                <i class="bi bi-github"></i> Deploy from Git
-            </a>
-            <a href="<?= base_url('/hosts/' . $id . '/stacks/new') ?>" class="btn btn-sm btn-outline-primary ms-2" id="add-stack-btn" data-bs-toggle="tooltip" title="Create a new stack using a form builder.">
-                <i class="bi bi-plus-circle"></i> Add New Stack
+            <a href="<?= base_url('/app-launcher?host_id=' . $id) ?>" class="btn btn-sm btn-primary ms-2" id="launch-app-btn" data-bs-toggle="tooltip" title="Launch a new application on this host.">
+                <i class="bi bi-rocket-launch-fill"></i> Launch New App
             </a>
         </div>
     </div>
@@ -103,9 +100,9 @@ require_once __DIR__ . '/../includes/host_nav.php';
     </div>
   </div>
 </div>
-
+ 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const hostId = <?= $id ?>;
     const stacksContainer = document.getElementById('stacks-container');
     const bulkActionsContainer = document.getElementById('bulk-actions-container');
@@ -154,6 +151,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             sourceHtml = '<span class="badge bg-info text-dark" data-bs-toggle="tooltip" title="Deployed from a Docker Hub image."><i class="bi bi-box-seam me-1"></i> Docker Hub</span>';
                         } else if (sourceType === 'builder') {
                             sourceHtml = '<span class="badge bg-success" data-bs-toggle="tooltip" title="Created with the Stack Builder form."><i class="bi bi-tools me-1"></i> Builder</span>';
+                        } else if (sourceType === 'editor') {
+                            sourceHtml = '<span class="badge" style="background-color: #6f42c1; color: white;" data-bs-toggle="tooltip" title="Deployed from the YAML editor."><i class="bi bi-code-square me-1"></i> Editor</span>';
                         }
 
                         let updateButton = '';
@@ -213,20 +212,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
 
-                // --- UI Clarification for Standalone Hosts ---
-                // Change button text and tooltips to reflect their actual function on standalone hosts.
-                const deployGitBtn = document.getElementById('deploy-git-btn');
-                const addStackBtn = document.getElementById('add-stack-btn');
-                if (!isSwarmManager) {
-                    if (deployGitBtn) {
-                        deployGitBtn.innerHTML = '<i class="bi bi-github"></i> Generate Project from Git';
-                        deployGitBtn.title = 'Generate a downloadable project archive from a Git repository.';
-                    }
-                    if (addStackBtn) {
-                        addStackBtn.innerHTML = '<i class="bi bi-plus-circle"></i> Generate Compose File';
-                        addStackBtn.title = 'Generate a downloadable docker-compose.yml file using a form builder.';
-                    }
-                }
             })
             .catch(error => stacksContainer.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Failed to load stacks: ${error.message}</td></tr>`);
     }
@@ -395,7 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
         loadStacks(initialPage, initialLimit);
     }
     initialize();
-});
+})();
 </script>
 
 <?php

@@ -80,14 +80,14 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const form = document.getElementById('main-form');
     if (!form) return;
 
     // This form uses the generic AJAX handler from main.js
     // It will either redirect on JSON success or do nothing on file download,
     // which is the desired behavior.
-});
+})();
 </script>
 
 <?php

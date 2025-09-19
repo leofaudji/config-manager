@@ -212,9 +212,13 @@ try {
         if (empty($compose_content_from_editor)) {
             throw new Exception("Compose content from editor is required.");
         }
-        $compose_data = DockerComposeParser::YAMLLoad($compose_content_from_editor);
-        AppLauncherHelper::applyFormSettings($compose_data, $form_params, $host, $is_swarm_manager);
-        $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
+        stream_message("Validating YAML syntax from editor and using content directly...");
+        $compose_data = Spyc::YAMLLoad($compose_content_from_editor);
+        if (!is_array($compose_data) || !isset($compose_data['services'])) {
+            throw new Exception("Invalid YAML syntax or missing 'services' top-level key. Please check your indentation and formatting.");
+        }
+        // Use the original content from the editor directly to preserve formatting.
+        $compose_content = $compose_content_from_editor;
     } else {
         throw new Exception("Invalid source type specified.");
     }
@@ -223,8 +227,9 @@ try {
     // --- Validate Container Names for Standalone Host ---
     if (!$is_swarm_manager) {
         stream_message("Validating container names for standalone host...");
-        $compose_data_for_validation = Spyc::YAMLLoad($compose_content);
-        $services_to_deploy = $compose_data_for_validation['services'] ?? [];
+        // Use the $compose_data array directly instead of re-parsing the YAML string.
+        // This is more efficient and avoids potential parsing issues.
+        $services_to_deploy = $compose_data['services'] ?? [];
 
         if (!empty($services_to_deploy)) {
             $existing_containers = $dockerClient->listContainers();

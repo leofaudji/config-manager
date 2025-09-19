@@ -159,7 +159,7 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
     <?php endif; ?>
     <div class="card-body">
-        <form id="main-form" action="<?= $form_action ?>" method="POST" data-redirect="/">
+        <form id="main-form" action="<?= $form_action ?>" method="POST" data-redirect="/routers">
             <input type="hidden" name="id" value="<?= htmlspecialchars($router['id'] ?? '') ?>">
             <div class="mb-3">
                 <label for="name" class="form-label">Router Name</label>
@@ -318,7 +318,7 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const tlsCheckbox = document.getElementById('tls');
     const certResolverGroup = document.getElementById('cert-resolver-group');
     const entryPointsInput = document.getElementById('entry_points');
@@ -453,7 +453,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-});
+})();
 </script>
 
 <?php

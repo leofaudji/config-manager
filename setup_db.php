@@ -122,7 +122,7 @@ CREATE TABLE `application_stacks` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `host_id` int(11) NOT NULL,
   `stack_name` varchar(255) NOT NULL,
-  `source_type` enum('git','image','hub','builder') NOT NULL,
+  `source_type` enum('git','image','hub','builder','editor') NOT NULL,
   `compose_file_path` varchar(255) NOT NULL,
   `deployment_details` text DEFAULT NULL COMMENT 'JSON-encoded POST data from original deployment',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),

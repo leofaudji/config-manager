@@ -164,14 +164,14 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const tlsToggle = document.getElementById('tls_enabled');
     const tlsContainer = document.getElementById('tls-settings-container');
 
     tlsToggle.addEventListener('change', function() {
         tlsContainer.style.display = this.checked ? 'block' : 'none';
     });
-});
+})();
 </script>
 
 <?php

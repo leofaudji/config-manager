@@ -39,8 +39,76 @@ if (json_last_error() !== JSON_ERROR_NONE) {
     $details = [];
 }
 
+// --- Logic to pre-fill editor content ---
+$compose_content_for_editor = '';
+if ($stack_data['source_type'] === 'editor') {
+    // If the original source was the editor, use the content stored in the DB
+    $compose_content_for_editor = $details['compose_content_editor'] ?? '';
+} else {
+    // For other types (git, image, hub), try to read the generated docker-compose.yml from the filesystem
+    $base_compose_path = get_setting('default_compose_path', '');
+    if (!empty($base_compose_path)) {
+        $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+        $stack_name = $stack_data['stack_name'];
+        $compose_filename = $stack_data['compose_file_path']; // e.g., 'docker-compose.yml'
+
+        $full_compose_path = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name . '/' . $compose_filename;
+
+        if (file_exists($full_compose_path) && is_readable($full_compose_path)) {
+            $compose_content_for_editor = file_get_contents($full_compose_path);
+        }
+    }
+}
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
+
+<style>
+.editor-wrapper {
+    position: relative;
+    height: 350px;
+    background-color: #fff;
+}
+.dark-mode .editor-wrapper {
+    background-color: #212529;
+}
+#compose_content_editor, #editor-highlight-pre {
+    /* Common styles to look like a form-control */
+    margin: 0;
+    padding: .375rem .75rem;
+    border: 1px solid #ced4da;
+    border-radius: .375rem;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: .875em;
+    line-height: 1.5;
+    height: 100%;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: auto;
+    white-space: pre;
+    word-wrap: normal;
+}
+#compose_content_editor {
+    z-index: 2;
+    color: transparent;
+    background: transparent;
+    caret-color: #212529; /* Black caret */
+    resize: none;
+}
+#editor-highlight-pre {
+    z-index: 1;
+    pointer-events: none; /* Make it unclickable */
+}
+/* Adjust for dark mode */
+.dark-mode #compose_content_editor {
+    caret-color: #f8f9fa; /* White caret */
+}
+.dark-mode #compose_content_editor, .dark-mode #editor-highlight-pre {
+    border-color: #495057;
+}
+</style>
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2"><i class="bi bi-arrow-repeat"></i> Update Application: <?= htmlspecialchars($details['stack_name'] ?? 'N/A') ?></h1>
@@ -86,8 +154,16 @@ require_once __DIR__ . '/../includes/header.php';
 
                                 <input type="radio" class="btn-check" name="source_type" id="source_type_hub_image" value="hub" autocomplete="off" <?= ($details['source_type'] ?? '') === 'hub' ? 'checked' : '' ?>>
                                 <label class="btn btn-outline-primary" for="source_type_hub_image"><i class="bi bi-box-seam me-2"></i>From Docker Hub</label>
+
+                                <input type="radio" class="btn-check" name="source_type" id="source_type_editor" value="editor" autocomplete="off" <?= ($details['source_type'] ?? '') === 'editor' ? 'checked' : '' ?>>
+                                <label class="btn btn-outline-primary" for="source_type_editor"><i class="bi bi-code-square me-2"></i>From Editor</label>
                             </div>
                             <hr>
+                            <div class="mb-3">
+                                <label for="stack_name" class="form-label">Stack Name</label>
+                                <input type="text" class="form-control" id="stack_name" name="stack_name" value="<?= htmlspecialchars($details['stack_name'] ?? '') ?>" readonly>
+                                <div class="invalid-feedback">Stack name must start with a letter or number and can only contain letters, numbers, underscores, periods, or hyphens.</div>
+                            </div>
                             <!-- Git Repository -->
                             <div id="git-source-section">
                                 <div class="mb-3">
@@ -140,6 +216,18 @@ require_once __DIR__ . '/../includes/header.php';
                                     <small class="form-text text-muted">Enter the full image name. Use the search above to find public images.</small>
                                 </div>
                             </div>
+                            <!-- Editor -->
+                            <div id="editor-source-section" style="display: none;">
+                                <div class="mb-3">
+                                    <label for="compose_content_editor" class="form-label">Docker Compose Content <span class="text-danger">*</span></label>
+                                    <div class="editor-wrapper">
+                                        <textarea id="compose_content_editor" name="compose_content_editor" placeholder="version: '3.8'&#10;services:&#10;  my-app:&#10;    image: nginx:latest" spellcheck="false"><?= htmlspecialchars($compose_content_for_editor) ?></textarea>
+                                        <pre id="editor-highlight-pre" aria-hidden="true"><code class="language-yaml" id="editor-highlight-code"></code></pre>
+                                    </div>
+                                    <small class="form-text text-muted">Paste or write your `docker-compose.yml` content here. Syntax highlighting is supported.</small>
+                                    <div id="yaml-validation-feedback" class="invalid-feedback d-block mt-1 fw-bold"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -147,17 +235,13 @@ require_once __DIR__ . '/../includes/header.php';
                 <!-- Step 3: Application & Resource Configuration -->
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingThree">
-                        <button class="accordion-button" type="button">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="true" aria-controls="collapseThree">
                             <strong>Step 3: Configure Application & Resources</strong>
                         </button>
                     </h2>
                     <div id="collapseThree" class="accordion-collapse collapse show" aria-labelledby="headingThree" data-bs-parent="#appLauncherAccordion">
                         <div class="accordion-body">
-                            <div class="mb-3">
-                                <label for="stack_name" class="form-label">Stack Name</label>
-                                <input type="text" class="form-control" id="stack_name" name="stack_name" value="<?= htmlspecialchars($details['stack_name'] ?? '') ?>" readonly>
-                                <div class="invalid-feedback">Stack name must start with a letter or number and can only contain letters, numbers, underscores, periods, or hyphens.</div>
-                            </div>
+                            <div id="step3-extra-config">
                             <hr>
                             <div class="row">
                                 <div class="col-md-4 mb-3">
@@ -224,6 +308,7 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="add-volume-btn"><i class="bi bi-plus-circle"></i> Add Volume Mapping</button>
                             <small class="form-text text-muted d-block mt-1">A persistent volume will be created on the host for each mapping. Container Path is required for each entry.</small>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -288,7 +373,7 @@ require_once __DIR__ . '/../includes/header.php';
 </template>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const mainForm = document.getElementById('main-form');
     const hostId = <?= $host_id ?>;
     const deploymentDetails = <?= json_encode($details) ?>;
@@ -305,12 +390,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const sourceTypeGitRadio = document.getElementById('source_type_git');
     const sourceTypeLocalImageRadio = document.getElementById('source_type_local_image');
     const sourceTypeHubImageRadio = document.getElementById('source_type_hub_image');
+    const sourceTypeEditorRadio = document.getElementById('source_type_editor');
     const gitSourceSection = document.getElementById('git-source-section');
     const localImageSourceSection = document.getElementById('local-image-source-section');
     const hubImageSourceSection = document.getElementById('hub-image-source-section');
+    const editorSourceSection = document.getElementById('editor-source-section');
     const gitUrlInput = document.getElementById('git_url');
     const imageNameSelect = document.getElementById('image_name_select');
     const imageNameHubInput = document.getElementById('image_name_hub');
+    const composeContentEditor = document.getElementById('compose_content_editor');
+    const editorHighlightCode = document.getElementById('editor-highlight-code');
+    const editorHighlightPre = document.getElementById('editor-highlight-pre');
     const composePathInput = document.getElementById('compose_path');
     const hostPortInput = document.getElementById('host_port');
     const containerPortInput = document.getElementById('container_port');
@@ -327,6 +417,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const tagsListContainer = document.getElementById('tags-list-container');
     const tagFilterInput = document.getElementById('tag-filter-input');
     const viewTagsModalLabel = document.getElementById('viewTagsModalLabel');
+    const step3Button = document.querySelector('button[aria-controls="collapseThree"]');
+    const step3Collapse = document.getElementById('collapseThree');
+    const step3ExtraConfig = document.getElementById('step3-extra-config');
     let availableNetworks = [];
     let allContainers = [];
     let isSwarmManager = false;
@@ -337,6 +430,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const addVolumeBtn = document.getElementById('add-volume-btn');
     const volumesContainer = document.getElementById('volumes-container');
     const refreshNetworksBtn = document.getElementById('refresh-networks-btn');
+    const yamlFeedback = document.getElementById('yaml-validation-feedback');
     const previewModalEl = document.getElementById('previewConfigModal');
     const previewModal = new bootstrap.Modal(previewModalEl);
     const previewModalLabel = document.getElementById('previewConfigModalLabel');
@@ -396,10 +490,20 @@ document.addEventListener('DOMContentLoaded', function() {
         gitSourceSection.style.display = 'none';
         localImageSourceSection.style.display = 'none';
         hubImageSourceSection.style.display = 'none';
+        editorSourceSection.style.display = 'none';
 
         gitUrlInput.required = false;
         imageNameSelect.required = false;
         imageNameHubInput.required = false;
+        composeContentEditor.required = false;
+
+        // Logic for Step 3 visibility
+        step3Button.disabled = false;
+        if (sourceTypeEditorRadio.checked) {
+            step3ExtraConfig.style.display = 'none';
+        } else {
+            step3ExtraConfig.style.display = 'block';
+        }
 
         if (sourceTypeLocalImageRadio.checked) {
             localImageSourceSection.style.display = 'block';
@@ -407,7 +511,10 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (sourceTypeHubImageRadio.checked) {
             hubImageSourceSection.style.display = 'block';
             imageNameHubInput.required = true;
-        } else {
+        } else if (sourceTypeEditorRadio.checked) {
+            editorSourceSection.style.display = 'block';
+            composeContentEditor.required = true;
+        } else { // Git is the default
             gitSourceSection.style.display = 'block';
             gitUrlInput.required = true;
         }
@@ -417,6 +524,38 @@ document.addEventListener('DOMContentLoaded', function() {
     sourceTypeGitRadio.addEventListener('change', toggleSourceSections);
     sourceTypeLocalImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeHubImageRadio.addEventListener('change', toggleSourceSections);
+    sourceTypeEditorRadio.addEventListener('change', toggleSourceSections);
+
+    // --- YAML Editor with Syntax Highlighting & Real-time Validation ---
+    if (composeContentEditor && editorHighlightCode && editorHighlightPre) {
+        const validateAndHighlight = () => {
+            const code = composeContentEditor.value;
+            editorHighlightCode.textContent = code + '\n'; 
+            Prism.highlightElement(editorHighlightCode);
+
+            // Real-time validation
+            try {
+                jsyaml.load(code);
+                yamlFeedback.textContent = '';
+                composeContentEditor.classList.remove('is-invalid');
+            } catch (e) {
+                yamlFeedback.textContent = e.message;
+                composeContentEditor.classList.add('is-invalid');
+            }
+            checkFormValidity(); // Re-check validity on every input
+        };
+
+        const syncScroll = () => {
+            editorHighlightPre.scrollTop = composeContentEditor.scrollTop;
+            editorHighlightPre.scrollLeft = composeContentEditor.scrollLeft;
+        };
+
+        composeContentEditor.addEventListener('input', debounce(validateAndHighlight, 200));
+
+        composeContentEditor.addEventListener('scroll', syncScroll);
+
+        updateHighlight(); // Initial highlight
+    }
 
     function updateHostVolumePath() {
         const baseVolumePath = '<?= htmlspecialchars($host['default_volume_path'] ?? '/opt/stacks') ?>';
@@ -446,22 +585,8 @@ document.addEventListener('DOMContentLoaded', function() {
             sourceValid = imageNameSelect.value.trim() !== '';
         } else if (sourceTypeHubImageRadio.checked) {
             sourceValid = imageNameHubInput.value.trim() !== '';
-        }
-
-        const hostPort = hostPortInput.value.trim();
-        const containerPort = containerPortInput.value.trim();
-        const portsValid = !hostPort || !!containerPort;
-
-        let networkIpValid = true;
-        if (networkSelect.value) {
-            if (containerIpInput.value.trim() === '') {
-                networkIpValid = false;
-                containerIpInput.classList.add('is-invalid');
-            } else {
-                containerIpInput.classList.remove('is-invalid');
-            }
-        } else {
-            containerIpInput.classList.remove('is-invalid');
+        } else if (sourceTypeEditorRadio.checked) {
+            sourceValid = composeContentEditor.value.trim() !== '';
         }
 
         let volumesValid = true;
@@ -478,16 +603,36 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
+        // If source is editor, validation is simpler
+        if (sourceTypeEditorRadio.checked) {
+            const isYamlValid = yamlFeedback.textContent === ''; // Check if validation message is empty
+            const isEditorValid = !!(hostId && stackName && stackNameValid && sourceValid && volumesValid && isYamlValid);
+            launchBtn.disabled = !isEditorValid;
+            previewBtn.disabled = !isEditorValid;
+            return;
+        }
+
+        // --- Existing validation for other source types ---
+        const hostPort = hostPortInput.value.trim();
+        const containerPort = containerPortInput.value.trim();
+        const portsValid = !hostPort || !!containerPort;
+
+        let networkIpValid = true;
+        if (networkSelect.value) {
+            if (containerIpInput.value.trim() === '') {
+                networkIpValid = false;
+                containerIpInput.classList.add('is-invalid');
+            } else {
+                containerIpInput.classList.remove('is-invalid');
+            }
+        } else {
+            containerIpInput.classList.remove('is-invalid');
+        }
+
         const isFormValid = hostId && stackName && stackNameValid && sourceValid && portsValid && volumesValid && networkIpValid;
 
         launchBtn.disabled = !isFormValid;
         previewBtn.disabled = !isFormValid;
-
-        if (stackName && !stackNameValid) {
-            stackNameInput.classList.add('is-invalid');
-        } else {
-            stackNameInput.classList.remove('is-invalid');
-        }
 
         if (!portsValid) {
             document.getElementById('port-validation-feedback').style.display = 'block';
@@ -604,7 +749,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Live validation listeners
-    [stackNameInput, gitUrlInput, imageNameSelect, imageNameHubInput, hostPortInput, containerPortInput, volumesContainer, networkSelect, containerIpInput].forEach(input => {
+    [stackNameInput, gitUrlInput, imageNameSelect, imageNameHubInput, hostPortInput, containerPortInput, volumesContainer, networkSelect, containerIpInput, composeContentEditor].forEach(input => {
         input.addEventListener('input', checkFormValidity);
     });
 
@@ -641,7 +786,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!imageName) return null;
             service.image = imageName;
         } else {
-            return 'git'; 
+            return 'server-side'; 
         }
 
         // Add container_name if not a swarm manager
@@ -749,9 +894,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const yamlString = jsyaml.dump(composeObject, { indent: 2 });
             previewPromise = Promise.resolve(yamlString);
 
-        } else { // Git source is the only other option
-            if (!formData.get('git_url')) {
+        } else { // Git or Editor source
+            if (sourceTypeGitRadio.checked && !formData.get('git_url')) {
                 showToast('Please enter a Git URL to generate a preview.', false);
+                this.disabled = false;
+                this.innerHTML = originalBtnContent;
+                return;
+            }
+            if (sourceTypeEditorRadio.checked && !formData.get('compose_content_editor')) {
+                showToast('Please enter compose content to generate a preview.', false);
                 this.disabled = false;
                 this.innerHTML = originalBtnContent;
                 return;
@@ -986,10 +1137,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- Initial Load ---
     initializePage();
-});
+})();
 </script>
 
-<?php
-$conn->close();
-require_once __DIR__ . '/../includes/footer.php';
+<?php 
+$conn->close(); // Close the connection at the very end.
+require_once __DIR__ . '/../includes/footer.php'; 
 ?>

@@ -36,7 +36,7 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const container = document.getElementById('stack-changes-container');
     const filterForm = document.getElementById('filter-form');
     const startDateInput = document.getElementById('start-date');
@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('detail-details').textContent = details.split(' | ').join('\n');
         });
     }
-});
+})();
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

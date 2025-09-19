@@ -193,7 +193,7 @@ require_once __DIR__ . '/../includes/header.php';
 $conn->close();
 ?>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const gitToggle = document.getElementById('git_integration_enabled');
     const gitContainer = document.getElementById('git-settings-container');
 
@@ -265,7 +265,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
         });
     }
-});
+})();
 </script>
 <?php
 require_once __DIR__ . '/../includes/footer.php';

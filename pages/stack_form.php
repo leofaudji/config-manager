@@ -203,7 +203,7 @@ require_once __DIR__ . '/../includes/header.php';
 </template>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const servicesContainer = document.getElementById('services-container');
     const addServiceBtn = document.getElementById('add-service-btn');
     const networksContainer = document.getElementById('networks-container');
@@ -513,7 +513,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-});
+})();
 </script>
 
 <?php

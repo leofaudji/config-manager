@@ -183,7 +183,7 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function() { // IIFE to ensure script runs on AJAX load
     const serversContainer = document.getElementById('servers_container');
     const addServerBtn = document.getElementById('add_server_btn');
     const lbGroup = document.getElementById('load_balancer_method_group');
@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', function() {
     serverTypeCidr.addEventListener('change', toggleServerInputMethod);
 
     toggleServerInputMethod(); // Initial check
-});
+})();
 </script>
 
 <?php

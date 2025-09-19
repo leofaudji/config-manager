@@ -59,6 +59,12 @@ try {
             $dockerClient->restartContainer($container_id);
             $message = "Container successfully restarted.";
             break;
+        case 'exec':
+            $command = $_POST['command'] ?? '';
+            if (empty($command)) throw new InvalidArgumentException("Command cannot be empty.");
+            $output = $dockerClient->exec($container_id, $command);
+            echo json_encode(['status' => 'success', 'output' => $output]);
+            exit; // Exit here as we have a different response structure
         default:
             throw new InvalidArgumentException("Invalid action: {$action}");
     }

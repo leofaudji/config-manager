@@ -65,190 +65,144 @@ function formatBytes(bytes, decimals = 2) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+// --- SPA Navigation Logic ---
+const mainContent = document.querySelector('.main-content');
 
-document.addEventListener('DOMContentLoaded', function () {
+function executeScriptsInContainer(container) {
+    const scripts = container.querySelectorAll('script');
+    scripts.forEach(oldScript => {
+        const newScript = document.createElement('script');
+        Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+        newScript.textContent = oldScript.textContent;
+        document.body.appendChild(newScript).parentNode.removeChild(newScript);
+    });
+}
 
-    // --- Sidebar Active Link Logic ---
-    // This script highlights the current page's link in the sidebar.
+function updateActiveLink(url) {
+    const currentPath = new URL(url).pathname;
+    document.querySelectorAll('.sidebar-nav .nav-link').forEach(link => {
+        // Don't process collapse toggles directly
+        if (link.hasAttribute('data-bs-toggle') && link.getAttribute('data-bs-toggle') === 'collapse') {
+            return;
+        }
+        const linkPath = new URL(link.href).pathname;
+        const cleanCurrentPath = currentPath.length > 1 ? currentPath.replace(/\/$/, "") : currentPath;
+        const cleanLinkPath = linkPath.length > 1 ? linkPath.replace(/\/$/, "") : linkPath;
+
+        if (cleanLinkPath === cleanCurrentPath) {
+            link.classList.add('active');
+        } else {
+            link.classList.remove('active');
+        }
+    });
+}
+
+async function loadPage(url, pushState = true, noAnimation = false) {
+    if (!mainContent) return;
+
+    const loadingBar = document.getElementById('loading-bar');
+    if (loadingBar && !noAnimation) {
+        // Only show loading bar for non-tab navigation
+        loadingBar.style.opacity = '1';
+        loadingBar.style.width = '30%'; // Start progress
+    }
+
+    if (!noAnimation) {
+        // Full page transition with fade out
+        mainContent.classList.add('is-loading');
+        mainContent.classList.remove('is-loaded'); // In case a fast navigation happens
+        // Wait for fade-out to finish before loading new content
+        await new Promise(resolve => setTimeout(resolve, 200)); // Matches fadeOut duration in CSS
+        mainContent.innerHTML = '<div class="text-center p-5"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+    } else {
+        // For tab navigation, just dim the content slightly instead of showing a spinner
+        mainContent.classList.add('table-loading');
+    }
+
+
     try {
-        const currentPath = window.location.pathname;
-        const sidebarLinks = document.querySelectorAll('.sidebar-nav .nav-link');
-
-        sidebarLinks.forEach(link => {
-            const linkPath = new URL(link.href).pathname;
-
-            // Normalize paths by removing trailing slashes (if they exist and it's not the root)
-            const cleanCurrentPath = currentPath.length > 1 ? currentPath.replace(/\/$/, "") : currentPath;
-            const cleanLinkPath = linkPath.length > 1 ? linkPath.replace(/\/$/, "") : linkPath;
-
-            if (cleanLinkPath === cleanCurrentPath) {
-                link.classList.add('active');
-            }
+        const response = await fetch(url, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
-    } catch (e) {
-        console.error("Error setting active sidebar link:", e);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const html = await response.text();
+
+        if (loadingBar && !noAnimation) {
+            loadingBar.style.width = '100%'; // Finish progress
+        }
+
+        if (pushState) {
+            history.pushState({ path: url }, '', url);
+        }
+
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        
+        mainContent.innerHTML = ''; // Clear spinner or old content
+        while (tempDiv.firstChild) {
+            mainContent.appendChild(tempDiv.firstChild);
+        }
+
+        if (!noAnimation) {
+            // Fade in new content
+            mainContent.classList.remove('is-loading');
+            mainContent.classList.add('is-loaded');
+        } else {
+            // For tab navigation, remove the dimming effect
+            mainContent.classList.remove('table-loading');
+        }
+        
+        executeScriptsInContainer(mainContent);
+        updateActiveLink(url);
+        
+        const tooltipTriggerList = mainContent.querySelectorAll('[data-bs-toggle="tooltip"]');
+        [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+        // Re-run page-specific initializations for the new content
+        initializePageSpecificScripts();
+
+        if (loadingBar && !noAnimation) {
+            setTimeout(() => {
+                loadingBar.style.opacity = '0';
+                // Reset width after transition ends
+                setTimeout(() => {
+                    loadingBar.style.width = '0%';
+                }, 500); // Match opacity transition duration
+            }, 300); // A short delay to ensure user sees the full bar
+        }
+
+    } catch (error) {
+        console.error('Failed to load page:', error);
+        mainContent.innerHTML = `<div class="alert alert-danger m-3">Failed to load page content. Please try again or <a href="${url}" class="alert-link">refresh the page</a>.</div>`;
+        mainContent.classList.remove('is-loading', 'table-loading'); // Ensure it's visible on error
+        if (loadingBar) {
+            loadingBar.style.opacity = '0';
+            loadingBar.style.width = '0%';
+        }
     }
+}
 
-    // --- Sidebar Toggle Logic ---
-    const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
-    if (sidebarToggleBtn) {
-        sidebarToggleBtn.addEventListener('click', () => {
-            document.body.classList.toggle('sidebar-collapsed');
-            // Save the state to localStorage
-            const isCollapsed = document.body.classList.contains('sidebar-collapsed');
-            localStorage.setItem('sidebar-collapsed', isCollapsed);
-        });
-    }
+document.body.addEventListener('click', function(e) {
+    const target = e.target;
+    const link = target.closest('a');
 
-    /**
-     * Fetches paginated data and updates the corresponding UI section.
-     * @param {string} type - The type of data to fetch ('routers' or 'services').
-     * @param {number} page - The page number to fetch.
-     * @param {number} limit - The number of items per page.
-     */
-    function loadPaginatedData(type, page = 1, limit = 10, preserveScroll = false, extraParams = {}) {
-        const scrollY = window.scrollY;
-        const searchForm = document.querySelector(`.search-form[data-type="${type}"]`);
-        const searchTerm = searchForm ? searchForm.querySelector('input[type="text"]').value : '';
-        const container = document.getElementById(`${type}-container`);
-        const paginationContainer = document.getElementById(`${type}-pagination`);
-        const infoContainer = document.getElementById(`${type}-info`);
-        if (!container || !paginationContainer || !infoContainer) return;
+    // Action buttons
+    const testConnectionBtn = target.closest('.test-connection-btn');
+    const deleteButton = target.closest('.delete-btn');
+    const resetButton = target.closest('.reset-search-btn');
+    const pageLink = target.closest('.page-link');
 
-        // Show a loading state
-        if (type === 'services') {
-             container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></div>';
-        } else { // for 'routers' and 'history' which are in tables
-            const colspan = container.closest('table')?.querySelector('thead tr')?.childElementCount || 6;
-            container.innerHTML = `<tr><td colspan="${colspan}" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>`;
-        }
+    if (testConnectionBtn) {
+        e.preventDefault();
+        const hostId = testConnectionBtn.dataset.id;
+        const url = `${basePath}/hosts/${hostId}/test`;
+        const originalIcon = testConnectionBtn.innerHTML;
 
-        let fetchUrl = `${basePath}/api/data?type=${type}&page=${page}&limit=${limit}&search=${encodeURIComponent(searchTerm)}`;
+        testConnectionBtn.disabled = true;
+        testConnectionBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
 
-        if (type === 'routers') {
-            const groupFilter = document.getElementById('router-group-filter');
-            if (groupFilter && groupFilter.value) {
-                fetchUrl += `&group_id=${groupFilter.value}`;
-            }
-        }
-        if (type === 'services') {
-            const groupFilter = document.getElementById('service-group-filter');
-            if (groupFilter && groupFilter.value) {
-                fetchUrl += `&group_id=${groupFilter.value}`;
-            }
-        }
-        if (type === 'middlewares') {
-            const groupFilter = document.getElementById('middleware-group-filter');
-            if (groupFilter && groupFilter.value) {
-                fetchUrl += `&group_id=${groupFilter.value}`;
-            }
-        }
-        if (type === 'history') {
-            const showArchived = document.getElementById('show-archived-checkbox')?.checked || false;
-            fetchUrl += `&show_archived=${showArchived}`;
-        }
-
-        // Add extra params to URL
-        for (const key in extraParams) {
-            fetchUrl += `&${key}=${encodeURIComponent(extraParams[key])}`;
-        }
-        if (type === 'activity_log') {
-            fetchUrl = `${basePath}/api/logs?page=${page}&limit=${limit}&search=${encodeURIComponent(searchTerm)}`;
-        }
-
-        fetch(fetchUrl)
-            .then(response => response.json())
-            .then(data => {
-                if (data.html) {
-                    container.innerHTML = data.html;
-                } else {
-                    const tableTypes = ['routers', 'history', 'users', 'groups', 'middlewares', 'activity_log', 'hosts', 'stacks', 'templates'];
-                    if (tableTypes.includes(type)) {
-                        const colspan = container.closest('table')?.querySelector('thead tr')?.childElementCount || 6;
-                        container.innerHTML = `<tr><td colspan="${colspan}" class="text-center">No data found.</td></tr>`;
-                    } else { // for services
-                        container.innerHTML = '<div class="text-center">No data found.</div>';
-                    }
-                }
-                infoContainer.innerHTML = data.info;
-
-                // Initialize Bootstrap tooltips for the new content
-                const tooltipTriggerList = container.querySelectorAll('[data-bs-toggle="tooltip"]');
-                [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
-
-                // Build pagination controls
-                let paginationHtml = '';
-                if (data.total_pages > 1) {
-                    paginationHtml += '<ul class="pagination pagination-sm mb-0">';
-                    // Previous button
-                    paginationHtml += `<li class="page-item ${data.current_page <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${data.current_page - 1}" data-type="${type}">«</a></li>`;
-                    // Page numbers
-                    for (let i = 1; i <= data.total_pages; i++) {
-                        paginationHtml += `<li class="page-item ${data.current_page == i ? 'active' : ''}"><a class="page-link" href="#" data-page="${i}" data-type="${type}">${i}</a></li>`;
-                    }
-                    // Next button
-                    paginationHtml += `<li class="page-item ${data.current_page >= data.total_pages ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${parseInt(data.current_page) + 1}" data-type="${type}">»</a></li>`;
-                    paginationHtml += '</ul>';
-                }
-                paginationContainer.innerHTML = paginationHtml;
-
-                // Update limit selector
-                const limitSelector = document.querySelector(`select[name="limit_${type}"]`);
-                if (limitSelector) {
-                    limitSelector.value = data.limit;
-                }
-
-                // Save state to localStorage
-                localStorage.setItem(`${type}_page`, data.current_page);
-                localStorage.setItem(`${type}_limit`, data.limit);
-
-                if (preserveScroll) {
-                    window.scrollTo(0, scrollY);
-                }
-            })
-            .catch(error => {
-                console.error('Error loading data:', error);
-                 if (type === 'services') {
-                    container.innerHTML = '<div class="text-center text-danger">Failed to load data.</div>';
-                } else {
-                    const colspan = container.closest('table')?.querySelector('thead tr')?.childElementCount || 6;
-                    container.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-danger">Failed to load data.</td></tr>`;
-                }
-            });
-    }
-
-    // --- Main Event Delegation ---
-    document.body.addEventListener('click', function(e) {
-        const pageLink = e.target.closest('.page-link');
-        const resetButton = e.target.closest('.reset-search-btn');
-        const deleteButton = e.target.closest('.delete-btn');
-        const deployButton = e.target.closest('.deploy-btn');
-        const cleanupButton = e.target.closest('#cleanup-btn');
-        const viewHistoryBtn = e.target.closest('.view-history-btn');
-        const copyButton = e.target.closest('.copy-btn');
-        const testConnectionBtn = e.target.closest('.test-connection-btn');
-        const testGitConnectionBtn = e.target.closest('#test-git-connection-btn');
-
-        if (testGitConnectionBtn) {
-            e.preventDefault();
-            const gitUrlInput = document.getElementById('git_url');
-            if (!gitUrlInput || !gitUrlInput.value) {
-                showToast('Please enter a Git URL first.', false);
-                return;
-            }
-
-            const gitUrl = gitUrlInput.value;
-            const originalBtnText = testGitConnectionBtn.innerHTML;
-            testGitConnectionBtn.disabled = true;
-            testGitConnectionBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Testing...`;
-
-            const formData = new FormData();
-            formData.append('git_url', gitUrl);
-
-            fetch(`${basePath}/api/git/test`, {
-                method: 'POST',
-                body: formData
-            })
+        fetch(url, { method: 'POST' })
             .then(response => response.json().then(data => ({ ok: response.ok, data })))
             .then(({ ok, data }) => {
                 showToast(data.message, ok);
@@ -257,270 +211,409 @@ document.addEventListener('DOMContentLoaded', function () {
                 showToast(error.message || 'An unknown network error occurred.', false);
             })
             .finally(() => {
-                testGitConnectionBtn.disabled = false;
-                testGitConnectionBtn.innerHTML = originalBtnText;
+                testConnectionBtn.disabled = false;
+                testConnectionBtn.innerHTML = originalIcon;
             });
-            return;
-        }
+        return;
+    }
 
-        if (copyButton) {
-            e.preventDefault();
-            const textToCopy = copyButton.dataset.clipboardText;
-            navigator.clipboard.writeText(textToCopy).then(() => {
-                const originalContent = copyButton.innerHTML;
-                copyButton.innerHTML = '<i class="bi bi-check-lg text-success"></i>';
-                copyButton.disabled = true;
-                setTimeout(() => {
-                    copyButton.innerHTML = originalContent;
-                    copyButton.disabled = false;
-                }, 1500);
-            }).catch(err => {
-                console.error('Failed to copy text: ', err);
-                // Fallback for older browsers or insecure contexts
-                alert('Failed to copy text.');
-            });
-            return;
-        }
+    if (deleteButton) {
+        e.preventDefault();
+        const url = deleteButton.dataset.url;
+        const confirmMessage = deleteButton.dataset.confirmMessage;
+        const dataType = deleteButton.dataset.type; // For AJAX refresh
 
-        if (testConnectionBtn) {
-            e.preventDefault();
-            const hostId = testConnectionBtn.dataset.id;
-            const url = `${basePath}/hosts/${hostId}/test`;
-            const originalIcon = testConnectionBtn.innerHTML;
+        if (confirm(confirmMessage)) {
+            const formData = new FormData();
+            formData.append('id', deleteButton.dataset.id);
 
-            testConnectionBtn.disabled = true;
-            testConnectionBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
-
-            fetch(url, { method: 'POST' })
+            fetch(url, { method: 'POST', body: formData })
                 .then(response => response.json().then(data => ({ ok: response.ok, data })))
                 .then(({ ok, data }) => {
                     showToast(data.message, ok);
-                })
-                .catch(error => {
-                    showToast(error.message || 'An unknown network error occurred.', false);
-                })
-                .finally(() => {
-                    testConnectionBtn.disabled = false;
-                    testConnectionBtn.innerHTML = originalIcon;
+                    if (ok) {
+                        const limit = document.querySelector(`select[name="limit_${dataType}"]`).value;
+                        const currentPage = localStorage.getItem(`${dataType}_page`) || 1;
+                        loadPaginatedData(dataType, currentPage, limit, true);
+                    }
                 });
-            return;
         }
+        return;
+    }
 
-        if (pageLink) {
-            e.preventDefault();
-            const type = pageLink.dataset.type;
-            const page = pageLink.dataset.page;
-            const limit = document.querySelector(`select[name="limit_${type}"]`).value;
-            loadPaginatedData(type, page, limit, true);
-            return;
-        }
-
-        if (resetButton) {
-            e.preventDefault();
-            const form = resetButton.closest('.search-form');
-            const input = form.querySelector('input[type="text"]');
-            if (input.value !== '') {
-                input.value = ''; // Clear the input
-                // Trigger the search to show all results
-                const type = form.dataset.type;
-                const limit = document.querySelector(`select[name="limit_${type}"]`).value;
-                loadPaginatedData(type, 1, limit, false);
-            }
-            return;
-        }
-
-        if (cleanupButton) {
-            e.preventDefault();
-            if (confirm('Are you sure you want to permanently delete all archived history records older than 30 days?')) {
-                const originalButtonText = cleanupButton.innerHTML;
-                cleanupButton.disabled = true;
-                cleanupButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Cleaning up...`;
-
-                fetch(`${basePath}/api/history/cleanup`, {
-                    method: 'POST'
-                })
-                .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                .then(({ ok, data }) => {
-                    showToast(data.message, ok);
-                })
-                .catch(error => {
-                    showToast(error.message || 'An unknown error occurred.', false);
-                })
-                .finally(() => {
-                    cleanupButton.disabled = false;
-                    cleanupButton.innerHTML = originalButtonText;
-                });
-            }
-            return;
-        }
-
-        if (viewHistoryBtn) {
-            const historyId = viewHistoryBtn.dataset.id;
-            const contentContainer = document.getElementById('yaml-content-container');
-            if (contentContainer) {
-                contentContainer.textContent = 'Loading...';
-                fetch(`${basePath}/history/${historyId}/content`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok.');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.content) {
-                            contentContainer.textContent = data.content;
-                            Prism.highlightElement(contentContainer);
-                        }
-                    })
-                    .catch(error => {
-                        contentContainer.textContent = 'Error loading content: ' + error.message;
-                    });
-            }
-            return;
-        }
-
-        if (deployButton) {
-            e.preventDefault();
-            const historyId = deployButton.dataset.id;
-            if (confirm(`Are you sure you want to deploy configuration #${historyId}? This will become the new active configuration.`)) {
-                const formData = new FormData();
-                formData.append('id', historyId);
-                const url = `${basePath}/history/${historyId}/deploy`;
-
-                fetch(url, { method: 'POST', body: formData })
-                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                    .then(({ ok, data }) => {
-                        showToast(data.message, ok);
-                        if (ok) {
-                            // Reload the history grid to reflect the change
-                            const limit = document.querySelector('select[name="limit_history"]').value;
-                            const currentPage = localStorage.getItem('history_page') || 1;
-                            loadPaginatedData('history', currentPage, limit, true);
-                        }
-                    });
-            }
-            return;
-        }
-
-        if (deleteButton) {
-            e.preventDefault();
-            const url = deleteButton.dataset.url;
-            const confirmMessage = deleteButton.dataset.confirmMessage;
-            const dataType = deleteButton.dataset.type; // For AJAX refresh
-
-            if (confirm(confirmMessage)) {
-                const formData = new FormData();
-                formData.append('id', deleteButton.dataset.id);
-
-                fetch(url, { method: 'POST', body: formData })
-                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                    .then(({ ok, data }) => {
-                        showToast(data.message, ok);
-                        if (ok) {
-                            const limit = document.querySelector(`select[name="limit_${dataType}"]`).value;
-                            const currentPage = localStorage.getItem(`${dataType}_page`) || 1;
-                            loadPaginatedData(dataType, currentPage, limit, true);
-                        }
-                    });
-            }
-            return;
-        }
-    });
-
-    document.body.addEventListener('change', function(e) {
-        const limitSelector = e.target.closest('.limit-selector');
-        if (limitSelector) {
-            const type = limitSelector.dataset.type;
-            const limit = limitSelector.value;
-            loadPaginatedData(type, 1, limit, true);
-        }
-
-        const groupFilter = e.target.closest('#router-group-filter');
-        if (groupFilter) {
-            const limit = document.querySelector('select[name="limit_routers"]').value;
-            loadPaginatedData('routers', 1, limit);
-        }
-
-        const serviceGroupFilter = e.target.closest('#service-group-filter');
-        if (serviceGroupFilter) {
-            const limit = document.querySelector('select[name="limit_services"]').value;
-            loadPaginatedData('services', 1, limit);
-        }
-
-        const middlewareGroupFilter = e.target.closest('#middleware-group-filter');
-        if (middlewareGroupFilter) {
-            const limit = document.querySelector('select[name="limit_middlewares"]').value;
-            loadPaginatedData('middlewares', 1, limit);
-        }
-
-        const showArchivedCheckbox = e.target.closest('#show-archived-checkbox');
-        if (showArchivedCheckbox) {
-            // Reload history data when the checkbox state changes
-            loadPaginatedData('history', 1, document.querySelector('select[name="limit_history"]').value);
-        }
-    });
-
-    // Handle auto-search on typing (debounced)
-    const debouncedSearch = debounce((type, limit) => {
-        loadPaginatedData(type, 1, limit, false); // Reset to page 1 on new search
-    }, 400);
-
-    document.body.addEventListener('input', function(e) {
-        const searchInput = e.target.closest('input[name^="search_"]');
-        if (searchInput) {
-            const form = searchInput.closest('.search-form');
-            if (!form) return;
+    if (resetButton) {
+        e.preventDefault();
+        const form = resetButton.closest('.search-form');
+        const input = form.querySelector('input[type="text"]');
+        if (input.value !== '') {
+            input.value = ''; // Clear the input
             const type = form.dataset.type;
-            if (!type) return;
-
-            const limitSelector = document.querySelector(`select[name="limit_${type}"]`);
-            // This generic handler is only for paginated tables that have a limit selector.
-            if (limitSelector) {
-                const limit = limitSelector.value;
-                debouncedSearch(type, limit);
-            }
+            const limit = document.querySelector(`select[name="limit_${type}"]`).value;
+            loadPaginatedData(type, 1, limit, false);
         }
-    });
+        return;
+    }
 
-    // --- AJAX Add/Edit Form Logic ---
-    const mainForm = document.getElementById('main-form');
-    if (mainForm) {
-        mainForm.addEventListener('submit', function(e) {
-            e.preventDefault();
+    if (pageLink) {
+        e.preventDefault();
+        const type = pageLink.dataset.type;
+        const page = pageLink.dataset.page;
+        const limit = document.querySelector(`select[name="limit_${type}"]`).value;
+        loadPaginatedData(type, page, limit, true);
+        return;
+    }
 
-            const formData = new FormData(mainForm);
-            const url = mainForm.action;
-            const submitButton = mainForm.querySelector('button[type="submit"]');
-            const originalButtonText = submitButton.innerHTML;
-            const redirectUrl = mainForm.dataset.redirect; // e.g. '/users' or '/'
-            const finalRedirectUrl = redirectUrl ? (basePath + redirectUrl) : (basePath + '/');
+    // --- SPA Navigation Logic (as the fallback) ---
+    if (link) {
+        // Conditions to let the browser handle the click normally
+        if (
+            !link.href ||
+            link.target === '_blank' ||
+            e.ctrlKey || e.metaKey ||
+            !link.href.startsWith(window.location.origin) ||
+            link.classList.contains('no-spa') ||
+            (link.hasAttribute('data-bs-toggle') && ['modal', 'dropdown', 'collapse'].includes(link.getAttribute('data-bs-toggle')))
+        ) {
+            return;
+        }
 
-            submitButton.disabled = true;
-            submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Menyimpan...`;
+        e.preventDefault();
+        if (window.location.href !== link.href) {
+            // Check if the link is part of a tab navigation to disable animation
+            const isTabNav = !!link.closest('.nav-tabs');
+            loadPage(link.href, true, isTabNav);
+        }
+    }
+});
 
-            fetch(url, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json().then(data => ({ ok: response.ok, data })))
-            .then(({ ok, data }) => {
-                if (ok) {
-                    showToast(data.message, true);
-                    setTimeout(() => {
-                        window.location.href = finalRedirectUrl;
-                    }, 1500); // Wait 1.5 seconds before redirect
-                } else {
-                    // If not ok, throw an error to be caught by .catch
-                    throw new Error(data.message || 'An unknown error occurred.');
+window.addEventListener('popstate', e => {
+    if (e.state && e.state.path) {
+        loadPage(e.state.path, false);
+    }
+});
+
+document.body.addEventListener('change', function(e) {
+    const limitSelector = e.target.closest('.limit-selector');
+    if (limitSelector) {
+        const type = limitSelector.dataset.type;
+        const limit = limitSelector.value;
+        loadPaginatedData(type, 1, limit, true);
+    }
+
+    const groupFilter = e.target.closest('#router-group-filter, #service-group-filter, #middleware-group-filter');
+    if (groupFilter) {
+        const type = groupFilter.id.split('-')[0] + 's';
+        const limit = document.querySelector(`select[name="limit_${type}"]`).value;
+        loadPaginatedData(type, 1, limit);
+    }
+
+    const showArchivedCheckbox = e.target.closest('#show-archived-checkbox');
+    if (showArchivedCheckbox) {
+        loadPaginatedData('history', 1, document.querySelector('select[name="limit_history"]').value);
+    }
+});
+
+const debouncedSearch = debounce((type, limit) => {
+    loadPaginatedData(type, 1, limit, false);
+}, 400);
+
+document.body.addEventListener('input', function(e) {
+    const searchInput = e.target.closest('input[name^="search_"]');
+    if (searchInput) {
+        const form = searchInput.closest('.search-form');
+        if (!form) return;
+        const type = form.dataset.type;
+        if (!type) return;
+
+        const limitSelector = document.querySelector(`select[name="limit_${type}"]`);
+        if (limitSelector) {
+            const limit = limitSelector.value;
+            debouncedSearch(type, limit);
+        }
+    }
+});
+
+document.body.addEventListener('submit', function(e) {
+    const form = e.target.closest('#main-form');
+    if (form) {
+         e.preventDefault();
+
+         const formData = new FormData(form);
+         const url = form.action;
+         const submitButton = form.querySelector('button[type="submit"]');
+         if (!submitButton) return;
+
+         const originalButtonText = submitButton.innerHTML;
+         const redirectUrl = form.dataset.redirect;
+         // Ensure the redirect URL is absolute for the SPA to handle it correctly.
+         const finalRedirectUrl = redirectUrl ? (window.location.origin + basePath + redirectUrl) : (window.location.origin + basePath + '/');
+
+         submitButton.disabled = true;
+         submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...`;
+
+         fetch(url, { method: 'POST', body: formData })
+             .then(response => response.json().then(data => ({ ok: response.ok, data })))
+             .then(({ ok, data }) => {
+                 showToast(data.message, ok);
+                 if (ok) {
+                     setTimeout(() => loadPage(finalRedirectUrl), 1500);
+                 } else {
+                     throw new Error(data.message || 'An unknown error occurred.');
+                 }
+             })
+             .catch(error => {
+                 showToast(error.message, false);
+                 submitButton.disabled = false;
+                 submitButton.innerHTML = originalButtonText;
+             });
+    }
+});
+
+// Function to check for pending git changes and update the UI
+// Moved to global scope within this file to be accessible by initializePageSpecificScripts
+function checkGitSyncStatus() {
+    const syncStacksBtn = document.getElementById('sync-stacks-btn');
+    if (!syncStacksBtn) return;
+
+    const syncBadge = document.getElementById('sync-badge');
+    if (!syncBadge) return;
+
+    fetch(`${basePath}/api/stacks/check-git-diff`)
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success' && result.changes_count > 0) {
+                syncBadge.textContent = result.changes_count;
+                syncBadge.style.display = 'block';
+                syncBadge.classList.add('blinking-badge');
+
+                // Store diff data and set button to open modal
+                syncStacksBtn.dataset.diff = result.diff;
+                syncStacksBtn.setAttribute('data-bs-toggle', 'modal');
+                syncStacksBtn.setAttribute('data-bs-target', '#syncGitModal');
+            } else {
+                // No changes, ensure button has default (direct sync) behavior
+                syncBadge.style.display = 'none';
+                syncBadge.classList.remove('blinking-badge');
+                syncStacksBtn.removeAttribute('data-bs-toggle');
+                syncStacksBtn.removeAttribute('data-bs-target');
+                syncStacksBtn.dataset.diff = '';
+            }
+        })
+        .catch(error => {
+            console.error('Error checking Git sync status:', error);
+        });
+}
+
+/**
+ * Fetches paginated data and updates the corresponding UI section.
+ * @param {string} type - The type of data to fetch ('routers' or 'services').
+ * @param {number} page - The page number to fetch.
+ * @param {number} limit - The number of items per page.
+ */
+function loadPaginatedData(type, page = 1, limit = 10, preserveScroll = false, extraParams = {}) {
+    const scrollY = window.scrollY;
+    const searchForm = document.querySelector(`.search-form[data-type="${type}"]`);
+    const searchTerm = searchForm ? searchForm.querySelector('input[type="text"]').value : '';
+    const container = document.getElementById(`${type}-container`);
+    const paginationContainer = document.getElementById(`${type}-pagination`);
+    const infoContainer = document.getElementById(`${type}-info`);
+    if (!container || !paginationContainer || !infoContainer) return;
+
+    // Show a loading state
+    if (type === 'services') {
+         container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+    } else { // for 'routers' and 'history' which are in tables
+        const colspan = container.closest('table')?.querySelector('thead tr')?.childElementCount || 6;
+        container.innerHTML = `<tr><td colspan="${colspan}" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>`;
+    }
+
+    let fetchUrl = `${basePath}/api/data?type=${type}&page=${page}&limit=${limit}&search=${encodeURIComponent(searchTerm)}`;
+
+    if (type === 'routers') {
+        const groupFilter = document.getElementById('router-group-filter');
+        if (groupFilter && groupFilter.value) {
+            fetchUrl += `&group_id=${groupFilter.value}`;
+        }
+    }
+    if (type === 'services') {
+        const groupFilter = document.getElementById('service-group-filter');
+        if (groupFilter && groupFilter.value) {
+            fetchUrl += `&group_id=${groupFilter.value}`;
+        }
+    }
+    if (type === 'middlewares') {
+        const groupFilter = document.getElementById('middleware-group-filter');
+        if (groupFilter && groupFilter.value) {
+            fetchUrl += `&group_id=${groupFilter.value}`;
+        }
+    }
+    if (type === 'history') {
+        const showArchived = document.getElementById('show-archived-checkbox')?.checked || false;
+        fetchUrl += `&show_archived=${showArchived}`;
+    }
+
+    // Add extra params to URL
+    for (const key in extraParams) {
+        fetchUrl += `&${key}=${encodeURIComponent(extraParams[key])}`;
+    }
+    if (type === 'activity_log') {
+        fetchUrl = `${basePath}/api/logs?page=${page}&limit=${limit}&search=${encodeURIComponent(searchTerm)}`;
+    }
+
+    fetch(fetchUrl)
+        .then(response => response.json())
+        .then(data => {
+            if (data.html) {
+                container.innerHTML = data.html;
+            } else {
+                const tableTypes = ['routers', 'history', 'users', 'groups', 'middlewares', 'activity_log', 'hosts', 'stacks', 'templates'];
+                if (tableTypes.includes(type)) {
+                    const colspan = container.closest('table')?.querySelector('thead tr')?.childElementCount || 6;
+                    container.innerHTML = `<tr><td colspan="${colspan}" class="text-center">No data found.</td></tr>`;
+                } else { // for services
+                    container.innerHTML = '<div class="text-center">No data found.</div>';
                 }
-            })
-            .catch(error => {
-                showToast(error.message, false);
-                submitButton.disabled = false;
-                submitButton.innerHTML = originalButtonText;
+            }
+            infoContainer.innerHTML = data.info;
+
+            // Initialize Bootstrap tooltips for the new content
+            const tooltipTriggerList = container.querySelectorAll('[data-bs-toggle="tooltip"]');
+            [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+            // Build pagination controls
+            let paginationHtml = '';
+            if (data.total_pages > 1) {
+                paginationHtml += '<ul class="pagination pagination-sm mb-0">';
+                // Previous button
+                paginationHtml += `<li class="page-item ${data.current_page <= 1 ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${data.current_page - 1}" data-type="${type}">«</a></li>`;
+                // Page numbers
+                for (let i = 1; i <= data.total_pages; i++) {
+                    paginationHtml += `<li class="page-item ${data.current_page == i ? 'active' : ''}"><a class="page-link" href="#" data-page="${i}" data-type="${type}">${i}</a></li>`;
+                }
+                // Next button
+                paginationHtml += `<li class="page-item ${data.current_page >= data.total_pages ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${parseInt(data.current_page) + 1}" data-type="${type}">»</a></li>`;
+                paginationHtml += '</ul>';
+            }
+            paginationContainer.innerHTML = paginationHtml;
+
+            // Update limit selector
+            const limitSelector = document.querySelector(`select[name="limit_${type}"]`);
+            if (limitSelector) {
+                limitSelector.value = data.limit;
+            }
+
+            // Save state to localStorage
+            localStorage.setItem(`${type}_page`, data.current_page);
+            localStorage.setItem(`${type}_limit`, data.limit);
+
+            if (preserveScroll) {
+                window.scrollTo(0, scrollY);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading data:', error);
+             if (type === 'services') {
+                container.innerHTML = '<div class="text-center text-danger">Failed to load data.</div>';
+            } else {
+                const colspan = container.closest('table')?.querySelector('thead tr')?.childElementCount || 6;
+                container.innerHTML = `<tr><td colspan="${colspan}" class="text-center text-danger">Failed to load data.</td></tr>`;
+            }
+        });
+}
+
+function runHealthChecks() {
+    const resultsContainer = document.getElementById('health-check-results');
+    if (!resultsContainer) return;
+
+    resultsContainer.innerHTML = `
+        <li class="list-group-item text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Running checks...</span>
+            </div>
+            <p class="mt-2 mb-0">Running checks...</p>
+        </li>`;
+
+    fetch(`${basePath}/api/health-check`)
+        .then(response => response.json())
+        .then(results => {
+            resultsContainer.innerHTML = ''; // Clear spinner
+            results.forEach(result => {
+                const statusIcon = result.status
+                    ? '<i class="bi bi-check-circle-fill text-success"></i>'
+                    : '<i class="bi bi-x-circle-fill text-danger"></i>';
+                
+                const listItem = `
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold">${result.check}</div>
+                            <small class="text-muted">${result.message}</small>
+                        </div>
+                        <span class="badge rounded-pill">${statusIcon}</span>
+                    </li>
+                `;
+                resultsContainer.insertAdjacentHTML('beforeend', listItem);
             });
+            const timestampEl = document.getElementById('last-checked-timestamp');
+            if (timestampEl) {
+                timestampEl.textContent = new Date().toLocaleString();
+            }
+        })
+        .catch(error => {
+            console.error('Error running health checks:', error);
+            resultsContainer.innerHTML = '<li class="list-group-item list-group-item-danger">An error occurred while running the health checks. Please check the browser console.</li>';
+        });
+}
+
+// --- Service Health Status Logic ---
+function updateServiceStatus() {
+    const indicators = document.querySelectorAll('.service-status-indicator');
+    if (indicators.length === 0) {
+        return; // No need to fetch if there are no indicators on the page
+    }
+    // ... implementation is in the context, but it's not relevant to the change.
+    // The function is defined but not called. I'll assume it's called somewhere else or should be.
+    // Ah, it's called at the end of initializePageSpecificScripts. That's correct.
+}
+
+function initializePageSpecificScripts() {
+    // --- Sidebar Toggle & Tooltip Logic ---
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+
+    function manageSidebarTooltips() {
+        if (!sidebar) return;
+        const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+        const sidebarLinks = sidebar.querySelectorAll('.sidebar-nav .nav-link[data-bs-toggle="tooltip"]');
+
+        sidebarLinks.forEach(link => {
+            const tooltip = bootstrap.Tooltip.getInstance(link);
+            if (tooltip) {
+                if (isCollapsed) {
+                    tooltip.enable();
+                } else {
+                    tooltip.disable();
+                }
+            }
         });
     }
+
+    if (sidebarToggleBtn && sidebar) {
+        sidebarToggleBtn.addEventListener('click', () => {
+            document.body.classList.toggle('sidebar-collapsed');
+            // Save the state to localStorage
+            const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+            localStorage.setItem('sidebar-collapsed', isCollapsed);
+            // Manage tooltips after the state has changed
+            manageSidebarTooltips();
+        });
+    }
+
+    // Initialize all tooltips on the page
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+    // Initial check on page load to disable if not collapsed
+    manageSidebarTooltips();
 
     // --- Dashboard Widgets Logic ---
     function loadDashboardWidgets() {
@@ -625,127 +718,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // --- Sync Stacks to Git Logic ---
-    const syncStacksBtn = document.getElementById('sync-stacks-btn');
-    const syncGitModalEl = document.getElementById('syncGitModal');
-
-    // Function to check for pending git changes and update the UI
-    function checkGitSyncStatus() {
-        if (!syncStacksBtn) return;
-
-        const syncBadge = document.getElementById('sync-badge');
-        if (!syncBadge) return;
-
-        fetch(`${basePath}/api/stacks/check-git-diff`)
-            .then(response => response.json())
-            .then(result => {
-                if (result.status === 'success' && result.changes_count > 0) {
-                    syncBadge.textContent = result.changes_count;
-                    syncBadge.style.display = 'block';
-                    syncBadge.classList.add('blinking-badge');
-
-                    // Store diff data and set button to open modal
-                    syncStacksBtn.dataset.diff = result.diff;
-                    syncStacksBtn.setAttribute('data-bs-toggle', 'modal');
-                    syncStacksBtn.setAttribute('data-bs-target', '#syncGitModal');
-                } else {
-                    // No changes, ensure button has default (direct sync) behavior
-                    syncBadge.style.display = 'none';
-                    syncBadge.classList.remove('blinking-badge');
-                    syncStacksBtn.removeAttribute('data-bs-toggle');
-                    syncStacksBtn.removeAttribute('data-bs-target');
-                    syncStacksBtn.dataset.diff = '';
-                }
-            })
-            .catch(error => {
-                console.error('Error checking Git sync status:', error);
-            });
-    }
-
-    if (syncGitModalEl) {
-        // Logic for when the modal is shown
-        syncGitModalEl.addEventListener('show.bs.modal', function () {
-            const diffOutputContainer = document.getElementById('git-diff-output');
-            const diffString = syncStacksBtn.dataset.diff || '';
-
-            diffOutputContainer.innerHTML = ''; // Clear previous diff
-
-            if (diffString.trim() === '') {
-                diffOutputContainer.innerHTML = '<div class="alert alert-info">No changes to display.</div>';
-            } else {
-                const diff2htmlUi = new Diff2HtmlUI(diffOutputContainer, diffString, {
-                    drawFileList: true,
-                    matching: 'lines',
-                    outputFormat: 'side-by-side'
-                });
-                diff2htmlUi.draw();
-            }
-        });
-
-        // Logic for the confirm button inside the modal
-        const confirmSyncBtn = document.getElementById('confirm-git-sync-btn');
-        if (confirmSyncBtn) {
-            confirmSyncBtn.addEventListener('click', function() {
-                // This button now triggers the actual sync
-                const originalBtnText = this.innerHTML;
-                this.disabled = true;
-                this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Syncing...`;
-
-                fetch(`${basePath}/api/stacks/sync-to-git`, {
-                    method: 'POST'
-                })
-                .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                .then(({ ok, data }) => {
-                    showToast(data.message, ok);
-                    bootstrap.Modal.getInstance(syncGitModalEl).hide();
-                    if (ok) {
-                        // After successful sync, re-check status to hide badge
-                        checkGitSyncStatus();
-                    }
-                })
-                .catch(error => {
-                    showToast(error.message || 'An unknown error occurred during sync.', false);
-                })
-                .finally(() => {
-                    this.disabled = false;
-                    this.innerHTML = originalBtnText;
-                });
-            });
-        }
-    }
-
-    // The main click handler for the "Sync Stacks to Git" button
-    if (syncStacksBtn) {
-        syncStacksBtn.addEventListener('click', function(e) {
-            // If the button is NOT set to open a modal (i.e., no changes found)
-            if (this.getAttribute('data-bs-toggle') !== 'modal') {
-                e.preventDefault();
-                if (!confirm('No pending changes detected. Do you still want to force a sync? This will pull latest changes and commit if there are any discrepancies.')) {
-                    return;
-                }
-
-                const originalBtnText = this.innerHTML;
-                this.disabled = true;
-                this.innerHTML = `<i class="bi bi-git"></i> <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Syncing...`;
-
-                fetch(`${basePath}/api/stacks/sync-to-git`, {
-                    method: 'POST'
-                })
-                .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                .then(({ ok, data }) => {
-                    showToast(data.message, ok);
-                })
-                .catch(error => {
-                    showToast(error.message || 'An unknown error occurred during sync.', false);
-                })
-                .finally(() => {
-                    this.disabled = false;
-                    this.innerHTML = originalBtnText;
-                });
-            }
-            // If it IS set to open a modal, Bootstrap's JS will handle it, so we do nothing.
-        });
-    }
+    loadDashboardWidgets();
 
     // --- Initial Data Load ---
     if (document.getElementById('routers-container')) {
@@ -821,225 +794,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // --- Health Check Page Logic ---
-    function runHealthChecks() {
-        const resultsContainer = document.getElementById('health-check-results');
-        if (!resultsContainer) return;
-
-        resultsContainer.innerHTML = `
-            <li class="list-group-item text-center">
-                <div class="spinner-border" role="status">
-                    <span class="visually-hidden">Running checks...</span>
-                </div>
-                <p class="mt-2 mb-0">Running checks...</p>
-            </li>`;
-
-        fetch(`${basePath}/api/health-check`)
-            .then(response => response.json())
-            .then(results => {
-                resultsContainer.innerHTML = ''; // Clear spinner
-                results.forEach(result => {
-                    const statusIcon = result.status
-                        ? '<i class="bi bi-check-circle-fill text-success"></i>'
-                        : '<i class="bi bi-x-circle-fill text-danger"></i>';
-                    
-                    const listItem = `
-                        <li class="list-group-item d-flex justify-content-between align-items-start">
-                            <div class="ms-2 me-auto">
-                                <div class="fw-bold">${result.check}</div>
-                                <small class="text-muted">${result.message}</small>
-                            </div>
-                            <span class="badge rounded-pill">${statusIcon}</span>
-                        </li>
-                    `;
-                    resultsContainer.insertAdjacentHTML('beforeend', listItem);
-                });
-                const timestampEl = document.getElementById('last-checked-timestamp');
-                if (timestampEl) {
-                    timestampEl.textContent = new Date().toLocaleString();
-                }
-            })
-            .catch(error => {
-                console.error('Error running health checks:', error);
-                resultsContainer.innerHTML = '<li class="list-group-item list-group-item-danger">An error occurred while running the health checks. Please check the browser console.</li>';
-            });
-    }
-
-    loadDashboardWidgets();
-
-    // --- Bulk Actions Logic for Routers ---
-    const routerTable = document.querySelector('#routers-container')?.closest('table');
-    if (routerTable) {
-        const bulkActionsDropdown = document.getElementById('router-bulk-actions-dropdown');
-        const selectAllCheckbox = document.getElementById('select-all-routers');
-
-        const updateBulkActionsVisibility = () => {
-            const checkedBoxes = routerTable.querySelectorAll('.router-checkbox:checked');
-            if (checkedBoxes.length > 0) {
-                bulkActionsDropdown.style.display = 'block';
-            } else {
-                bulkActionsDropdown.style.display = 'none';
-            }
-        };
-
-        routerTable.addEventListener('change', (e) => {
-            if (e.target.matches('.router-checkbox') || e.target.matches('#select-all-routers')) {
-                if (e.target.id === 'select-all-routers') {
-                    const isChecked = e.target.checked;
-                    routerTable.querySelectorAll('.router-checkbox').forEach(checkbox => {
-                        checkbox.checked = isChecked;
-                    });
-                }
-                updateBulkActionsVisibility();
-            }
-        });
-    }
-
     if (document.getElementById('health-check-results')) {
         runHealthChecks();
         document.getElementById('rerun-checks-btn').addEventListener('click', runHealthChecks);
-    }
-
-    // --- Stack Deployment Logic ---
-    const deployStackBtn = document.getElementById('deploy-stack-btn');
-    if (deployStackBtn) {
-        deployStackBtn.addEventListener('click', function() {
-            const stackId = this.dataset.id;
-            if (confirm(`Are you sure you want to deploy this stack via Git? This will trigger your CI/CD pipeline.`)) {
-                const originalButtonText = this.innerHTML;
-                this.disabled = true;
-                this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deploying...`;
-
-                const formData = new FormData();
-                formData.append('id', stackId);
-
-                fetch(`${basePath}/api/stacks/${stackId}/deploy`, { method: 'POST', body: formData })
-                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                    .then(({ ok, data }) => {
-                        showToast(data.message, ok);
-                    })
-                    .catch(error => {
-                        showToast(error.message || 'An unknown error occurred.', false);
-                    })
-                    .finally(() => {
-                        this.disabled = false;
-                        this.innerHTML = originalButtonText;
-                    });
-            }
-        });
-    }    
-
-    // --- Move to Group Modal Logic ---
-    const moveGroupModal = document.getElementById('moveGroupModal');
-    if (moveGroupModal) {
-        const confirmMoveBtn = document.getElementById('confirm-move-group-btn');
-        const selectedCountSpan = document.getElementById('selected-router-count');
-        const targetGroupSelect = document.getElementById('target_group_id');
-
-        moveGroupModal.addEventListener('show.bs.modal', () => {
-            const checkedBoxes = document.querySelectorAll('.router-checkbox:checked');
-            selectedCountSpan.textContent = checkedBoxes.length;
-        });
-
-        confirmMoveBtn.addEventListener('click', () => {
-            const checkedBoxes = document.querySelectorAll('.router-checkbox:checked');
-            const routerIds = Array.from(checkedBoxes).map(cb => cb.value);
-            const targetGroupId = targetGroupSelect.value;
-
-            if (!targetGroupId) {
-                showToast('Please select a target group.', false);
-                return;
-            }
-
-            const formData = new FormData();
-            routerIds.forEach(id => formData.append('router_ids[]', id));
-            formData.append('target_group_id', targetGroupId);
-
-            fetch(`${basePath}/api/routers/bulk-move`, { method: 'POST', body: formData })
-                .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                .then(({ ok, data }) => {
-                    showToast(data.message, ok);
-                    bootstrap.Modal.getInstance(moveGroupModal).hide();
-                    if (ok) {
-                        // Uncheck "select all" and reload data
-                        document.getElementById('select-all-routers').checked = false;
-                        loadPaginatedData('routers', localStorage.getItem('routers_page') || 1, localStorage.getItem('routers_limit') || 10, true);
-                    }
-                });
-        });
-    }
-
-    // --- Bulk Delete Modal Logic ---
-    const bulkDeleteModal = document.getElementById('bulkDeleteModal');
-    if (bulkDeleteModal) {
-        const confirmBulkDeleteBtn = document.getElementById('confirm-bulk-delete-btn');
-        const selectedDeleteCountSpan = document.getElementById('bulk-delete-router-count');
-
-        bulkDeleteModal.addEventListener('show.bs.modal', () => {
-            const checkedBoxes = document.querySelectorAll('.router-checkbox:checked');
-            selectedDeleteCountSpan.textContent = checkedBoxes.length;
-        });
-
-        confirmBulkDeleteBtn.addEventListener('click', () => {
-            const checkedBoxes = document.querySelectorAll('.router-checkbox:checked');
-            const routerIds = Array.from(checkedBoxes).map(cb => cb.value);
-
-            if (routerIds.length === 0) {
-                showToast('No routers selected for deletion.', false);
-                return;
-            }
-
-            const formData = new FormData();
-            routerIds.forEach(id => formData.append('router_ids[]', id));
-
-            fetch(`${basePath}/api/routers/bulk-delete`, { method: 'POST', body: formData })
-                .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                .then(({ ok, data }) => {
-                    showToast(data.message, ok);
-                    bootstrap.Modal.getInstance(bulkDeleteModal).hide();
-                    if (ok) {
-                        // Reload router data, uncheck "select all"
-                        document.getElementById('select-all-routers').checked = false;
-                        loadPaginatedData('routers', localStorage.getItem('routers_page') || 1, localStorage.getItem('routers_limit') || 10, true);
-                    }
-                });
-        });
-    }
-
-    // --- Theme Switcher Logic ---
-    const themeSwitcher = document.getElementById('theme-switcher');
-    if (themeSwitcher) {
-        const sunIcon = themeSwitcher.querySelector('.bi-sun-fill');
-        const moonIcon = themeSwitcher.querySelector('.bi-moon-stars-fill');
-
-        const setTheme = (theme) => {
-            if (theme === 'dark') {
-                document.body.classList.add('dark-mode');
-                sunIcon.classList.add('d-none');
-                moonIcon.classList.remove('d-none');
-                localStorage.setItem('theme', 'dark');
-            } else {
-                document.body.classList.remove('dark-mode');
-                sunIcon.classList.remove('d-none');
-                moonIcon.classList.add('d-none');
-                localStorage.setItem('theme', 'light');
-            }
-        };
-
-        themeSwitcher.addEventListener('click', () => {
-            const currentTheme = localStorage.getItem('theme') || 'light';
-            setTheme(currentTheme === 'dark' ? 'light' : 'dark');
-        });
-
-        // Set initial icon state based on theme
-        // The class on <body> is already set by the inline script in header.php
-        const currentTheme = localStorage.getItem('theme') || 'light';
-        if (currentTheme === 'dark') {
-            sunIcon.classList.add('d-none');
-            moonIcon.classList.remove('d-none');
-        } else {
-            sunIcon.classList.remove('d-none');
-            moonIcon.classList.add('d-none');
-        }
     }
 
     // --- Statistics Page Logic ---
@@ -1082,48 +839,341 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // --- History Page Compare Logic ---
-    const historyTable = document.querySelector('#history-container')?.closest('table');
-    if (historyTable) {
-        const compareBtn = document.getElementById('compare-btn');
-        const selectAllCheckbox = document.getElementById('select-all-history');
+    // --- Diff Page Logic ---
+    const diffContainer = document.getElementById('diff-output');
+    if (diffContainer) {
+        const fromContent = document.getElementById('from-content').textContent;
+        const toContent = document.getElementById('to-content').textContent;
 
-        const updateCompareButtonState = () => {
-            const checkedBoxes = historyTable.querySelectorAll('.history-checkbox:checked');
-            const count = checkedBoxes.length;
-            if (compareBtn) {
-                compareBtn.innerHTML = `<i class="bi bi-files"></i> Compare Selected (${count})`;
-                compareBtn.disabled = count !== 2;
+        // Check if there are any actual changes to display
+        if (fromContent.trim() === toContent.trim()) {
+            diffContainer.innerHTML = '<div class="alert alert-info">No changes detected between these two versions.</div>';
+        } else {
+            const diffString = Diff.createPatch('configuration.yml', fromContent, toContent, '', '', { context: 10000 });
+            const diff2htmlUi = new Diff2HtmlUI(diffContainer, diffString, { drawFileList: true, matching: 'lines', outputFormat: 'side-by-side' });
+            diff2htmlUi.draw();
+        }
+    }
+
+    // --- Service Health Status Logic ---
+    if (document.getElementById('services-container')) {
+        updateServiceStatus();
+        setInterval(updateServiceStatus, 15000); // Refresh every 15 seconds
+    }
+
+// --- Preview Config Modal Logic ---
+        const previewBtn = document.getElementById('preview-config-btn');
+        if (previewBtn && !previewBtn.dataset.listenerAttached) {
+            previewBtn.dataset.listenerAttached = 'true';
+            const previewModalEl = document.getElementById('previewConfigModal');
+            const previewModal = new bootstrap.Modal(previewModalEl);
+            const linterContainer = document.getElementById('linter-results-container');
+            const contentContainer = document.getElementById('preview-yaml-content-container');
+            const deployFromPreviewBtn = document.getElementById('deploy-from-preview-btn');
+    
+            previewBtn.addEventListener('click', () => {
+                contentContainer.textContent = 'Loading...';
+                previewModal.show();
+    
+                linterContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><span class="ms-2">Running validator...</span></div>';
+                fetch(`${basePath}/api/configurations/preview`)
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(err => { throw new Error(err.message || 'Network response was not ok.') });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        linterContainer.innerHTML = '';
+                        deployFromPreviewBtn.disabled = false; // Enable by default
+    
+                        if (data.linter) {
+                            if (data.linter.errors && data.linter.errors.length > 0) {
+                                let errorsHtml = '<div class="alert alert-danger"><h6><i class="bi bi-x-circle-fill me-2"></i>Errors Found</h6><ul class="mb-0">';
+                                data.linter.errors.forEach(err => { errorsHtml += `<li>${err}</li>`; });
+                                errorsHtml += '</ul></div>';
+                                linterContainer.insertAdjacentHTML('beforeend', errorsHtml);
+                                deployFromPreviewBtn.disabled = true;
+                            }
+                            if (data.linter.warnings && data.linter.warnings.length > 0) {
+                                let warningsHtml = '<div class="alert alert-warning"><h6><i class="bi bi-exclamation-triangle-fill me-2"></i>Warnings</h6><ul class="mb-0">';
+                                data.linter.warnings.forEach(warn => { warningsHtml += `<li>${warn}</li>`; });
+                                warningsHtml += '</ul></div>';
+                                linterContainer.insertAdjacentHTML('beforeend', warningsHtml);
+                            }
+                        }
+    
+                        if (data.status === 'success' && data.content) {
+                            contentContainer.textContent = data.content;
+                            Prism.highlightElement(contentContainer);
+                        } else if (data.status !== 'success') {
+                            throw new Error(data.message || 'Failed to load preview content.');
+                        }
+                    })
+                    .catch(error => {
+                        linterContainer.innerHTML = '';
+                        contentContainer.textContent = 'Error loading content: ' + error.message;
+                        deployFromPreviewBtn.disabled = true;
+                    });
+            });
+    
+            if (deployFromPreviewBtn && !deployFromPreviewBtn.dataset.listenerAttached) {
+                deployFromPreviewBtn.dataset.listenerAttached = 'true';
+                deployFromPreviewBtn.addEventListener('click', () => {
+                    if (confirm('Anda yakin ingin men-deploy konfigurasi ini? Tindakan ini akan menimpa file dynamic.yml yang aktif.')) {
+                        const originalButtonText = deployFromPreviewBtn.innerHTML;
+                        deployFromPreviewBtn.disabled = true;
+                        deployFromPreviewBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deploying...`;
+    
+                        fetch(`${basePath}/generate`, { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                            .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                            .then(({ ok, data }) => {
+                                if (ok) {
+                                    previewModal.hide();
+                                    showToast(data.message, true);
+                                    if (document.getElementById('routers-container')) loadPaginatedData('routers', 1);
+                                } else { throw new Error(data.message || 'Deployment failed.'); }
+                            })
+                            .catch(error => showToast(error.message, false))
+                            .finally(() => {
+                                deployFromPreviewBtn.disabled = false;
+                                deployFromPreviewBtn.innerHTML = originalButtonText;
+                            });
+                    }
+                });
             }
+        }
+
+        // --- History Page Logic ---
+        const historyContainer = document.getElementById('history-container');
+        if (historyContainer) {
+            const historyTable = historyContainer.closest('table');
+            const compareBtn = document.getElementById('compare-btn');
+            const viewHistoryModal = document.getElementById('viewHistoryModal');
+
+            // 1. Handle multi-checkbox selection for compare button
+            if (historyTable && compareBtn && !historyTable.dataset.changeListener) {
+                historyTable.dataset.changeListener = 'true';
+                historyTable.addEventListener('change', (e) => {
+                    const historyCheckbox = e.target.closest('.history-checkbox, #select-all-history');
+                    if (!historyCheckbox) return;
+
+                    if (historyCheckbox.id === 'select-all-history') {
+                        const isChecked = historyCheckbox.checked;
+                        historyTable.querySelectorAll('.history-checkbox').forEach(checkbox => {
+                            checkbox.checked = isChecked;
+                        });
+                    }
+
+                    const checkedBoxes = historyTable.querySelectorAll('.history-checkbox:checked');
+                    const count = checkedBoxes.length;
+                    compareBtn.innerHTML = `<i class="bi bi-files"></i> Compare Selected (${count})`;
+                    compareBtn.disabled = count !== 2;
+                });
+            }
+
+            // 2. Handle compare button click
+            if (compareBtn && !compareBtn.dataset.clickListener) {
+                compareBtn.dataset.clickListener = 'true';
+                compareBtn.addEventListener('click', () => {
+                    const checkedBoxes = historyTable.querySelectorAll('.history-checkbox:checked');
+                    if (checkedBoxes.length === 2) {
+                        const fromId = checkedBoxes[0].value;
+                        const toId = checkedBoxes[1].value;
+                        const compareUrl = `${window.location.origin}${basePath}/history/compare?from=${fromId}&to=${toId}`;
+                        // Change to a full page load for clarity, as requested.
+                        window.location.href = compareUrl;
+                    }
+                });
+            }
+
+            // 3. Handle "View YAML" modal content loading
+            if (viewHistoryModal && !viewHistoryModal.dataset.listenerAttached) {
+                viewHistoryModal.dataset.listenerAttached = 'true';
+                viewHistoryModal.addEventListener('show.bs.modal', function(event) {
+                    const button = event.relatedTarget;
+                    const historyId = button.dataset.id;
+                    const contentContainer = document.getElementById('yaml-content-container');
+                    const modalLabel = document.getElementById('viewHistoryModalLabel');
+
+                    if (contentContainer && modalLabel) {
+                        modalLabel.textContent = `View YAML Configuration (ID: #${historyId})`;
+                        contentContainer.textContent = 'Loading...';
+                        fetch(`${basePath}/history/${historyId}/content`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.content) {
+                                    contentContainer.textContent = data.content;
+                                    Prism.highlightElement(contentContainer);
+                                } else {
+                                    throw new Error(data.message || 'Content not found.');
+                                }
+                            })
+                            .catch(error => {
+                                contentContainer.textContent = 'Error loading content: ' + error.message;
+                            });
+                    }
+                });
+            }
+        }
+
+        // --- Sync Stacks to Git Logic (Modal Listeners) ---
+        const syncGitModalEl = document.getElementById('syncGitModal');
+        if (syncGitModalEl && !syncGitModalEl.dataset.listenerAttached) {
+            syncGitModalEl.dataset.listenerAttached = 'true';
+    
+            // Logic for when the modal is shown
+            syncGitModalEl.addEventListener('show.bs.modal', function (event) {
+                const diffOutputContainer = document.getElementById('git-diff-output');
+                // Get a fresh reference to the button that triggered the modal. This is the most reliable way.
+                const button = event.relatedTarget;
+                const diffString = button ? (button.dataset.diff || '') : '';
+    
+                diffOutputContainer.innerHTML = ''; // Clear previous diff
+    
+                if (diffString.trim() === '') {
+                    diffOutputContainer.innerHTML = '<div class="alert alert-info">No changes to display.</div>';
+                } else {
+                    const diff2htmlUi = new Diff2HtmlUI(diffOutputContainer, diffString, {
+                        drawFileList: true,
+                        matching: 'lines',
+                        outputFormat: 'side-by-side'
+                    });
+                    diff2htmlUi.draw();
+                }
+            });
+    
+            // Logic for the confirm button inside the modal
+            const confirmSyncBtn = document.getElementById('confirm-git-sync-btn');
+            if (confirmSyncBtn) {
+                confirmSyncBtn.addEventListener('click', function() {
+                    const originalBtnText = this.innerHTML;
+                    this.disabled = true;
+                    this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Syncing...`;
+    
+                    fetch(`${basePath}/api/stacks/sync-to-git`, { method: 'POST' })
+                        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                        .then(({ ok, data }) => {
+                            showToast(data.message, ok);
+                            bootstrap.Modal.getInstance(syncGitModalEl).hide();
+                            if (ok) checkGitSyncStatus();
+                        })
+                        .catch(error => showToast(error.message || 'An unknown error occurred during sync.', false))
+                        .finally(() => {
+                            this.disabled = false;
+                            this.innerHTML = originalBtnText;
+                        });
+                });
+            }
+        }
+  
+    // --- Middleware Management Modal Logic ---
+    const middlewareModal = document.getElementById('middlewareModal');
+    if (middlewareModal) {
+        const middlewareForm = document.getElementById('middleware-form');
+        const middlewareModalLabel = document.getElementById('middlewareModalLabel');
+        const middlewareIdInput = document.getElementById('middleware-id');
+        const middlewareNameInput = document.getElementById('middleware-name');
+        const middlewareTypeInput = document.getElementById('middleware-type');
+        const middlewareDescInput = document.getElementById('middleware-description');
+        const middlewareConfigInput = document.getElementById('middleware-config');
+        const saveMiddlewareBtn = document.getElementById('save-middleware-btn');
+        // let isAddingMiddleware = false; // Flag to track modal mode - REMOVED
+
+        const middlewareTemplates = {
+            'addPrefix': '{\n  "prefix": "/app"\n}',
+            'basicAuth': '{\n  "users": [\n    "user:$apr1$....$..."\n  ]\n}',
+            'chain': '{\n  "middlewares": [\n    "middleware-name-1@file",\n    "middleware-name-2@file"\n  ]\n}',
+            'compress': '{}',
+            'headers': '{\n  "customRequestHeaders": {\n    "X-Custom-Header": "value"\n  }\n}',
+            'ipWhiteList': '{\n  "sourceRange": [\n    "127.0.0.1/32",\n    "192.168.1.7"\n  ]\n}',
+            'rateLimit': '{\n  "average": 100,\n  "burst": 50\n}',
+            'redirectRegex': '{\n  "regex": "^http://localhost/(.*)$",\n  "replacement": "http://mydomain/${1}",\n  "permanent": true\n}',
+            'redirectScheme': '{\n  "scheme": "https",\n  "permanent": true\n}',
+            'replacePath': '{\n  "path": "/new-path"\n}',
+            'replacePathRegex': '{\n  "regex": "^/api/(.*)$",\n  "replacement": "/v2/${1}"\n}',
+            'retry': '{\n  "attempts": 4,\n  "initialInterval": "100ms"\n}',
+            'stripPrefix': '{\n  "prefixes": [\n    "/api",\n    "/v1"\n  ]\n}',
+            'stripPrefixRegex': '{\n  "regex": [\n    "/api/v[0-9]+"\n  ]\n}'
         };
 
-        historyTable.addEventListener('change', (e) => {
-            if (e.target.matches('.history-checkbox') || e.target.matches('#select-all-history')) {
-                if (e.target.id === 'select-all-history') {
-                    const isChecked = e.target.checked;
-                    historyTable.querySelectorAll('.history-checkbox').forEach(checkbox => {
-                        checkbox.checked = isChecked;
-                    });
+        if (middlewareTypeInput) {
+            middlewareTypeInput.addEventListener('change', function() {
+                const selectedType = this.value;
+                // Read the mode directly from the modal's data attribute
+                const isAdding = middlewareModal.dataset.isAdding === 'true';
+                if (isAdding && middlewareTemplates[selectedType]) {
+                    middlewareConfigInput.value = middlewareTemplates[selectedType];
                 }
-                updateCompareButtonState();
+            });
+        }
+
+        middlewareModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const action = button.getAttribute('data-action');
+            middlewareIdInput.value = '';
+
+            if (action === 'add') {
+                middlewareForm.reset();
+                middlewareModal.dataset.isAdding = 'true'; // Set state on the DOM element
+                middlewareModalLabel.textContent = 'Add New Middleware';
+                middlewareForm.action = `${basePath}/middlewares/new`;
+            } else { // edit
+                middlewareModalLabel.textContent = 'Edit Middleware';
+                middlewareModal.dataset.isAdding = 'false'; // Set state on the DOM element
+                const id = button.getAttribute('data-id');
+                middlewareIdInput.value = id;
+                middlewareNameInput.value = button.getAttribute('data-name');
+                middlewareTypeInput.value = button.getAttribute('data-type');
+                middlewareDescInput.value = button.getAttribute('data-description');
+                middlewareConfigInput.value = button.getAttribute('data-config_json');
+                middlewareForm.action = `${basePath}/middlewares/${id}/edit`;
             }
         });
 
-        if (compareBtn) {
-            compareBtn.addEventListener('click', () => {
-                const checkedBoxes = historyTable.querySelectorAll('.history-checkbox:checked');
-                if (checkedBoxes.length === 2) {
-                    const fromId = checkedBoxes[0].value;
-                    const toId = checkedBoxes[1].value;
-                    window.location.href = `${basePath}/history/compare?from=${fromId}&to=${toId}`;
-                }
+        // Prevent attaching multiple listeners on SPA navigation
+        if (saveMiddlewareBtn && !saveMiddlewareBtn.dataset.listenerAttached) {
+            saveMiddlewareBtn.dataset.listenerAttached = 'true';
+            saveMiddlewareBtn.addEventListener('click', function () {
+                const originalBtnText = this.innerHTML;
+                this.disabled = true;
+                this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...`;
+
+                const formData = new FormData(middlewareForm);
+                const url = middlewareForm.action;
+
+                fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (ok) {
+                        bootstrap.Modal.getInstance(middlewareModal).hide();
+                        showToast(data.message, true);
+                        loadPaginatedData('middlewares', 1); // Reload the table
+                    } else {
+                        throw new Error(data.message || 'An error occurred.');
+                    }
+                })
+                .catch(error => {
+                    showToast(error.message, false);
+                    console.error('Error:', error);
+                })
+                .finally(() => {
+                    // Restore button state in case of failure or if modal doesn't hide
+                    this.disabled = false;
+                    this.innerHTML = originalBtnText;
+                });
             });
         }
     }
 
     // --- Group Management Modal Logic ---
     const groupModal = document.getElementById('groupModal');
-    if (groupModal) {
+    if (groupModal && !groupModal.dataset.listenerAttached) {
+        groupModal.dataset.listenerAttached = 'true';
         const form = document.getElementById('group-form');
         const modalTitle = document.getElementById('groupModalLabel');
         const groupIdInput = document.getElementById('group-id');
@@ -1160,482 +1210,40 @@ document.addEventListener('DOMContentLoaded', function () {
             saveBtn.disabled = true;
             saveBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...`;
 
-            fetch(url, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json().then(data => ({ ok: response.ok, data })))
-            .then(({ ok, data }) => {
-                showToast(data.message, ok);
-                if (ok) {
-                    const modalInstance = bootstrap.Modal.getInstance(groupModal);
-                    modalInstance.hide();
-                    const limit = document.querySelector('select[name="limit_groups"]').value;
-                    const currentPage = localStorage.getItem('groups_page') || 1;
-                    loadPaginatedData('groups', currentPage, limit, true);
-                }
-            })
-            .catch(error => {
-                showToast(error.message || 'An unknown error occurred.', false);
-            })
-            .finally(() => {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = 'Save Group';
-            });
-        });
-    }
-
-    // --- Middleware Management ---
-    const middlewareModal = document.getElementById('middlewareModal');
-    if (middlewareModal) {
-        const middlewareForm = document.getElementById('middleware-form');
-        const middlewareModalLabel = document.getElementById('middlewareModalLabel');
-        const middlewareIdInput = document.getElementById('middleware-id');
-        const middlewareNameInput = document.getElementById('middleware-name');
-        const middlewareTypeInput = document.getElementById('middleware-type');
-        const middlewareDescInput = document.getElementById('middleware-description');
-        const middlewareConfigInput = document.getElementById('middleware-config');
-        const saveMiddlewareBtn = document.getElementById('save-middleware-btn');
-        let isAddingMiddleware = false; // Flag untuk melacak mode modal
-
-        const middlewareTemplates = {
-            'addPrefix': '{\n  "prefix": "/app"\n}',
-            'basicAuth': '{\n  "users": [\n    "user:$apr1$....$..."\n  ]\n}',
-            'chain': '{\n  "middlewares": [\n    "middleware-name-1@file",\n    "middleware-name-2@file"\n  ]\n}',
-            'compress': '{}',
-            'headers': '{\n  "customRequestHeaders": {\n    "X-Custom-Header": "value"\n  }\n}',
-            'ipWhiteList': '{\n  "sourceRange": [\n    "127.0.0.1/32",\n    "192.168.1.7"\n  ]\n}',
-            'rateLimit': '{\n  "average": 100,\n  "burst": 50\n}',
-            'redirectRegex': '{\n  "regex": "^http://localhost/(.*)$",\n  "replacement": "http://mydomain/${1}",\n  "permanent": true\n}',
-            'redirectScheme': '{\n  "scheme": "https",\n  "permanent": true\n}',
-            'replacePath': '{\n  "path": "/new-path"\n}',
-            'replacePathRegex': '{\n  "regex": "^/api/(.*)$",\n  "replacement": "/v2/${1}"\n}',
-            'retry': '{\n  "attempts": 4,\n  "initialInterval": "100ms"\n}',
-            'stripPrefix': '{\n  "prefixes": [\n    "/api",\n    "/v1"\n  ]\n}',
-            'stripPrefixRegex': '{\n  "regex": [\n    "/api/v[0-9]+"\n  ]\n}'
-        };
-
-        if (middlewareTypeInput) {
-            middlewareTypeInput.addEventListener('change', function() {
-                const selectedType = this.value;
-                // Hanya isi template secara otomatis saat menambah middleware baru.
-                if (isAddingMiddleware && middlewareTemplates[selectedType]) {
-                    middlewareConfigInput.value = middlewareTemplates[selectedType];
-                }
-            });
-        }
-
-        middlewareModal.addEventListener('show.bs.modal', function (event) {
-            const button = event.relatedTarget;
-            const action = button.getAttribute('data-action');
-            middlewareIdInput.value = '';
-
-            if (action === 'add') {
-                middlewareForm.reset();
-                isAddingMiddleware = true; // Set flag ke mode tambah
-                middlewareModalLabel.textContent = 'Add New Middleware';
-                middlewareForm.action = `${basePath}/middlewares/new`;
-            } else {
-                middlewareModalLabel.textContent = 'Edit Middleware';
-                isAddingMiddleware = false; // Set flag ke mode edit
-                const id = button.getAttribute('data-id');
-                middlewareIdInput.value = id;
-                middlewareNameInput.value = button.getAttribute('data-name');
-                middlewareTypeInput.value = button.getAttribute('data-type');
-                middlewareDescInput.value = button.getAttribute('data-description');
-                middlewareConfigInput.value = button.getAttribute('data-config_json');
-                middlewareForm.action = `${basePath}/middlewares/${id}/edit`;
-            }
-        });
-
-        saveMiddlewareBtn.addEventListener('click', function () {
-            const formData = new FormData(middlewareForm);
-            const url = middlewareForm.action;
-
-            fetch(url, {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-            .then(response => response.json().then(data => ({ ok: response.ok, data })))
-            .then(({ ok, data }) => {
-                if (ok) {
-                    bootstrap.Modal.getInstance(middlewareModal).hide();
-                    showToast(data.message, 'success');
-                    loadPaginatedData('middlewares', 1); // Reload the table
-                } else {
-                    showToast(data.message || 'An error occurred.', 'danger');
-                }
-            })
-            .catch(error => {
-                showToast('A network error occurred.', 'danger');
-                console.error('Error:', error);
-            });
-        });
-    }
-
-    // --- Template Management ---
-    const templateModal = document.getElementById('templateModal');
-    if (templateModal) {
-        const form = document.getElementById('template-form');
-        const modalTitle = document.getElementById('templateModalLabel');
-        const templateIdInput = document.getElementById('template-id');
-        const saveBtn = document.getElementById('save-template-btn');
-
-        // Middleware UI inside the modal
-        const availableMiddlewareSelect = document.getElementById('template-available-middlewares');
-        const attachedMiddlewareContainer = document.getElementById('template-attached-middlewares-container');
-        
-        new Sortable(attachedMiddlewareContainer, {
-            animation: 150,
-            handle: '.drag-handle',
-            ghostClass: 'bg-light'
-        });
-
-        document.getElementById('template-add-middleware-btn').addEventListener('click', function() {
-            const selectedOption = availableMiddlewareSelect.options[availableMiddlewareSelect.selectedIndex];
-            if (!selectedOption || !selectedOption.value) return;
-
-            const middlewareId = selectedOption.value;
-            const middlewareName = selectedOption.dataset.name;
-
-            const newItemHTML = `
-                <div class="d-flex align-items-center mb-2 p-2 border rounded attached-middleware-item" data-id="${middlewareId}">
-                    <i class="bi bi-grip-vertical me-2 drag-handle" style="cursor: grab;"></i>
-                    <span class="flex-grow-1">${middlewareName}</span>
-                    <input type="hidden" name="middlewares[]" value="${middlewareId}">
-                    <button type="button" class="btn-close remove-middleware-btn ms-2" aria-label="Remove"></button>
-                </div>`;
-            
-            attachedMiddlewareContainer.insertAdjacentHTML('beforeend', newItemHTML);
-            selectedOption.remove();
-        });
-
-        attachedMiddlewareContainer.addEventListener('click', function(e) {
-            if (e.target.classList.contains('remove-middleware-btn')) {
-                const itemToRemove = e.target.closest('.attached-middleware-item');
-                if (!itemToRemove) return;
-
-                const middlewareId = itemToRemove.dataset.id;
-                const middlewareName = itemToRemove.querySelector('span').textContent;
-
-                const newOption = new Option(middlewareName, middlewareId);
-                newOption.dataset.name = middlewareName;
-                availableMiddlewareSelect.add(newOption);
-
-                Array.from(availableMiddlewareSelect.options)
-                    .sort((a, b) => a.value === "" ? -1 : b.value === "" ? 1 : a.text.localeCompare(b.text))
-                    .forEach(option => availableMiddlewareSelect.add(option));
-
-                itemToRemove.remove();
-            }
-        });
-
-        templateModal.addEventListener('show.bs.modal', function (event) {
-            const button = event.relatedTarget;
-            const action = button.dataset.action || 'edit';
-            form.reset();
-            attachedMiddlewareContainer.innerHTML = ''; // Clear middlewares
-
-            if (action === 'add') {
-                modalTitle.textContent = 'Add New Template';
-                form.action = `${basePath}/templates/new`;
-                templateIdInput.value = '';
-            } else { // edit
-                modalTitle.textContent = `Edit Template: ${button.dataset.name}`;
-                form.action = `${basePath}/templates/${button.dataset.id}/edit`;
-                templateIdInput.value = button.dataset.id;
-                document.getElementById('template-name').value = button.dataset.name;
-                document.getElementById('template-description').value = button.dataset.description;
-                
-                const configData = JSON.parse(button.dataset.config_data);
-                document.getElementById('template-entry_points').value = configData.entry_points;
-                document.getElementById('template-tls').checked = configData.tls == 1;
-                document.getElementById('template-cert_resolver').value = configData.cert_resolver;
-
-                // Populate middlewares
-                if (configData.middlewares && configData.middlewares.length > 0) {
-                    configData.middlewares.forEach(mwId => {
-                        const optionToAdd = availableMiddlewareSelect.querySelector(`option[value="${mwId}"]`);
-                        if (optionToAdd) {
-                            optionToAdd.selected = true;
-                            document.getElementById('template-add-middleware-btn').click();
-                        }
-                    });
-                }
-            }
-        });
-
-        saveBtn.addEventListener('click', function() {
-            const formData = new FormData(form);
-            const url = form.action;
-
             fetch(url, { method: 'POST', body: formData })
                 .then(response => response.json().then(data => ({ ok: response.ok, data })))
                 .then(({ ok, data }) => {
                     showToast(data.message, ok);
                     if (ok) {
-                        bootstrap.Modal.getInstance(templateModal).hide();
-                        loadPaginatedData('templates', 1);
-                    }
-                })
-                .catch(error => showToast(error.message || 'An unknown error occurred.', false));
-        });
-    }
-
-    // --- Preview Config Modal Logic ---
-    const previewBtn = document.getElementById('preview-config-btn');
-    if (previewBtn) {
-        const previewModalEl = document.getElementById('previewConfigModal');
-        const previewModal = new bootstrap.Modal(previewModalEl);
-        const linterContainer = document.getElementById('linter-results-container');
-        const contentContainer = document.getElementById('preview-yaml-content-container');
-        const deployFromPreviewBtn = document.getElementById('deploy-from-preview-btn');
-
-        previewBtn.addEventListener('click', () => {
-            contentContainer.textContent = 'Loading...';
-            previewModal.show();
-
-            linterContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><span class="ms-2">Running validator...</span></div>';
-            fetch(`${basePath}/api/configurations/preview`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok.');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    // Handle Linter Results
-                    linterContainer.innerHTML = '';
-                    deployFromPreviewBtn.disabled = false; // Enable by default
-
-                    if (data.linter) {
-                        if (data.linter.errors && data.linter.errors.length > 0) {
-                            let errorsHtml = '<div class="alert alert-danger"><h6><i class="bi bi-x-circle-fill me-2"></i>Errors Found</h6><ul class="mb-0">';
-                            data.linter.errors.forEach(err => {
-                                errorsHtml += `<li>${err}</li>`;
-                            });
-                            errorsHtml += '</ul></div>';
-                            linterContainer.insertAdjacentHTML('beforeend', errorsHtml);
-                            deployFromPreviewBtn.disabled = true; // Disable deploy if there are errors
+                        bootstrap.Modal.getInstance(groupModal).hide();
+                        if (document.getElementById('groups-container')) {
+                            loadPaginatedData('groups', 1);
                         }
-
-                        if (data.linter.warnings && data.linter.warnings.length > 0) {
-                            let warningsHtml = '<div class="alert alert-warning"><h6><i class="bi bi-exclamation-triangle-fill me-2"></i>Warnings</h6><ul class="mb-0">';
-                            data.linter.warnings.forEach(warn => {
-                                warningsHtml += `<li>${warn}</li>`;
-                            });
-                            warningsHtml += '</ul></div>';
-                            linterContainer.insertAdjacentHTML('beforeend', warningsHtml);
-                        }
-                    }
-
-                    if (data.status === 'success' && data.content) {
-                        contentContainer.textContent = data.content;
-                        Prism.highlightElement(contentContainer);
-                    } else {
-                        throw new Error(data.message || 'Failed to load preview content.');
-                    }
+                    } else { throw new Error(data.message || 'An unknown error occurred.'); }
                 })
-                .catch(error => {
-                    linterContainer.innerHTML = '';
-                    contentContainer.textContent = 'Error loading content: ' + error.message;
+                .catch(error => showToast(error.message, false))
+                .finally(() => {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = 'Save Group';
                 });
         });
-
-        if (deployFromPreviewBtn) {
-            deployFromPreviewBtn.addEventListener('click', () => {
-                if (confirm('Anda yakin ingin men-deploy konfigurasi ini? Tindakan ini akan menimpa file dynamic.yml yang aktif.')) {
-                    const originalButtonText = deployFromPreviewBtn.innerHTML;
-                    deployFromPreviewBtn.disabled = true;
-                    deployFromPreviewBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deploying...`;
-
-                    fetch(`${basePath}/generate`, {
-                        method: 'GET', // The route is a GET route
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    })
-                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                    .then(({ ok, data }) => {
-                        if (ok) {
-                            previewModal.hide();
-                            showToast(data.message, true);
-                            // Refresh dashboard data to reflect the new active state
-                            loadPaginatedData('routers', localStorage.getItem('routers_page') || 1, localStorage.getItem('routers_limit') || 10);
-                            loadPaginatedData('services', localStorage.getItem('services_page') || 1, localStorage.getItem('services_limit') || 10);
-                        } else {
-                            throw new Error(data.message || 'Deployment failed.');
-                        }
-                    })
-                    .catch(error => {
-                        showToast(error.message, false);
-                    })
-                    .finally(() => {
-                        deployFromPreviewBtn.disabled = false;
-                        deployFromPreviewBtn.innerHTML = originalButtonText;
-                    });
-                }
-            });
-        }
     }
-
-    // --- Diff Page Logic ---
-    const diffContainer = document.getElementById('diff-output');
-    if (diffContainer) {
-        const fromContent = document.getElementById('from-content').textContent;
-        const toContent = document.getElementById('to-content').textContent;
-
-        // Check if there are any actual changes to display
-        if (fromContent.trim() === toContent.trim()) {
-            diffContainer.innerHTML = '<div class="alert alert-info">No changes detected between these two versions.</div>';
-        } else {
-            const diffString = Diff.createPatch('configuration.yml', fromContent, toContent, '', '', { context: 10000 });
-            const diff2htmlUi = new Diff2HtmlUI(diffContainer, diffString, { drawFileList: false, matching: 'lines', outputFormat: 'side-by-side' });
-            diff2htmlUi.draw();
-        }
-    }
-
-    // Initialize tooltips on static elements present on page load
-    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-    [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
-
-// --- Service Health Status Logic ---
-function updateServiceStatus() {
-    const indicators = document.querySelectorAll('.service-status-indicator');
-    if (indicators.length === 0) {
-        return; // No need to fetch if there are no indicators on the page
-    }
-
-    fetch(`${basePath}/api/services/status`)
-        .then(response => {
-            if (!response.ok) {
-                console.error('Failed to fetch service status. Server responded with ' + response.status);
-                return null;
-            }
-            return response.json();
-        })
-        .then(services => {
-            if (!services || services.error) {
-                console.error('Error from status API:', services ? services.error : 'Unknown error');
-                return;
-            }
-
-            indicators.forEach(indicator => {
-                const serviceNameFromDB = indicator.dataset.serviceName;
-                const service = services.find(s => s.name.startsWith(serviceNameFromDB + '@'));
-                
-                let statusClass = 'text-secondary'; // Default: Unknown
-                let statusTitle = 'Status Unknown';
-
-                if (service) {
-                    statusTitle = `Status: ${service.status}`;
-                    if (service.status === 'enabled') statusClass = 'text-success';
-                    else if (service.status === 'disabled') statusClass = 'text-warning';
-                    else statusClass = 'text-danger'; // e.g., error state
-                }
-                indicator.innerHTML = `<i class="bi bi-circle-fill ${statusClass}"></i>`;
-                indicator.title = statusTitle;
-            });
-        })
-        .catch(error => {
-            console.error('Error fetching or processing service status:', error);
-        });
 }
 
-// Initial call and set interval to refresh status
-if (document.getElementById('services-container')) {
-    updateServiceStatus();
-    setInterval(updateServiceStatus, 15000); // Refresh every 15 seconds
-}
+document.addEventListener('DOMContentLoaded', function () {
 
-// --- User Management Edit Modal Logic ---
-const editUserModal = document.getElementById('editUserModal');
-if (editUserModal) {
-    const editForm = document.getElementById('edit-user-form');
-    const userIdInput = document.getElementById('edit-user-id');
-    const usernameInput = document.getElementById('edit-username');
-    const roleSelect = document.getElementById('edit-role');
-    const modalTitle = document.getElementById('editUserModalLabel');
-    const submitButton = editUserModal.querySelector('button[type="submit"]'); // Get the submit button
+    // --- Sidebar Active Link Logic ---
+    updateActiveLink(window.location.href);
 
-    // 1. Populate modal with data when it's about to be shown
-    editUserModal.addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget; // Button that triggered the modal
-        const userId = button.dataset.userId;
-        const userName = button.dataset.userName;
-        const userRole = button.dataset.userRole;
-
-        // Update the modal's content.
-        modalTitle.textContent = `Edit User: ${userName}`;
-        userIdInput.value = userId;
-        usernameInput.value = userName;
-        roleSelect.value = userRole;
-    });
-
-    // 2. Handle form submission
-    if (editForm) {
-        editForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const formData = new FormData(editForm);
-            const url = editForm.action;
-            const originalButtonText = submitButton.innerHTML;
-
-            submitButton.disabled = true;
-            submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Updating...`;
-
-            fetch(url, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(err => { throw err; });
-                }
-                return response.json();
-            })
-            .then(data => {
-                const modalInstance = bootstrap.Modal.getInstance(editUserModal);
-                modalInstance.hide();
-                showToast(data.message, true);
-                // Reload the page after a short delay to show the changes
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
-            })
-            .catch(error => {
-                // We can display the error inside the modal or as a toast. Toast is more consistent.
-                showToast(error.message || 'An error occurred.', false);
-            })
-            .finally(() => {
-                submitButton.disabled = false;
-                submitButton.innerHTML = originalButtonText;
-            });
+    // Add animation listener for SPA transitions
+    if (mainContent) {
+        mainContent.addEventListener('animationend', (e) => {
+            // Remove the class after the animation so it can be re-triggered
+            if (e.animationName === 'fadeIn') {
+                mainContent.classList.remove('is-loaded');
+            }
         });
     }
-}
 
-    // --- Live Clock in Header ---
-    const clockElement = document.getElementById('live-clock');
-    if (clockElement) {
-        const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-        const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-
-        function updateLiveClock() {
-            const now = new Date();
-            const dayName = days[now.getDay()];
-            const day = now.getDate().toString().padStart(2, '0');
-            const monthName = months[now.getMonth()];
-            const year = now.getFullYear();
-            const hours = now.getHours().toString().padStart(2, '0');
-            const minutes = now.getMinutes().toString().padStart(2, '0');
-            const seconds = now.getSeconds().toString().padStart(2, '0');
-
-            clockElement.textContent = `${dayName}, ${day} ${monthName} ${year} ${hours}:${minutes}:${seconds}`;
-        }
-
-        updateLiveClock(); // Initial call
-        setInterval(updateLiveClock, 1000); // Update every second
-    }
-
+    initializePageSpecificScripts();
 });
