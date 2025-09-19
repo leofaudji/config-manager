@@ -184,7 +184,6 @@ require_once __DIR__ . '/../includes/header.php';
                                         <pre id="editor-highlight-pre" aria-hidden="true"><code class="language-yaml" id="editor-highlight-code"></code></pre>
                                     </div>
                                     <small class="form-text text-muted">Paste or write your `docker-compose.yml` content here. Syntax highlighting is supported.</small>
-                                    <div id="yaml-validation-feedback" class="invalid-feedback d-block mt-1 fw-bold"></div>
                                 </div>
                             </div>
                         </div>
@@ -392,7 +391,7 @@ require_once __DIR__ . '/../includes/header.php';
 </template>
 
 <script>
-(function() { // IIFE to avoid polluting global scope
+window.pageInit = function() {
     const mainForm = document.getElementById('main-form');
     const hostSelect = document.getElementById('host_id');
     const networkSelect = document.getElementById('network_name');
@@ -447,7 +446,6 @@ require_once __DIR__ . '/../includes/header.php';
     const addVolumeBtn = document.getElementById('add-volume-btn');
     const volumesContainer = document.getElementById('volumes-container');
     const refreshNetworksBtn = document.getElementById('refresh-networks-btn');
-    const yamlFeedback = document.getElementById('yaml-validation-feedback');
 
     function ipToLong(ip) {
         if (!ip) return 0;
@@ -539,27 +537,14 @@ require_once __DIR__ . '/../includes/header.php';
     sourceTypeLocalImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeHubImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeEditorRadio.addEventListener('change', toggleSourceSections);
-
-    // --- YAML Editor with Syntax Highlighting & Real-time Validation ---
+    // --- YAML Editor with Syntax Highlighting ---
     if (composeContentEditor && editorHighlightCode && editorHighlightPre) {
-        const validateAndHighlight = () => {
+        const updateHighlight = () => {
             const code = composeContentEditor.value;
-            
             // Prism can sometimes miss the last line if it doesn't end with a newline.
             // Appending a newline character ensures it gets processed.
             editorHighlightCode.textContent = code + '\n'; 
             Prism.highlightElement(editorHighlightCode);
-
-            // Real-time validation
-            try {
-                jsyaml.load(code);
-                yamlFeedback.textContent = '';
-                composeContentEditor.classList.remove('is-invalid');
-            } catch (e) {
-                yamlFeedback.textContent = e.message;
-                composeContentEditor.classList.add('is-invalid');
-            }
-            checkFormValidity(); // Re-check validity on every input
         };
 
         const syncScroll = () => {
@@ -567,7 +552,10 @@ require_once __DIR__ . '/../includes/header.php';
             editorHighlightPre.scrollLeft = composeContentEditor.scrollLeft;
         };
 
-        composeContentEditor.addEventListener('input', debounce(validateAndHighlight, 200));
+        composeContentEditor.addEventListener('input', () => {
+            updateHighlight();
+            syncScroll(); // Also sync on input in case of word wrap
+        });
 
         composeContentEditor.addEventListener('scroll', syncScroll);
 
@@ -618,8 +606,7 @@ require_once __DIR__ . '/../includes/header.php';
 
         // If source is editor, validation is simpler
         if (sourceTypeEditorRadio.checked) {
-            const isYamlValid = yamlFeedback.textContent === ''; // Check if validation message is empty
-            const isEditorValid = !!(hostId && stackName && stackNameValid && sourceValid && isYamlValid);
+            const isEditorValid = !!(hostId && stackName && stackNameValid && sourceValid);
             launchBtn.disabled = !isEditorValid;
             previewBtn.disabled = !isEditorValid;
             return;
@@ -1363,7 +1350,7 @@ require_once __DIR__ . '/../includes/header.php';
     if (hostSelect.value) {
         hostSelect.dispatchEvent(new Event('change'));
     }
-})();
+};
 </script>
 
 <?php

@@ -162,6 +162,12 @@ async function loadPage(url, pushState = true, noAnimation = false) {
         // Re-run page-specific initializations for the new content
         initializePageSpecificScripts();
 
+        // Run page-specific init function if it exists
+        if (window.pageInit && typeof window.pageInit === 'function') {
+            window.pageInit();
+            delete window.pageInit; // Clean up to prevent multiple executions
+        }
+
         if (loadingBar && !noAnimation) {
             setTimeout(() => {
                 loadingBar.style.opacity = '0';
@@ -1246,4 +1252,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     initializePageSpecificScripts();
+
+    // Run page-specific init function for the initial page load
+    if (window.pageInit && typeof window.pageInit === 'function') {
+        window.pageInit();
+        delete window.pageInit;
+    }
 });
