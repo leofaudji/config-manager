@@ -50,8 +50,10 @@ class AppLauncherHelper
                 $compose_data['services'][$service_key]['cpus'] = (float)$cpu;
                 $compose_data['services'][$service_key]['mem_limit'] = $memory;
 
-                // Set/replace restart policy
-                $compose_data['services'][$service_key]['restart'] = 'unless-stopped';
+                // Set restart policy only if it's not already defined in the compose file.
+                if (!isset($compose_data['services'][$service_key]['restart'])) {
+                    $compose_data['services'][$service_key]['restart'] = 'unless-stopped';
+                }
             }
 
             // For standalone hosts, explicitly set the container name.
@@ -81,24 +83,29 @@ class AppLauncherHelper
                 if (!isset($compose_data['services'][$service_key]['networks'])) {
                     $compose_data['services'][$service_key]['networks'] = [];
                 }
-                $current_networks = $compose_data['services'][$service_key]['networks'];
+                $current_networks =& $compose_data['services'][$service_key]['networks'];
 
-                $is_already_defined = false;
-                if (is_array($current_networks)) {
-                    if (in_array($network_key, $current_networks, true) || array_key_exists($network_key, $current_networks)) {
-                        $is_already_defined = true;
+                // Ensure we are working with a map (associative array) for consistency.
+                // If the original compose file used a list format, convert it.
+                if (is_array($current_networks) && array_is_list($current_networks)) {
+                    $map = [];
+                    foreach ($current_networks as $net_name) {
+                        $map[$net_name] = null;
                     }
+                    $current_networks = $map;
                 }
 
-                if (!$is_already_defined) {
+                // Now we can safely assume it's a map. Check if the network is already attached.
+                if (!array_key_exists($network_key, $current_networks)) {
                     // For the first service, if an IP is provided, use the complex object format.
-                    if ($is_first_service && $container_ip) {
-                        $compose_data['services'][$service_key]['networks'][$network_key] = ['ipv4_address' => $container_ip];
+                    if ($is_first_service && !empty($container_ip)) {
+                        $current_networks[$network_key] = ['ipv4_address' => $container_ip];
                     } else {
-                        // For subsequent services or if no IP is given, use the simple string format.
-                        $compose_data['services'][$service_key]['networks'][] = $network_key;
+                        // For subsequent services or if no IP is given, use the map format with a null value.
+                        $current_networks[$network_key] = null;
                     }
                 }
+                unset($current_networks); // Unset reference
             }
 
             // Apply singular settings only to the FIRST service

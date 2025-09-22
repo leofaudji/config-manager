@@ -82,9 +82,11 @@ CREATE TABLE `groups` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `description` text DEFAULT NULL,
+  `traefik_host_id` int(11) DEFAULT NULL COMMENT 'The Traefik host this group belongs to, if any.',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `name` (`name`)
+  UNIQUE KEY `name` (`name`),
+  KEY `traefik_host_id` (`traefik_host_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `docker_hosts` (
@@ -100,6 +102,16 @@ CREATE TABLE `docker_hosts` (
   `registry_url` varchar(255) DEFAULT NULL,
   `registry_username` varchar(255) DEFAULT NULL,
   `registry_password` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `traefik_hosts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
@@ -244,7 +256,9 @@ CREATE TABLE `activity_log` (
 INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES ('default_group_id', '1'),
 ('history_cleanup_days', '30'),
 ('default_compose_path', '/var/www/html/compose-files'),
+('yaml_output_path', '/var/www/html/config-manager/traefik-configs'),
 ('default_git_compose_path', 'docker-compose.yml'),
+('active_traefik_host_id', '1'),
 ('webhook_secret_token', '{$webhook_token}');
 
 -- Default user: admin, password: password, role: admin
@@ -252,6 +266,9 @@ INSERT INTO `users` (`username`, `password`, `role`) VALUES ('admin', '{$default
 
 -- Default group
 INSERT INTO `groups` (`name`) VALUES ('General');
+
+-- Default Traefik Host
+INSERT INTO `traefik_hosts` (`id`, `name`, `description`) VALUES (1, 'Global', 'Configurations that apply to all hosts.');
 
 -- Initial Data based on dynamic.yml
 INSERT INTO `services` (`name`, `pass_host_header`) VALUES ('service-api-car', 1);
@@ -320,12 +337,9 @@ INSERT INTO `docker_hosts` (`id`, `name`, `docker_api_url`, `description`, `tls_
 
 INSERT INTO `transports` (`name`, `insecure_skip_verify`) VALUES ('dsm-transport', 1);
 
+ALTER TABLE `groups` ADD CONSTRAINT `groups_ibfk_1` FOREIGN KEY (`traefik_host_id`) REFERENCES `traefik_hosts` (`id`) ON DELETE SET NULL;
 
 ";
-
-//ALTER TABLE `docker_hosts` ADD `default_compose_path` VARCHAR(255) NULL DEFAULT NULL AFTER `default_volume_path`;
-//ALTER TABLE `docker_hosts` ADD `default_git_compose_path` VARCHAR(255) NULL DEFAULT NULL AFTER `default_compose_path`;
-
 
 // --- Execution Logic ---
 $conn_setup = new mysqli($db_server, $db_username, $db_password);

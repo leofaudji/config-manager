@@ -14,33 +14,85 @@ $conn = Database::getInstance()->getConnection();
 $conn->begin_transaction();
 
 try {
+    // --- Determine which host to deploy for ---
+    $group_id_from_request = isset($_GET['group_id']) ? (int)$_GET['group_id'] : 0;
+    $host_id_for_deployment = 0; // Initialize to 0
+
+    if ($group_id_from_request > 0) {
+        $stmt_group_host = $conn->prepare("SELECT traefik_host_id FROM `groups` WHERE id = ?");
+        $stmt_group_host->bind_param("i", $group_id_from_request);
+        $stmt_group_host->execute();
+        $group_host_result = $stmt_group_host->get_result()->fetch_assoc();
+        $stmt_group_host->close();
+
+        // If the group is associated with a specific host, use that host for deployment.
+        if ($group_host_result && !empty($group_host_result['traefik_host_id'])) {
+            $host_id_for_deployment = (int)$group_host_result['traefik_host_id'];
+        } else {
+            // This is a global group or a group without a host.
+            // Throw an error to prevent accidentally deploying the wrong host's config.
+            throw new Exception("The selected group is 'Global' and not assigned to a specific host. Please use the main 'Generate & Deploy' button to deploy the active host's configuration.");
+        }
+    } else {
+        // No group context, so use the globally active host.
+        $host_id_for_deployment = (int)get_setting('active_traefik_host_id', 1);
+    }
+
     // 1. Instantiate the generator and generate the YAML content for Traefik
     $traefik_generator = new YamlGenerator();
-    $traefik_yaml_output = $traefik_generator->generate();
+    $traefik_yaml_output = $traefik_generator->generate(0, false, $host_id_for_deployment);
 
-    // 2. Determine deployment method: Git or Local File
+    // 2. Determine deployment path and method
     $git_enabled = (bool)get_setting('git_integration_enabled', false);
     $deploy_message = '';
 
+    $stmt_host = $conn->prepare("SELECT name FROM traefik_hosts WHERE id = ?");
+    $stmt_host->bind_param("i", $host_id_for_deployment);
+    $stmt_host->execute();
+    $host_result = $stmt_host->get_result()->fetch_assoc();
+    $stmt_host->close();
+
+    if (!$host_result) {
+        throw new Exception("Target Traefik Host with ID {$host_id_for_deployment} not found.");
+    }
+
+    $host_name = $host_result['name'];
+    $host_dir_name = strtolower(preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host_name));
+
+    // --- Unified Deployment Logic ---
+
+    // 1. Always write to the local file path first.
+    $base_output_path = get_setting('yaml_output_path', PROJECT_ROOT . '/traefik-configs');
+    $final_output_dir = rtrim($base_output_path, '/') . '/' . $host_dir_name;
+    if (!is_dir($final_output_dir) && !mkdir($final_output_dir, 0755, true)) {
+        throw new Exception("Failed to create output directory: {$final_output_dir}. Please check permissions.");
+    }
+    $final_yaml_file_path = $final_output_dir . '/dynamic.yml';
+    file_put_contents($final_yaml_file_path, $traefik_yaml_output);
+    $deploy_message = "Konfigurasi untuk '{$host_name}' berhasil di-deploy ke file lokal: {$final_yaml_file_path}";
+
+    // 2. If Git integration is enabled, now sync the changes.
     if ($git_enabled) {
         $git = new GitHelper();
         $repo_path = $git->setupRepository(); // This will clone or pull the repo
 
-        // Write Traefik config to the repo
-        $traefik_file_path = $repo_path . '/' . basename(YAML_OUTPUT_PATH);
-        file_put_contents($traefik_file_path, $traefik_yaml_output);
+        // The destination in the repo should mirror the local structure
+        $repo_output_dir = $repo_path . '/' . $host_dir_name;
+        if (!is_dir($repo_output_dir) && !mkdir($repo_output_dir, 0755, true)) {
+            throw new Exception("Failed to create output directory inside git repo: {$final_output_dir}.");
+        }
+        $repo_yaml_file_path = $repo_output_dir . '/dynamic.yml';
+        
+        // Copy the generated file to the repo working directory
+        copy($final_yaml_file_path, $repo_yaml_file_path);
 
-        $commit_message = "Deploy configuration from Config Manager by " . ($_SESSION['username'] ?? 'system');
+        $commit_message = "Deploy configuration for {$host_name} from Config Manager by " . ($_SESSION['username'] ?? 'system');
         $git->commitAndPush($repo_path, $commit_message); // The helper will now add all changes
         // Clean up only if it's a temporary path
         if (!$git->isPersistentPath($repo_path)) {
             $git->cleanup($repo_path);
         }
-        $deploy_message = 'Konfigurasi berhasil di-push ke Git repository.';
-    } else {
-        // Fallback to writing only the Traefik config to a local file
-        file_put_contents(YAML_OUTPUT_PATH, $traefik_yaml_output);
-        $deploy_message = 'Konfigurasi Traefik berhasil di-deploy ke file lokal. Konfigurasi stack tidak di-deploy.';
+        $deploy_message .= " dan berhasil di-push ke Git repository.";
     }
 
 

@@ -40,7 +40,8 @@ try {
     $stats['active_config_id'] = $result->fetch_assoc()['id'] ?? 'N/A';
 
     // Perform a quick health check (is the main config file writable?)
-    $stats['health_status'] = is_writable(YAML_OUTPUT_PATH) ? 'OK' : 'Error';
+    $base_config_path = get_setting('yaml_output_path', PROJECT_ROOT . '/traefik-configs');
+    $stats['health_status'] = is_writable($base_config_path) ? 'OK' : 'Error';
 
     // --- Aggregate Remote Host Stats ---
     $hosts_result = $conn->query("SELECT * FROM docker_hosts");
@@ -63,6 +64,24 @@ try {
             $dockerInfo = $dockerClient->getInfo(); // Get system info first
             $containers = $dockerClient->listContainers(); // Then get container info
 
+            // Find oldest running container for uptime
+            $oldest_container_uptime = 'N/A';
+            $oldest_container_creation = PHP_INT_MAX;
+            $running_containers_list = array_filter($containers, fn($c) => $c['State'] === 'running');
+
+            if (!empty($running_containers_list)) {
+                $oldest_container = null;
+                foreach ($running_containers_list as $container) {
+                    if ($container['Created'] < $oldest_container_creation) {
+                        $oldest_container_creation = $container['Created'];
+                        $oldest_container = $container;
+                    }
+                }
+                if ($oldest_container) {
+                    $oldest_container_uptime = $oldest_container['Status'];
+                }
+            }
+
             $host_running_containers = count(array_filter($containers, fn($c) => $c['State'] === 'running'));
             $host_total_containers = count($containers);
 
@@ -83,6 +102,8 @@ try {
                 'memory' => $dockerInfo['MemTotal'] ?? 0,
                 'docker_version' => $dockerInfo['ServerVersion'] ?? 'N/A',
                 'os' => $dockerInfo['OperatingSystem'] ?? 'N/A',
+                'uptime' => $oldest_container_uptime,
+                'uptime_timestamp' => ($oldest_container_creation !== PHP_INT_MAX) ? $oldest_container_creation : null,
             ];
         } catch (Exception $e) {
             // Log error but don't stop the process for other hosts
@@ -98,6 +119,8 @@ try {
                 'docker_version' => 'N/A',
                 'os' => 'N/A',
             ];
+            $per_host_stats[count($per_host_stats) - 1]['uptime'] = 'N/A';
+            $per_host_stats[count($per_host_stats) - 1]['uptime_timestamp'] = null;
         }
     }
     $stats['agg_stats'] = $agg_stats;

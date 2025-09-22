@@ -124,7 +124,39 @@ try {
     $stmt_activate->close();
 
     // 7. Write the new active configuration to the file
-    file_put_contents(YAML_OUTPUT_PATH, $yaml_content);
+    $active_traefik_host_id = (int)get_setting('active_traefik_host_id', 1);
+    $stmt_host = $conn->prepare("SELECT name FROM traefik_hosts WHERE id = ?");
+    $stmt_host->bind_param("i", $active_traefik_host_id);
+    $stmt_host->execute();
+    $host_result = $stmt_host->get_result()->fetch_assoc();
+    $stmt_host->close();
+    if (!$host_result) {
+        throw new Exception("Active Traefik Host with ID {$active_traefik_host_id} not found.");
+    }
+    $host_name = $host_result['name'];
+    $host_dir_name = strtolower(preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host_name));
+
+    // --- Unified Deployment Logic ---
+    // 1. Always write to the local file path first.
+    $base_output_path = get_setting('yaml_output_path', PROJECT_ROOT . '/traefik-configs');
+    $final_output_dir = rtrim($base_output_path, '/') . '/' . $host_dir_name;
+    if (!is_dir($final_output_dir) && !mkdir($final_output_dir, 0755, true)) {
+        throw new Exception("Failed to create output directory: {$final_output_dir}. Please check permissions.");
+    }
+    $final_yaml_file_path = $final_output_dir . '/dynamic.yml';
+    file_put_contents($final_yaml_file_path, $yaml_content);
+
+    // 2. If Git integration is enabled, now sync the changes.
+    $git_enabled = (bool)get_setting('git_integration_enabled', false);
+    if ($git_enabled) {
+        $git = new GitHelper();
+        $repo_path = $git->setupRepository();
+        $repo_output_dir = $repo_path . '/' . $host_dir_name;
+        if (!is_dir($repo_output_dir)) mkdir($repo_output_dir, 0755, true);
+        copy($final_yaml_file_path, $repo_output_dir . '/dynamic.yml');
+        $commit_message = "Redeploy configuration #{$id_to_deploy} for {$host_name} by " . ($_SESSION['username'] ?? 'system');
+        $git->commitAndPush($repo_path, $commit_message);
+    }
 
     $conn->commit();
     log_activity($_SESSION['username'], 'Configuration Deployed', "Deployed history record #{$id_to_deploy}.");

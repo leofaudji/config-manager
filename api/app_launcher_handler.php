@@ -212,13 +212,76 @@ try {
         if (empty($compose_content_from_editor)) {
             throw new Exception("Compose content from editor is required.");
         }
-        stream_message("Validating YAML syntax from editor and using content directly...");
-        $compose_data = Spyc::YAMLLoad($compose_content_from_editor);
-        if (!is_array($compose_data) || !isset($compose_data['services'])) {
-            throw new Exception("Invalid YAML syntax or missing 'services' top-level key. Please check your indentation and formatting.");
+        stream_message("Processing YAML from editor...");
+
+        // For standalone hosts, we need to ensure a restart policy exists for reliability.
+        // Instead of parsing and re-dumping (which can break formatting), we'll inject it via string manipulation.
+        $lines = explode("\n", $compose_content_from_editor);
+        $num_lines = count($lines);
+        $processed_lines = [];
+        $i = 0;
+        while ($i < $num_lines) {
+            $line = $lines[$i];
+            
+            // Find the start of the services block
+            if (preg_match('/^services:/', ltrim($line))) {
+                $processed_lines[] = $line;
+                $i++;
+                $service_indent = strlen($line) - strlen(ltrim($line));
+                
+                // Now process all services until we leave the block
+                while ($i < $num_lines) {
+                    $service_line = $lines[$i];
+                    $service_line_indent = strlen($service_line) - strlen(ltrim($service_line));
+                    
+                    // If we are out of the services block, break this inner loop
+                    if ($service_line_indent <= $service_indent && trim($service_line) !== '') {
+                        break;
+                    }
+                    
+                    // Is this a service definition?
+                    if ($service_line_indent > $service_indent && preg_match('/^\s*([a-zA-Z0-9_-]+):/', $service_line)) {
+                        // Yes. Scan its block to see if a restart policy exists.
+                        $service_block = [$service_line];
+                        $has_restart = false;
+                        $j = $i + 1;
+                        while ($j < $num_lines) {
+                            $lookahead_line = $lines[$j];
+                            $lookahead_indent = strlen($lookahead_line) - strlen(ltrim($lookahead_line));
+                            
+                            if ($lookahead_indent <= $service_line_indent && trim($lookahead_line) !== '') break;
+                            if (preg_match('/^\s+restart:/', $lookahead_line)) $has_restart = true;
+                            
+                            $service_block[] = $lookahead_line;
+                            $j++;
+                        }
+                        
+                        // Add the service name line
+                        $processed_lines[] = $service_block[0];
+                        // Inject restart policy if it wasn't found and host is standalone
+                        if (!$has_restart && !$is_swarm_manager) {
+                            $processed_lines[] = str_repeat(' ', $service_line_indent + 2) . 'restart: unless-stopped';
+                        }
+                        // Add the rest of the original block
+                        for ($k = 1; $k < count($service_block); $k++) {
+                            $processed_lines[] = $service_block[$k];
+                        }
+                        
+                        // Advance the main counter past this block
+                        $i = $j;
+                    } else {
+                        // Not a service definition, just a line inside the services block (e.g., a comment)
+                        $processed_lines[] = $service_line;
+                        $i++;
+                    }
+                }
+            } else {
+                // Not in services block yet, just copy the line
+                $processed_lines[] = $line;
+                $i++;
+            }
         }
-        // Use the original content from the editor directly to preserve formatting.
-        $compose_content = $compose_content_from_editor;
+        $compose_content = implode("\n", $processed_lines);
     } else {
         throw new Exception("Invalid source type specified.");
     }
@@ -384,41 +447,69 @@ try {
 
         stream_message("Checking for volume creation request...");
         $mkdir_command = '';
-        if (!empty($volume_paths) && is_array($volume_paths)) {
+        // This logic is only for standalone hosts. Swarm manages volumes differently.
+        if (!empty($volume_paths) && is_array($volume_paths) && !$is_swarm_manager) {
             $mkdir_commands = [];
-            foreach ($volume_paths as $volume_map) {
-                $host_path = $volume_map['host'] ?? null;
-                if ($host_path) {
-                    $base_path = dirname($host_path);
-                    $dir_to_create = basename($host_path);
-                    // Safety check to prevent trying to mount the root directory
-                    if ($base_path !== '/' && !empty($base_path)) {
-                        $mkdir_commands[] = "docker run --rm -v " . escapeshellarg($base_path . ':/data') . " alpine mkdir -p " . escapeshellarg('/data/' . $dir_to_create);
+            $default_volume_path_on_host = $host['default_volume_path'] ?? null;
+
+            if (empty($default_volume_path_on_host)) {
+                stream_message("Skipping remote volume directory creation because 'Default Volume Path' is not set for this host.", 'WARN');
+            } else {
+                foreach ($volume_paths as $volume_map) {
+                    $host_path = $volume_map['host'] ?? null;
+                    if ($host_path) {
+                        // Ensure the host path is within the allowed default volume path for security
+                        if (strpos($host_path, $default_volume_path_on_host) !== 0) {
+                            stream_message("Volume path '{$host_path}' is outside the host's default volume path '{$default_volume_path_on_host}'. Skipping creation for security.", 'WARN');
+                            continue;
+                        }
+                        // This is the new, more robust command. It mounts the configured base path and creates the full subdirectory structure inside.
+                        $mkdir_commands[] = "docker run --rm -v " . escapeshellarg($default_volume_path_on_host . ':/data') . " alpine mkdir -p " . escapeshellarg('/data/' . ltrim(substr($host_path, strlen($default_volume_path_on_host)), '/'));
                     }
                 }
             }
             if (!empty($mkdir_commands)) {
-                $mkdir_command = implode(' 2>&1 && ', $mkdir_commands) . ' 2>&1 && ';
+                // Use array_unique to prevent running the same mkdir command multiple times if paths overlap
+                $mkdir_command = implode(' 2>&1 && ', array_unique($mkdir_commands)) . ' 2>&1 && ';
             }
         }
 
-        stream_message("Executing deployment script on remote host...");
-        
+        // --- Auto-detect if a build is needed by inspecting the final compose content ---
+        $compose_data_for_build_check = DockerComposeParser::YAMLLoad($compose_content);
+        $is_build_required = false;
+        if (isset($compose_data_for_build_check['services']) && is_array($compose_data_for_build_check['services'])) {
+            foreach ($compose_data_for_build_check['services'] as $service_config) {
+                if (isset($service_config['build'])) {
+                    $is_build_required = true;
+                    break;
+                }
+            }
+        }
+
         $main_compose_command = '';
         $compose_up_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes 2>&1";
 
-        if ($build_from_dockerfile) {
-            stream_message("Build from Dockerfile requested. Preparing build command...");
+        // A build is performed if the user explicitly checked the box, or if we auto-detected a 'build' directive in the compose file.
+        if ($build_from_dockerfile || $is_build_required) {
+            stream_message("Build required (explicitly requested or auto-detected). Preparing build command...");
             $compose_build_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " build --pull 2>&1";
             $main_compose_command = $compose_build_command . ' && ' . $compose_up_command;
         } else {
-            $compose_pull_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1";
-            $main_compose_command = $compose_pull_command . ' && ' . $compose_up_command;
+            // For 'hub' or 'git' (without build), we pull. For 'image' (local), we don't.
+            if ($source_type === 'image') {
+                stream_message("Source is an existing host image. Skipping pull command...");
+                $main_compose_command = $compose_up_command;
+            } else {
+                stream_message("No build required. Preparing pull command...");
+                $compose_pull_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1";
+                $main_compose_command = $compose_pull_command . ' && ' . $compose_up_command;
+            }
         }
 
         $script_to_run = $cd_command . ' && ' . $login_command . $mkdir_command . $main_compose_command;
         $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($script_to_run);
 
+        stream_message("Executing deployment script on remote host...");
         stream_exec($full_command, $return_var);
 
         // Cleanup temporary docker config directory immediately after use

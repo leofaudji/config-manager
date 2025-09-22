@@ -12,6 +12,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 try {
     $settings_to_update = [
+        'active_traefik_host_id' => $_POST['active_traefik_host_id'] ?? 1,
+        'yaml_output_path' => trim($_POST['yaml_output_path'] ?? ''),
         'default_group_id' => $_POST['default_group_id'] ?? 1,
         'history_cleanup_days' => $_POST['history_cleanup_days'] ?? 30,
         'default_router_middleware' => $_POST['default_router_middleware'] ?? 0,
@@ -40,8 +42,43 @@ try {
         }
     }
     $stmt->close();
+
+    // --- Auto-create directories if they don't exist ---
+    $folder_creation_warnings = [];
+    $paths_to_create = [
+        'Traefik Dynamic Config Base Path' => $settings_to_update['yaml_output_path'],
+        'Default Standalone Compose Path' => $settings_to_update['default_compose_path'],
+        'Git Persistent Repo Path' => $settings_to_update['git_persistent_repo_path'],
+        'Temporary Directory Path' => $settings_to_update['temp_directory_path']
+    ];
+
+    foreach ($paths_to_create as $label => $path) {
+        if (!empty($path)) {
+            if (is_dir($path)) {
+                // Directory already exists, check if it's writable
+                if (!is_writable($path)) {
+                    $folder_creation_warnings[] = "Directory for '{$label}' at '{$path}' exists but is not writable.";
+                }
+            } else {
+                // Directory does not exist, try to create it
+                if (!@mkdir($path, 0777, true)) {
+                    $folder_creation_warnings[] = "Failed to create directory for '{$label}' at '{$path}'. Please check permissions of the parent directory.";
+                } else {
+                    // If mkdir succeeded, now attempt to set ownership.
+                    @chown($path, 'www-data');
+                    @chgrp($path, 'www-data');
+                }
+            }
+        }
+    }
+
+    $success_message = 'General settings have been successfully updated.';
+    if (!empty($folder_creation_warnings)) {
+        $success_message .= " Warning: " . implode(' ', $folder_creation_warnings);
+    }
+
     log_activity($_SESSION['username'], 'Settings Updated', "General settings have been updated.");
-    echo json_encode(['status' => 'success', 'message' => 'General settings have been successfully updated.']);
+    echo json_encode(['status' => 'success', 'message' => $success_message]);
 
 } catch (Exception $e) {
     http_response_code(500);

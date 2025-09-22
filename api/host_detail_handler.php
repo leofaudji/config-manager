@@ -167,6 +167,7 @@ try {
                 $actionButtons .= "<button class=\"btn btn-sm btn-outline-warning container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"restart\" title=\"Restart\"><i class=\"bi bi-arrow-repeat\"></i></button>";
                 $actionButtons .= "<button class=\"btn btn-sm btn-outline-danger container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"stop\" title=\"Stop\"><i class=\"bi bi-stop-fill\"></i></button>";
                 $actionButtons .= "<button class=\"btn btn-sm btn-outline-info live-stats-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#liveStatsModal\" data-container-id=\"{$cont['Id']}\" data-container-name=\"{$name}\" title=\"Live Stats\"><i class=\"bi bi-bar-chart-line-fill\"></i></button>";
+                $actionButtons .= "<button class=\"btn btn-sm btn-outline-dark exec-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#execCommandModal\" data-container-id=\"{$cont['Id']}\" data-container-name=\"{$name}\" title=\"Exec Command (Console)\"><i class=\"bi bi-terminal-fill\"></i></button>";
             } else {
                 $actionButtons .= "<button class=\"btn btn-sm btn-outline-success container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"start\" title=\"Start\"><i class=\"bi bi-play-fill\"></i></button>";
             }

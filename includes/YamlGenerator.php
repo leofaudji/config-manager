@@ -23,13 +23,45 @@ class YamlGenerator
      * Generates the final YAML configuration string.
      * @return string The formatted YAML string.
      */
-    public function generate(): string
+    public function generate(int $group_id_filter = 0, bool $ignore_host_filter = false, int $host_id_override = 0): string
     {
+        // Get the active Traefik host ID from settings.
+        // A value of 0 or null means generate a global config.
+        $active_traefik_host_id = (int)get_setting('active_traefik_host_id', 1);
+
+        // If an override is provided from the deploy script, use it.
+        if ($host_id_override > 0) {
+            $active_traefik_host_id = $host_id_override;
+        }
+
+        // 1. Get routers based on filters
+        $routers = $this->getRouters($active_traefik_host_id, $group_id_filter, $ignore_host_filter);
+
+        // 2. Collect required service and middleware names from the filtered routers
+        $required_service_names = [];
+        $required_middleware_names = [];
+        foreach ($routers as $router_data) {
+            if (!empty($router_data['service'])) {
+                $required_service_names[] = $router_data['service'];
+            }
+            if (!empty($router_data['middlewares'])) {
+                foreach ($router_data['middlewares'] as $mw_name_with_provider) {
+                    $required_middleware_names[] = str_replace('@file', '', $mw_name_with_provider);
+                }
+            }
+        }
+        $required_service_names = array_unique($required_service_names);
+        $required_middleware_names = array_unique($required_middleware_names);
+
+        // 3. Get the definitions for only the required services and middlewares.
+        $services = $this->getServicesByName($required_service_names);
+        $middlewares = $this->getMiddlewaresByName($required_middleware_names);
+
         $config = [
             'http' => [
-                'routers' => $this->getRouters(),
-                'services' => $this->getServices(),
-                'middlewares' => $this->getMiddlewares(),
+                'routers' => $routers,
+                'services' => $services,
+                'middlewares' => $middlewares,
             ],
             'serversTransports' => $this->getTransports(),
         ];
@@ -44,16 +76,46 @@ class YamlGenerator
         return Spyc::YAMLDump($config, 2, 0);
     }
 
-    private function getRouters(): array
+    private function getRouters(int $traefik_host_id = 1, int $group_id_filter = 0, bool $ignore_host_filter = false): array
     {
         $routers = [];
+
+        $where_conditions = [];
+        $params = [];
+        $types = '';
+
+        if (!$ignore_host_filter) {
+            $where_conditions[] = "(g.traefik_host_id = ? OR g.traefik_host_id IS NULL OR g.traefik_host_id = 0)";
+            $params[] = $traefik_host_id;
+            $types .= 'i';
+        }
+
+        if ($group_id_filter > 0) {
+            $where_conditions[] = "r.group_id = ?";
+            $params[] = $group_id_filter;
+            $types .= 'i';
+        }
+
+        $where_clause = !empty($where_conditions) ? "WHERE " . implode(' AND ', $where_conditions) : "";
+
         $sql = "SELECT r.*, GROUP_CONCAT(m.name ORDER BY rm.priority) as middleware_names
-                FROM routers r
-                LEFT JOIN router_middleware rm ON r.id = rm.router_id
-                LEFT JOIN middlewares m ON rm.middleware_id = m.id
-                GROUP BY r.id
-                ORDER BY r.name ASC";
-        $result = $this->conn->query($sql);
+                    FROM routers r
+                    LEFT JOIN router_middleware rm ON r.id = rm.router_id
+                    LEFT JOIN middlewares m ON rm.middleware_id = m.id
+                    LEFT JOIN `groups` g ON r.group_id = g.id "
+                    . $where_clause .
+                    "
+                    GROUP BY r.id
+                    ORDER BY r.name ASC";
+        $stmt = $this->conn->prepare($sql);
+        if (!$stmt) {
+            throw new Exception("Failed to prepare statement for getRouters: " . $this->conn->error);
+        }
+        if (!empty($params)) {
+            $stmt->bind_param($types, ...$params);
+        }
+        $stmt->execute();
+        $result = $stmt->get_result();
 
         while ($router = $result->fetch_assoc()) {
             $routerData = [
@@ -80,10 +142,26 @@ class YamlGenerator
         return $routers;
     }
 
-    private function getServices(): array
+    private function getServicesByName(array $service_names): array
     {
+        if (empty($service_names)) {
+            return [];
+        }
+
         $services_map = [];
-        $services_result = $this->conn->query("SELECT id, name, pass_host_header, load_balancer_method FROM services ORDER BY name ASC");
+        
+        $in_clause_svc = implode(',', array_fill(0, count($service_names), '?'));
+        $types_svc = str_repeat('s', count($service_names));
+
+        $sql = "SELECT id, name, pass_host_header, load_balancer_method FROM services WHERE name IN ($in_clause_svc) ORDER BY name ASC";
+        $stmt_services = $this->conn->prepare($sql);
+        if (!$stmt_services) {
+            throw new Exception("Failed to prepare statement for getServices: " . $this->conn->error);
+        }
+        $stmt_services->bind_param($types_svc, ...$service_names);
+        $stmt_services->execute();
+        $services_result = $stmt_services->get_result();
+
         if ($services_result && $services_result->num_rows > 0) {
             $all_services = $services_result->fetch_all(MYSQLI_ASSOC);
             $service_ids = array_column($all_services, 'id');
@@ -130,10 +208,24 @@ class YamlGenerator
         return $services_map;
     }
 
-    private function getMiddlewares(): array
+    private function getMiddlewaresByName(array $middleware_names): array
     {
+        if (empty($middleware_names)) {
+            return [];
+        }
+
         $middlewares = [];
-        $result = $this->conn->query("SELECT name, type, config_json FROM middlewares ORDER BY name ASC");
+        $in_clause_mw = implode(',', array_fill(0, count($middleware_names), '?'));
+        $types_mw = str_repeat('s', count($middleware_names));
+
+        $sql = "SELECT name, type, config_json FROM middlewares WHERE name IN ($in_clause_mw) ORDER BY name ASC";
+        $stmt = $this->conn->prepare($sql);
+        if (!$stmt) {
+            throw new Exception("Failed to prepare statement for getMiddlewares: " . $this->conn->error);
+        }
+        $stmt->bind_param($types_mw, ...$middleware_names);
+        $stmt->execute();
+        $result = $stmt->get_result();
         while ($mw = $result->fetch_assoc()) {
             $config = json_decode($mw['config_json'], true);
             if (json_last_error() === JSON_ERROR_NONE) {

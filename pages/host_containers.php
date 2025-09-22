@@ -123,27 +123,35 @@ require_once __DIR__ . '/../includes/host_nav.php';
   </div>
 </div>
 
+<style>
+    .blinking-cursor {
+        animation: blinker 1s step-end infinite;
+    }
+    @keyframes blinker {
+        50% { opacity: 0; }
+    }
+</style>
+
 <!-- Exec Command Modal -->
 <div class="modal fade" id="execCommandModal" tabindex="-1" aria-labelledby="execCommandModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="execCommandModalLabel">Run Command in Container</h5>
+        <h5 class="modal-title" id="execCommandModalLabel">Console</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class="input-group mb-3">
-            <input type="text" class="form-control" id="exec-command-input" placeholder="e.g., ls -l /app, env, cat /etc/hosts">
-            <button class="btn btn-primary" type="button" id="run-exec-command-btn">Run</button>
-        </div>
-        <pre><code id="exec-output-container" class="language-bash" style="max-height: 400px; display: block; overflow: auto;"></code></pre>
+        <pre id="terminal-container" tabindex="-1" class="language-bash" style="height: 450px; overflow-y: auto; background-color: #212529; color: #f8f9fa; padding: 1rem; border-radius: .375rem; white-space: pre-wrap; word-break: break-all; cursor: text;"></pre>
+        <small class="form-text text-muted mt-2 d-block">
+            <strong>Tip:</strong> This is a stateless terminal. To run commands in a specific directory, chain them with <code>&&</code>, e.g., <code>cd /app && ls -l</code>.
+        </small>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-(function() { // IIFE to ensure script runs on AJAX load
+window.pageInit = function() {
     const hostId = <?= $id ?>;
     const containerBody = document.getElementById('containers-container');
     const refreshBtn = document.getElementById('refresh-containers-btn');
@@ -627,31 +635,56 @@ require_once __DIR__ . '/../includes/host_nav.php';
         });
     }
 
-    // --- Exec Command Modal Logic ---
+    // --- Exec Command Modal Logic (Robust Version) ---
     const execModalEl = document.getElementById('execCommandModal');
     if (execModalEl) {
-        const execModal = new bootstrap.Modal(execModalEl);
-        const commandInput = document.getElementById('exec-command-input');
-        const runBtn = document.getElementById('run-exec-command-btn');
-        const outputContainer = document.getElementById('exec-output-container');
+        const terminalContainer = document.getElementById('terminal-container');
         let currentContainerId = null;
+        let commandHistory = [];
+        let historyIndex = -1;
+        let currentCommand = '';
+        let outputLog = '';
+        let isExecuting = false;
+        const prompt = '$ ';
+
+        const escapeHtml = (unsafe) => {
+            if (typeof unsafe !== 'string') return '';
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        };
+
+        const updateTerminal = () => {
+            const cursor = isExecuting ? '' : '<span class="blinking-cursor">_</span>';
+            terminalContainer.innerHTML = `${escapeHtml(outputLog)}${prompt}${escapeHtml(currentCommand)}${cursor}`;
+            terminalContainer.scrollTop = terminalContainer.scrollHeight;
+        };
 
         execModalEl.addEventListener('show.bs.modal', function(event) {
             const button = event.relatedTarget;
             currentContainerId = button.dataset.containerId;
             const containerName = button.dataset.containerName;
-            document.getElementById('execCommandModalLabel').textContent = `Run Command in: ${containerName}`;
-            commandInput.value = 'ls -l'; // Default command
-            outputContainer.textContent = 'Ready to run command...';
+            document.getElementById('execCommandModalLabel').textContent = `Console: ${containerName}`;
+            
+            outputLog = 'Welcome to the container console.\nType a command and press Enter.\n\n';
+            currentCommand = '';
+            commandHistory = [];
+            historyIndex = -1;
+            isExecuting = false;
+
+            updateTerminal();
+            setTimeout(() => terminalContainer.focus(), 500);
         });
 
-        const runExecCommand = () => {
-            const command = commandInput.value.trim();
-            if (!command || !currentContainerId) return;
+        const runExecCommand = (command) => {
+            if (!command || !currentContainerId || isExecuting) return;
 
-            runBtn.disabled = true;
-            runBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...`;
-            outputContainer.textContent = `Running: ${command}\n\n...`;
+            isExecuting = true;
+            outputLog += `${prompt}${command}\n`;
+            if (command) {
+                commandHistory.push(command);
+            }
+            historyIndex = commandHistory.length;
+            currentCommand = '';
+            updateTerminal();
 
             const formData = new FormData();
             formData.append('command', command);
@@ -659,23 +692,51 @@ require_once __DIR__ . '/../includes/host_nav.php';
             fetch(`${basePath}/api/hosts/${hostId}/containers/${currentContainerId}/exec`, { method: 'POST', body: formData })
                 .then(response => response.json().then(data => ({ ok: response.ok, data })))
                 .then(({ ok, data }) => {
-                    outputContainer.textContent = data.output || 'No output.';
-                    if (!ok) throw new Error(data.message);
+                    const output = data.output !== undefined ? data.output.trim() : 'No output.';
+                    outputLog += output + '\n';
+                    if (!ok) throw new Error(data.message || 'Unknown error');
                 })
                 .catch(error => {
-                    outputContainer.textContent += `\n\nERROR: ${error.message}`;
+                    outputLog += `ERROR: ${error.message}\n`;
                 })
                 .finally(() => {
-                    runBtn.disabled = false;
-                    runBtn.innerHTML = 'Run';
+                    isExecuting = false;
+                    updateTerminal();
+                    terminalContainer.focus();
                 });
         };
 
-        runBtn.addEventListener('click', runExecCommand);
-        commandInput.addEventListener('keypress', function(e) {
+        terminalContainer.addEventListener('keydown', function(e) {
+            if (isExecuting) {
+                e.preventDefault();
+                return;
+            }
+
             if (e.key === 'Enter') {
                 e.preventDefault();
-                runExecCommand();
+                runExecCommand(currentCommand);
+            } else if (e.key === 'Backspace') {
+                e.preventDefault();
+                currentCommand = currentCommand.slice(0, -1);
+                updateTerminal();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (commandHistory.length > 0 && historyIndex > 0) {
+                    historyIndex--;
+                    currentCommand = commandHistory[historyIndex] || '';
+                    updateTerminal();
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (historyIndex < commandHistory.length) {
+                    historyIndex++;
+                    currentCommand = commandHistory[historyIndex] || '';
+                    updateTerminal();
+                }
+            } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                currentCommand += e.key;
+                updateTerminal();
             }
         });
     }
@@ -695,7 +756,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
     }
 
     initialize();
-})();
+};
 </script>
 
 <?php

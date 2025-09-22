@@ -455,8 +455,9 @@ class DockerClient
             throw new RuntimeException("cURL Error: " . $curl_error);
         }
 
-        // Actions like start/stop/restart return 204 No Content on success
-        if ($http_code === 204) {
+        // Actions like start/stop/restart return 204 No Content on success.
+        // A 304 Not Modified also indicates success (e.g., container is already started/stopped).
+        if ($http_code === 204 || $http_code === 304) {
             return true;
         }
 

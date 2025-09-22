@@ -425,6 +425,9 @@ function loadPaginatedData(type, page = 1, limit = 10, preserveScroll = false, e
     const infoContainer = document.getElementById(`${type}-info`);
     if (!container || !paginationContainer || !infoContainer) return;
 
+    const sort = localStorage.getItem(`${type}_sort`) || 'name';
+    const order = localStorage.getItem(`${type}_order`) || 'asc';
+
     // Show a loading state
     if (type === 'services') {
          container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></div>';
@@ -433,7 +436,7 @@ function loadPaginatedData(type, page = 1, limit = 10, preserveScroll = false, e
         container.innerHTML = `<tr><td colspan="${colspan}" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>`;
     }
 
-    let fetchUrl = `${basePath}/api/data?type=${type}&page=${page}&limit=${limit}&search=${encodeURIComponent(searchTerm)}`;
+    let fetchUrl = `${basePath}/api/data?type=${type}&page=${page}&limit=${limit}&search=${encodeURIComponent(searchTerm)}&sort=${sort}&order=${order}`;
 
     if (type === 'routers') {
         const groupFilter = document.getElementById('router-group-filter');
@@ -511,6 +514,17 @@ function loadPaginatedData(type, page = 1, limit = 10, preserveScroll = false, e
             // Save state to localStorage
             localStorage.setItem(`${type}_page`, data.current_page);
             localStorage.setItem(`${type}_limit`, data.limit);
+
+            // Update sort indicators in header
+            const tableHeader = container.closest('table')?.querySelector('thead');
+            if (tableHeader) {
+                tableHeader.querySelectorAll('th.sortable').forEach(th => {
+                    th.classList.remove('asc', 'desc');
+                    if (th.dataset.sort === sort) {
+                        th.classList.add(order);
+                    }
+                });
+            }
 
             if (preserveScroll) {
                 window.scrollTo(0, scrollY);
@@ -621,6 +635,22 @@ function initializePageSpecificScripts() {
     // Initial check on page load to disable if not collapsed
     manageSidebarTooltips();
 
+    // --- Live Clock in Navbar ---
+    const clockElement = document.getElementById('live-clock');
+    if (clockElement && !clockElement.dataset.initialized) {
+        clockElement.dataset.initialized = 'true'; // Prevent multiple intervals
+        const updateClock = () => {
+            const now = new Date();
+            // Format: DD/MM/YYYY, HH:MM:SS
+            const timeString = now.toLocaleTimeString('id-ID', { hour12: false });
+            const dateString = now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            // The 'id-ID' locale might use dots for time separators, replace them with colons.
+            clockElement.textContent = `${dateString}, ${timeString.replace(/\./g, ':')}`;
+        };
+        updateClock(); // Initial call
+        setInterval(updateClock, 1000); // Update every second
+    }
+
     // --- Dashboard Widgets Logic ---
     function loadDashboardWidgets() {
         const widgets = [
@@ -649,7 +679,11 @@ function initializePageSpecificScripts() {
         // If on dashboard, also run the git status check
         checkGitSyncStatus();
 
-        fetch(`${basePath}/api/dashboard-stats`)
+        // Show loading state for the table
+        const perHostContainer = document.getElementById('per-host-stats-container');
+        if (perHostContainer) perHostContainer.classList.add('table-loading');
+
+        return fetch(`${basePath}/api/dashboard-stats`)
             .then(response => response.json())
             .then(result => {
                 if (result.status === 'success') {
@@ -680,7 +714,7 @@ function initializePageSpecificScripts() {
                     }
 
                     if (data.per_host_stats) {
-                        const container = document.getElementById('per-host-stats-container');
+                        const container = perHostContainer;
                         if (container) {
                             let html = '';
                             data.per_host_stats.forEach(host => {
@@ -697,11 +731,12 @@ function initializePageSpecificScripts() {
 
                                 html += `
                                     <tr>
-                                        <td><a href="${basePath}/hosts/${host.id}/details">${host.name}</a></td>
-                                        <td>${statusBadge}</td>
-                                        <td>${containers}</td>
-                                        <td>${totalCpus}</td>
-                                        <td>${totalMemory}</td>
+                                        <td data-sort-key="name" data-sort-value="${host.name.toLowerCase()}"><a href="${basePath}/hosts/${host.id}/details">${host.name}</a></td>
+                                        <td data-sort-key="status" data-sort-value="${host.status}">${statusBadge}</td>
+                                        <td data-sort-key="running_containers" data-sort-value="${host.running_containers}">${containers}</td>
+                                        <td data-sort-key="cpus" data-sort-value="${host.cpus}">${totalCpus}</td>
+                                        <td data-sort-key="memory" data-sort-value="${host.memory}">${totalMemory}</td>
+                                        <td data-sort-key="uptime_timestamp" data-sort-value="${host.uptime_timestamp || 0}">${host.uptime || 'N/A'}</td>
                                         <td>${dockerVersion}</td>
                                         <td>${os}</td>
                                         <td class="text-end">
@@ -721,10 +756,83 @@ function initializePageSpecificScripts() {
                     const el = document.getElementById(id);
                     if (el) el.textContent = 'Error';
                 });
+            })
+            .finally(() => {
+                if (perHostContainer) perHostContainer.classList.remove('table-loading');
             });
     }
 
     loadDashboardWidgets();
+
+    // --- Refresh Button Logic ---
+    const refreshBtn = document.getElementById('refresh-host-stats-btn');
+    if (refreshBtn && !refreshBtn.dataset.listenerAttached) {
+        refreshBtn.dataset.listenerAttached = 'true'; // Prevent multiple listeners on SPA nav
+        refreshBtn.addEventListener('click', function() {
+            const originalContent = this.innerHTML;
+            this.disabled = true;
+            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing...`;
+
+            loadDashboardWidgets().finally(() => {
+                this.disabled = false;
+                this.innerHTML = originalContent;
+            });
+        });
+    }
+
+    // --- Table Sorting Logic ---
+    const perHostTable = document.querySelector('#per-host-stats-container')?.closest('table');
+    if (perHostTable && !perHostTable.dataset.sortListenerAttached) {
+        perHostTable.dataset.sortListenerAttached = 'true'; // Prevent re-attaching on SPA nav
+        perHostTable.querySelectorAll('thead th.sortable').forEach(headerCell => {
+            headerCell.addEventListener('click', () => {
+                const tableBody = perHostTable.querySelector('tbody');
+                const columnKey = headerCell.dataset.sort;
+                const defaultOrder = headerCell.dataset.sortDefault || 'asc';
+                const isAsc = headerCell.classList.contains('asc');
+                const isDesc = headerCell.classList.contains('desc');
+                let newOrder;
+
+                if (isAsc) newOrder = 'desc';
+                else if (isDesc) newOrder = 'asc';
+                else newOrder = defaultOrder;
+
+                // Remove sorting classes from all headers
+                perHostTable.querySelectorAll('thead th.sortable').forEach(th => {
+                    th.classList.remove('asc', 'desc');
+                });
+
+                // Add class to the clicked header
+                headerCell.classList.add(newOrder);
+
+                // Sort the rows
+                Array.from(tableBody.querySelectorAll('tr'))
+                    .sort((a, b) => {
+                        const colIndex = Array.from(headerCell.parentNode.children).indexOf(headerCell);
+                        const cellA = a.querySelector(`td[data-sort-key="${columnKey}"]`) || a.children[colIndex];
+                        const cellB = b.querySelector(`td[data-sort-key="${columnKey}"]`) || b.children[colIndex];
+
+                        const valA = cellA.dataset.sortValue !== undefined ? cellA.dataset.sortValue : cellA.textContent.trim();
+                        const valB = cellB.dataset.sortValue !== undefined ? cellB.dataset.sortValue : cellB.textContent.trim();
+                        
+                        if (valA === 'N/A' || valA === null) return 1;
+                        if (valB === 'N/A' || valB === null) return -1;
+
+                        const isNumeric = !isNaN(parseFloat(valA)) && isFinite(valA) && !isNaN(parseFloat(valB)) && isFinite(valB);
+
+                        let comparison = 0;
+                        if (isNumeric) {
+                            comparison = parseFloat(valA) - parseFloat(valB);
+                        } else {
+                            comparison = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+                        }
+
+                        return newOrder === 'asc' ? comparison : -comparison;
+                    })
+                    .forEach(row => tableBody.appendChild(row));
+            });
+        });
+    }
 
     // --- Initial Data Load ---
     if (document.getElementById('routers-container')) {
@@ -799,6 +907,18 @@ function initializePageSpecificScripts() {
         loadPaginatedData('hosts', initialHostPage, initialHostLimit);
     }
 
+    if (document.getElementById('traefik-hosts-container')) {
+        const initialPage = localStorage.getItem('traefik-hosts_page') || 1;
+        const initialLimit = localStorage.getItem('traefik-hosts_limit') || 10;
+        loadPaginatedData('traefik-hosts', initialPage, initialLimit);
+    }
+
+    if (document.getElementById('traefik-hosts-container')) {
+        const initialPage = localStorage.getItem('traefik-hosts_page') || 1;
+        const initialLimit = localStorage.getItem('traefik-hosts_limit') || 10;
+        loadPaginatedData('traefik-hosts', initialPage, initialLimit);
+    }
+
     // --- Health Check Page Logic ---
     if (document.getElementById('health-check-results')) {
         runHealthChecks();
@@ -867,6 +987,108 @@ function initializePageSpecificScripts() {
         setInterval(updateServiceStatus, 15000); // Refresh every 15 seconds
     }
 
+    // --- Bulk Actions for Routers ---
+    const routerTableBody = document.querySelector('#routers-container');
+    if (routerTableBody) {
+        const selectAllRouters = document.getElementById('select-all-routers');
+        const bulkActionsDropdown = document.getElementById('router-bulk-actions-dropdown');
+        const selectedRouterCount = document.getElementById('selected-router-count');
+        const bulkDeleteRouterCount = document.getElementById('bulk-delete-router-count');
+        const confirmMoveBtn = document.getElementById('confirm-move-group-btn');
+        const confirmBulkDeleteBtn = document.getElementById('confirm-bulk-delete-btn');
+
+        const updateRouterBulkActionsVisibility = () => {
+            const checkedBoxes = routerTableBody.querySelectorAll('.router-checkbox:checked');
+            const count = checkedBoxes.length;
+            if (count > 0) {
+                bulkActionsDropdown.style.display = 'block';
+                if (selectedRouterCount) selectedRouterCount.textContent = count;
+                if (bulkDeleteRouterCount) bulkDeleteRouterCount.textContent = count;
+            } else {
+                bulkActionsDropdown.style.display = 'none';
+            }
+            if (selectAllRouters) {
+                const totalCheckboxes = routerTableBody.querySelectorAll('.router-checkbox').length;
+                selectAllRouters.checked = totalCheckboxes > 0 && count === totalCheckboxes;
+            }
+        };
+
+        // Use event delegation on the table body
+        routerTableBody.addEventListener('change', (e) => {
+            if (e.target.matches('.router-checkbox')) {
+                updateRouterBulkActionsVisibility();
+            }
+        });
+
+        if (selectAllRouters) {
+            selectAllRouters.addEventListener('change', function() {
+                const isChecked = this.checked;
+                routerTableBody.querySelectorAll('.router-checkbox').forEach(checkbox => {
+                    checkbox.checked = isChecked;
+                });
+                updateRouterBulkActionsVisibility();
+            });
+        }
+
+        // Handle "Move to Group" action
+        if (confirmMoveBtn) {
+            confirmMoveBtn.addEventListener('click', function() {
+                const targetGroupId = document.getElementById('target_group_id').value;
+                const checkedBoxes = Array.from(routerTableBody.querySelectorAll('.router-checkbox:checked'));
+                const routerIds = checkedBoxes.map(cb => cb.value);
+
+                if (routerIds.length === 0) {
+                    showToast('No routers selected.', false);
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('action', 'move');
+                formData.append('target_group_id', targetGroupId);
+                routerIds.forEach(id => formData.append('router_ids[]', id));
+
+                fetch(`${basePath}/api/routers/bulk-move`, { method: 'POST', body: formData })
+                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                    .then(({ ok, data }) => {
+                        showToast(data.message, ok);
+                        if (ok) {
+                            bootstrap.Modal.getInstance(document.getElementById('moveGroupModal')).hide();
+                            loadPaginatedData('routers', 1); // Refresh the table
+                        }
+                    })
+                    .catch(error => showToast(error.message, false));
+            });
+        }
+
+        // Handle "Bulk Delete" action
+        if (confirmBulkDeleteBtn) {
+            confirmBulkDeleteBtn.addEventListener('click', function() {
+                const checkedBoxes = Array.from(routerTableBody.querySelectorAll('.router-checkbox:checked'));
+                const routerIds = checkedBoxes.map(cb => cb.value);
+
+                if (routerIds.length === 0) {
+                    showToast('No routers selected.', false);
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('action', 'delete');
+                routerIds.forEach(id => formData.append('router_ids[]', id));
+
+                fetch(`${basePath}/api/routers/bulk-delete`, { method: 'POST', body: formData })
+                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                    .then(({ ok, data }) => {
+                        showToast(data.message, ok);
+                        if (ok) {
+                            bootstrap.Modal.getInstance(document.getElementById('bulkDeleteModal')).hide();
+                            loadPaginatedData('routers', 1); // Refresh the table
+                        }
+                    })
+                    .catch(error => showToast(error.message, false));
+            });
+        }
+    }
+
 // --- Preview Config Modal Logic ---
         const previewBtn = document.getElementById('preview-config-btn');
         if (previewBtn && !previewBtn.dataset.listenerAttached) {
@@ -882,11 +1104,22 @@ function initializePageSpecificScripts() {
                 previewModal.show();
     
                 linterContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><span class="ms-2">Running validator...</span></div>';
-                fetch(`${basePath}/api/configurations/preview`)
+
+                const groupFilter = document.getElementById('router-group-filter');
+                const groupId = groupFilter ? groupFilter.value : '';
+                const queryParams = new URLSearchParams({ ignore_host_filter: 'true' });
+                if (groupId) {
+                    queryParams.set('group_id', groupId);
+                }
+                const previewUrl = `${basePath}/api/configurations/preview?${queryParams.toString()}`;
+
+                fetch(previewUrl)
                     .then(response => {
                         if (!response.ok) {
                             return response.json().then(err => { throw new Error(err.message || 'Network response was not ok.') });
                         }
+                        deployFromPreviewBtn.disabled = false; // Re-enable for full preview
+                        deployFromPreviewBtn.title = ''; // Clear any disabled title
                         return response.json();
                     })
                     .then(data => {
@@ -922,32 +1155,67 @@ function initializePageSpecificScripts() {
                         deployFromPreviewBtn.disabled = true;
                     });
             });
-    
-            if (deployFromPreviewBtn && !deployFromPreviewBtn.dataset.listenerAttached) {
-                deployFromPreviewBtn.dataset.listenerAttached = 'true';
-                deployFromPreviewBtn.addEventListener('click', () => {
-                    if (confirm('Anda yakin ingin men-deploy konfigurasi ini? Tindakan ini akan menimpa file dynamic.yml yang aktif.')) {
-                        const originalButtonText = deployFromPreviewBtn.innerHTML;
-                        deployFromPreviewBtn.disabled = true;
-                        deployFromPreviewBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deploying...`;
-    
-                        fetch(`${basePath}/generate`, { method: 'GET', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                            .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                            .then(({ ok, data }) => {
-                                if (ok) {
-                                    previewModal.hide();
-                                    showToast(data.message, true);
-                                    if (document.getElementById('routers-container')) loadPaginatedData('routers', 1);
-                                } else { throw new Error(data.message || 'Deployment failed.'); }
-                            })
-                            .catch(error => showToast(error.message, false))
-                            .finally(() => {
-                                deployFromPreviewBtn.disabled = false;
-                                deployFromPreviewBtn.innerHTML = originalButtonText;
-                            });
-                    }
+        }
+
+        // --- Group-specific Preview Config Modal Logic ---
+        const groupsContainer = document.getElementById('groups-container');
+        if (groupsContainer) {
+            // Use event delegation on the container
+            groupsContainer.addEventListener('click', function(e) {
+                const previewGroupBtn = e.target.closest('.preview-group-config-btn');
+                if (!previewGroupBtn) return;
+
+                e.preventDefault();
+
+                const groupId = previewGroupBtn.dataset.groupId;
+                const groupName = previewGroupBtn.dataset.groupName;
+
+                const previewModalEl = document.getElementById('previewConfigModal');
+                const previewModal = bootstrap.Modal.getInstance(previewModalEl) || new bootstrap.Modal(previewModalEl);
+                const linterContainer = document.getElementById('linter-results-container');
+                const contentContainer = document.getElementById('preview-yaml-content-container');
+                const deployFromPreviewBtn = document.getElementById('deploy-from-preview-btn');
+                const modalLabel = document.getElementById('previewConfigModalLabel');
+
+                // Store the group ID on the modal for the deploy button to use
+                previewModalEl.dataset.groupId = groupId;
+
+                // Update modal title and show
+                modalLabel.textContent = `Preview Config for Group: ${groupName}`;
+                contentContainer.textContent = 'Loading...';
+                previewModal.show();
+
+                linterContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><span class="ms-2">Running validator...</span></div>';
+
+                // When previewing a group, we enable the deploy button.
+                // The deploy button will always deploy the FULL active host config, not just the group's config.
+                // This prevents deploying partial, invalid configurations.
+                deployFromPreviewBtn.disabled = false;
+                deployFromPreviewBtn.title = 'Deploy the full configuration for the active host.';
+
+                // The preview itself, however, should only show the content of the selected group.
+                // This is achieved by passing ignore_host_filter and group_id.
+                const queryParams = new URLSearchParams({
+                    ignore_host_filter: 'true',
+                    group_id: groupId
                 });
-            }
+                const previewUrl = `${basePath}/api/configurations/preview?${queryParams.toString()}`;
+
+                fetch(previewUrl)
+                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                    .then(({ ok, data }) => {
+                        if (!ok) throw new Error(data.message || 'Failed to generate preview.');
+                        linterContainer.innerHTML = ''; // Clear linter results
+
+                        contentContainer.textContent = data.content || 'No configuration generated for this group.';
+                        Prism.highlightElement(contentContainer);
+                    })
+                    .catch(error => {
+                        linterContainer.innerHTML = '';
+                        contentContainer.textContent = 'Error loading content: ' + error.message;
+                        deployFromPreviewBtn.disabled = true;
+                    });
+            });
         }
 
         // --- History Page Logic ---
@@ -1185,6 +1453,7 @@ function initializePageSpecificScripts() {
         const groupIdInput = document.getElementById('group-id');
         const groupNameInput = document.getElementById('group-name');
         const groupDescInput = document.getElementById('group-description');
+        const groupHostSelect = document.getElementById('group-traefik-host');
         const saveBtn = document.getElementById('save-group-btn');
 
         groupModal.addEventListener('show.bs.modal', function (event) {
@@ -1200,11 +1469,13 @@ function initializePageSpecificScripts() {
                 const groupId = button.dataset.id;
                 const groupName = button.dataset.name;
                 const groupDesc = button.dataset.description;
+                const hostId = button.dataset.traefik_host_id || '';
                 modalTitle.textContent = `Edit Group: ${groupName}`;
                 form.action = `${basePath}/groups/${groupId}/edit`;
                 groupIdInput.value = groupId;
                 groupNameInput.value = groupName;
                 groupDescInput.value = groupDesc;
+                groupHostSelect.value = hostId;
             }
         });
 
@@ -1257,5 +1528,64 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.pageInit && typeof window.pageInit === 'function') {
         window.pageInit();
         delete window.pageInit;
+    }
+
+    // --- Traefik Host Management Modal Logic (Moved to Global Scope) ---
+    const traefikHostModal = document.getElementById('traefikHostModal');
+    if (traefikHostModal && !traefikHostModal.dataset.listenerAttached) {
+        traefikHostModal.dataset.listenerAttached = 'true';
+        const form = document.getElementById('traefik-host-form');
+        const modalTitle = document.getElementById('traefikHostModalLabel');
+        const hostIdInput = document.getElementById('traefik-host-id');
+        const hostNameInput = document.getElementById('traefik-host-name');
+        const hostDescInput = document.getElementById('traefik-host-description');
+        const saveBtn = document.getElementById('save-traefik-host-btn');
+
+        traefikHostModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const action = button.dataset.action || 'edit';
+
+            if (action === 'add') {
+                modalTitle.textContent = 'Add New Traefik Host';
+                form.action = `${basePath}/traefik-hosts/new`;
+                form.reset();
+                hostIdInput.value = '';
+            } else { // edit
+                const hostId = button.dataset.id;
+                const hostName = button.dataset.name;
+                const hostDesc = button.dataset.description;
+                modalTitle.textContent = `Edit Traefik Host: ${hostName}`;
+                form.action = `${basePath}/traefik-hosts/${hostId}/edit`;
+                hostIdInput.value = hostId;
+                hostNameInput.value = hostName;
+                hostDescInput.value = hostDesc;
+            }
+        });
+
+        saveBtn.addEventListener('click', function() {
+            const formData = new FormData(form);
+            const url = form.action;
+            const originalButtonText = saveBtn.innerHTML;
+
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...`;
+
+            fetch(url, { method: 'POST', body: formData })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    showToast(data.message, ok);
+                    if (ok) {
+                        bootstrap.Modal.getInstance(traefikHostModal).hide();
+                        if (document.getElementById('traefik-hosts-container')) {
+                            loadPaginatedData('traefik-hosts', 1, localStorage.getItem('traefik-hosts_limit') || 10);
+                        }
+                    } else { throw new Error(data.message || 'An unknown error occurred.'); }
+                })
+                .catch(error => showToast(error.message, false))
+                .finally(() => {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = 'Save Host';
+                });
+        });
     }
 });

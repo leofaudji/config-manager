@@ -5,6 +5,8 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 $conn = Database::getInstance()->getConnection();
 // Ambil daftar grup untuk filter dan modal
 $groups_result = $conn->query("SELECT id, name FROM `groups` ORDER BY name ASC");
+// Ambil daftar host Traefik untuk filter
+$traefik_hosts_result = $conn->query("SELECT id, name FROM `traefik_hosts` ORDER BY name ASC");
 require_once __DIR__ . '/../includes/header.php';
 ?>
 

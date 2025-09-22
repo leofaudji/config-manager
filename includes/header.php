@@ -53,35 +53,6 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
         </li>
 
         <?php if ($_SESSION['role'] === 'admin'): ?>
-            <li class="sidebar-header">Container</li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/hosts') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Hosts">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-hdd-network-fill icon-default"></i>
-                        <i class="bi bi-hdd-network-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Hosts</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/app-launcher') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="App Launcher">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-rocket-takeoff icon-default"></i>
-                        <i class="bi bi-rocket-takeoff-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">App Launcher</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/stack-changes') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Stack Changes">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-calendar-week icon-default"></i>
-                        <i class="bi bi-calendar-week-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Stack Changes</span>
-                </a>
-            </li>
-
             <li class="sidebar-header">Traefik</li>
             <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/routers') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Routers">
@@ -111,6 +82,24 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/groups') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Groups">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-collection-fill icon-default"></i>
+                        <i class="bi bi-collection-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Groups</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/traefik-hosts') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Traefik Hosts">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-server icon-default"></i>
+                        <i class="bi bi-server icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Traefik Hosts</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/templates') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Config Templates">
                     <span class="icon-wrapper">
                         <i class="bi bi-file-earmark-code-fill icon-default"></i>
@@ -129,16 +118,36 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
             </li>
 
-            <li class="sidebar-header">System</li>
+            <li class="sidebar-header">Container Management</li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/groups') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Groups">
+                <a class="nav-link" href="<?= base_url('/hosts') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Hosts">
                     <span class="icon-wrapper">
-                        <i class="bi bi-collection-fill icon-default"></i>
-                        <i class="bi bi-collection-fill icon-active"></i>
+                        <i class="bi bi-hdd-network-fill icon-default"></i>
+                        <i class="bi bi-hdd-network-fill icon-active"></i>
                     </span>
-                    <span class="nav-link-text">Groups</span>
+                    <span class="nav-link-text">Hosts</span>
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/app-launcher') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="App Launcher">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-rocket-takeoff icon-default"></i>
+                        <i class="bi bi-rocket-takeoff-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">App Launcher</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/stack-changes') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Stack Changes">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-calendar-week icon-default"></i>
+                        <i class="bi bi-calendar-week-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Stack Changes</span>
+                </a>
+            </li>
+
+            <li class="sidebar-header">System</li>
             <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/users') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Users">
                     <span class="icon-wrapper">

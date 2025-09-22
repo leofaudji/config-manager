@@ -1,11 +1,13 @@
 <?php
-// Router sudah menangani otentikasi dan otorisasi.
 require_once __DIR__ . '/../includes/bootstrap.php';
+$conn = Database::getInstance()->getConnection();
+// Ambil daftar host Traefik untuk dropdown di modal
+$traefik_hosts_result = $conn->query("SELECT id, name FROM `traefik_hosts` ORDER BY name ASC");
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">Groups</h1>
+    <h1 class="h2"><i class="bi bi-collection-fill"></i> Groups</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#groupModal" data-action="add">
             <i class="bi bi-plus-circle"></i> Add New Group
@@ -19,10 +21,11 @@ require_once __DIR__ . '/../includes/header.php';
             <table class="table table-striped table-sm table-hover">
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Name</th>
+                        <th class="sortable" data-sort="id">ID</th>
+                        <th class="sortable asc" data-sort="name">Name</th>
+                        <th class="sortable" data-sort="traefik_host_name">Traefik Host</th>
                         <th>Description</th>
-                        <th>Created At</th>
+                        <th class="sortable" data-sort="created_at">Created At</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -63,6 +66,17 @@ require_once __DIR__ . '/../includes/header.php';
                 <input type="text" class="form-control" id="group-name" name="name" required>
             </div>
             <div class="mb-3">
+                <label for="group-traefik-host" class="form-label">Traefik Host (Optional)</label>
+                <select class="form-select" id="group-traefik-host" name="traefik_host_id">
+                    <option value="">-- Global (No Host) --</option>
+                    <?php mysqli_data_seek($traefik_hosts_result, 0); ?>
+                    <?php while($host = $traefik_hosts_result->fetch_assoc()): ?>
+                        <option value="<?= $host['id'] ?>"><?= htmlspecialchars($host['name']) ?></option>
+                    <?php endwhile; ?>
+                </select>
+                <small class="form-text text-muted">Assign this group to a specific Traefik Host. Items in this group will only be generated when that host is active.</small>
+            </div>
+            <div class="mb-3">
                 <label for="group-description" class="form-label">Description</label>
                 <textarea class="form-control" id="group-description" name="description" rows="3"></textarea>
             </div>
@@ -77,5 +91,6 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <?php
+$conn->close();
 require_once __DIR__ . '/../includes/footer.php';
 ?>

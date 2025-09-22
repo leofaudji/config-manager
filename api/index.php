@@ -136,6 +136,9 @@ $router->post('/servers/{id}/delete', 'api/server_handler.php', ['auth', 'admin'
 $router->post('/groups/new', 'api/group_handler.php', ['auth', 'admin']);
 $router->post('/groups/{id}/edit', 'api/group_handler.php', ['auth', 'admin']);
 $router->post('/groups/{id}/delete', 'api/group_handler.php', ['auth', 'admin']);
+$router->post('/groups/new', 'api/group_handler.php', ['auth', 'admin']);
+$router->post('/groups/{id}/edit', 'api/group_handler.php', ['auth', 'admin']);
+$router->post('/groups/{id}/delete', 'api/group_handler.php', ['auth', 'admin']);
 $router->post('/middlewares/new', 'api/middleware_handler.php', ['auth', 'admin']);
 $router->post('/middlewares/{id}/edit', 'api/middleware_handler.php', ['auth', 'admin']);
 $router->post('/middlewares/{id}/delete', 'api/middleware_handler.php', ['auth', 'admin']);

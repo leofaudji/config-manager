@@ -58,8 +58,10 @@ function runConfigurationLinter(mysqli $conn): array
 
 try {
     $conn = Database::getInstance()->getConnection();
+    $group_id_filter = isset($_GET['group_id']) ? (int)$_GET['group_id'] : 0;
+    $ignore_host_filter = isset($_GET['ignore_host_filter']) && $_GET['ignore_host_filter'] === 'true';
     $generator = new YamlGenerator();
-    $yaml_output = $generator->generate();
+    $yaml_output = $generator->generate($group_id_filter, $ignore_host_filter);
     $linter_results = runConfigurationLinter($conn);
 
     echo json_encode(['status' => 'success', 'content' => $yaml_output, 'linter' => $linter_results]);

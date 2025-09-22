@@ -173,18 +173,24 @@ require_once 'includes/header.php';
 </div>
 
 <hr>
-<h4 class="mb-3">Per-Host Details</h4>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Per-Host Details</h4>
+    <button class="btn btn-sm btn-outline-secondary" id="refresh-host-stats-btn" title="Refresh host data">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+</div>
 <div class="card">
     <div class="card-body">
         <div class="table-responsive">
             <table class="table table-striped table-sm table-hover">
                 <thead>
                     <tr>
-                        <th>Host</th>
-                        <th>Status</th>
-                        <th>Containers</th>
-                        <th>Total CPUs</th>
-                        <th>Total Memory</th>
+                        <th class="sortable" data-sort="name">Host</th>
+                        <th class="sortable" data-sort="status">Status</th>
+                        <th class="sortable" data-sort="running_containers">Containers</th>
+                        <th class="sortable" data-sort="cpus">Total CPUs</th>
+                        <th class="sortable" data-sort="memory">Total Memory</th>
+                        <th class="sortable" data-sort="uptime_timestamp" data-sort-default="asc">Uptime</th>
                         <th>Docker Version</th>
                         <th>OS</th>
                         <th class="text-end">Actions</th>
@@ -192,7 +198,7 @@ require_once 'includes/header.php';
                 </thead>
                 <tbody id="per-host-stats-container">
                     <tr>
-                        <td colspan="8" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td>
+                        <td colspan="9" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td>
                     </tr>
                 </tbody>
             </table>

@@ -410,20 +410,34 @@ $conn->close();
 // In a larger refactor, this should be moved to a shared helper/class.
 function buildComposeArrayFromPost(array $postData): array {
     $compose = ['version' => '3.8', 'services' => [], 'networks' => []];
+    $is_swarm_manager = $postData['is_swarm_manager'] ?? false; // Pass this info to the function
+
     if (isset($postData['services']) && is_array($postData['services'])) {
         foreach ($postData['services'] as $serviceData) {
             $serviceName = $serviceData['name'];
             if (empty($serviceName)) continue;
             $compose['services'][$serviceName] = ['image' => $serviceData['image'] ?? 'alpine:latest'];
-            if (!empty($serviceData['deploy']['replicas']) || !empty($serviceData['deploy']['resources']['limits']['cpus']) || !empty($serviceData['deploy']['resources']['limits']['memory'])) {
-                $compose['services'][$serviceName]['deploy'] = [];
-                if (!empty($serviceData['deploy']['replicas'])) $compose['services'][$serviceName]['deploy']['replicas'] = (int)$serviceData['deploy']['replicas'];
-                if (!empty($serviceData['deploy']['resources']['limits']['cpus']) || !empty($serviceData['deploy']['resources']['limits']['memory'])) {
-                    $compose['services'][$serviceName]['deploy']['resources']['limits'] = [];
-                    if (!empty($serviceData['deploy']['resources']['limits']['cpus'])) $compose['services'][$serviceName]['deploy']['resources']['limits']['cpus'] = $serviceData['deploy']['resources']['limits']['cpus'];
-                    if (!empty($serviceData['deploy']['resources']['limits']['memory'])) $compose['services'][$serviceName]['deploy']['resources']['limits']['memory'] = $serviceData['deploy']['resources']['limits']['memory'];
+
+            $replicas = $serviceData['deploy']['replicas'] ?? null;
+            $cpus = $serviceData['deploy']['resources']['limits']['cpus'] ?? null;
+            $memory = $serviceData['deploy']['resources']['limits']['memory'] ?? null;
+
+            if ($is_swarm_manager) {
+                if ($replicas || $cpus || $memory) {
+                    $compose['services'][$serviceName]['deploy'] = [];
+                    if ($replicas) $compose['services'][$serviceName]['deploy']['replicas'] = (int)$replicas;
+                    if ($cpus || $memory) {
+                        $compose['services'][$serviceName]['deploy']['resources']['limits'] = [];
+                        if ($cpus) $compose['services'][$serviceName]['deploy']['resources']['limits']['cpus'] = $cpus;
+                        if ($memory) $compose['services'][$serviceName]['deploy']['resources']['limits']['memory'] = $memory;
+                    }
                 }
+            } else { // Standalone Host
+                $compose['services'][$serviceName]['restart'] = 'unless-stopped';
+                if ($cpus) $compose['services'][$serviceName]['cpus'] = $cpus;
+                if ($memory) $compose['services'][$serviceName]['mem_limit'] = $memory;
             }
+
             foreach (['ports', 'environment', 'volumes', 'networks', 'depends_on'] as $key) {
                 if (!empty($serviceData[$key]) && is_array($serviceData[$key])) $compose['services'][$serviceName][$key] = array_values(array_filter($serviceData[$key]));
             }
@@ -432,9 +446,14 @@ function buildComposeArrayFromPost(array $postData): array {
     if (isset($postData['networks']) && is_array($postData['networks'])) {
         foreach ($postData['networks'] as $networkData) {
             $networkName = $networkData['name'];
-            if (empty($networkName)) continue;
-            $compose['networks'][$networkName] = null;
+            if (!empty($networkName)) {
+                // Correctly create a map, not a list of maps
+                $compose['networks'][$networkName] = new stdClass(); // Use an empty object for correct YAML output
+            }
         }
+    }
+    if (empty($compose['networks'])) {
+        unset($compose['networks']);
     }
     return $compose;
 }

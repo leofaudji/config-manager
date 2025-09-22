@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once 'includes/bootstrap.php';
+require_once 'includes/DockerClient.php';
 // Sesi dan otentikasi/otorisasi sudah ditangani oleh Router.
 
 header('Content-Type: application/json');
@@ -16,6 +17,8 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $search = $_GET['search'] ?? '';
 $group_id = $_GET['group_id'] ?? '';
 $show_archived = isset($_GET['show_archived']) && $_GET['show_archived'] === 'true';
+$sort = $_GET['sort'] ?? 'name';
+$order = $_GET['order'] ?? 'asc';
 $offset = ($page - 1) * $limit;
 
 $response = [
@@ -62,8 +65,7 @@ if ($type === 'routers') {
     $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
 
     // Get data
-    $sql = "SELECT r.*, g.name as group_name, 
-                   GROUP_CONCAT(m.name ORDER BY rm.priority) as middleware_names,
+    $sql = "SELECT r.*, g.name as group_name, GROUP_CONCAT(m.name ORDER BY rm.priority) as middleware_names,
                    GROUP_CONCAT(m.config_json SEPARATOR '|||') as middleware_configs
             FROM routers r 
             LEFT JOIN `groups` g ON r.group_id = g.id
@@ -539,9 +541,39 @@ elseif ($type === 'hosts') {
 
     $html = '';
     while ($host = $result->fetch_assoc()) {
+        $uptime_status = 'N/A';
+        $connection_status_badge = '<span class="badge bg-secondary">Unknown</span>';
+
+        try {
+            $dockerClient = new DockerClient($host);
+            $containers = $dockerClient->listContainers();
+            $connection_status_badge = '<span class="badge bg-success">Reachable</span>';
+
+            $oldest_container_creation = PHP_INT_MAX;
+            $oldest_container = null;
+            $running_containers_list = array_filter($containers, fn($c) => $c['State'] === 'running');
+
+            if (!empty($running_containers_list)) {
+                foreach ($running_containers_list as $container) {
+                    if ($container['Created'] < $oldest_container_creation) {
+                        $oldest_container_creation = $container['Created'];
+                        $oldest_container = $container;
+                    }
+                }
+                if ($oldest_container) {
+                    $uptime_status = $oldest_container['Status'];
+                }
+            }
+        } catch (Exception $e) {
+            $uptime_status = 'Error';
+            $connection_status_badge = '<span class="badge bg-danger" title="' . htmlspecialchars($e->getMessage()) . '">Unreachable</span>';
+        }
+
         $html .= '<tr>';
         $html .= '<td><a href="' . base_url('/hosts/' . $host['id'] . '/details') . '">' . htmlspecialchars($host['name']) . '</a></td>';
         $html .= '<td><code>' . htmlspecialchars($host['docker_api_url']) . '</code></td>';
+        $html .= '<td>' . $connection_status_badge . '</td>';
+        $html .= '<td>' . $uptime_status . '</td>';
         
         $tls_badge = $host['tls_enabled'] 
             ? '<span class="badge bg-success">Enabled</span>' 
@@ -562,6 +594,98 @@ elseif ($type === 'hosts') {
     $response['html'] = $html;
     $response['total_pages'] = $total_pages;
     $response['info'] = "Showing <strong>{$result->num_rows}</strong> of <strong>{$total_items}</strong> hosts.";
+}
+elseif ($type === 'traefik-hosts') {
+    // Get total count
+    $total_items = $conn->query("SELECT COUNT(*) as count FROM `traefik_hosts`")->fetch_assoc()['count'];
+    $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
+
+    // Get data
+    $stmt = $conn->prepare("SELECT * FROM `traefik_hosts` ORDER BY name ASC LIMIT ? OFFSET ?");
+    $stmt->bind_param("ii", $limit, $offset);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $html = '';
+    while ($host = $result->fetch_assoc()) {
+        $html .= '<tr>';
+        $html .= '<td>' . $host['id'] . '</td>';
+        $html .= '<td>' . htmlspecialchars($host['name']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($host['description'] ?? '') . '</td>';
+        $html .= '<td>' . $host['created_at'] . '</td>';
+        $html .= '<td class="text-end">';
+        if ($host['id'] != 1) { // Don't allow editing/deleting the default Global host
+            $html .= '<button class="btn btn-sm btn-outline-warning edit-traefik-host-btn" 
+                            data-bs-toggle="modal" 
+                            data-bs-target="#traefikHostModal" 
+                            data-id="' . $host['id'] . '" 
+                            data-name="' . htmlspecialchars($host['name']) . '"
+                            data-description="' . htmlspecialchars($host['description'] ?? '') . '"
+                            title="Edit Host"><i class="bi bi-pencil-square"></i></button> ';
+            $html .= '<button class="btn btn-sm btn-outline-danger delete-btn" data-id="' . $host['id'] . '" data-url="' . base_url('/traefik-hosts/' . $host['id'] . '/delete') . '" data-type="traefik-hosts" data-confirm-message="Are you sure you want to delete Traefik host \'' . htmlspecialchars($host['name']) . '\'?"><i class="bi bi-trash"></i></button>';
+        }
+        $html .= '</td></tr>';
+    }
+
+    $response['html'] = $html;
+    $response['total_pages'] = $total_pages;
+    $response['info'] = "Showing <strong>{$result->num_rows}</strong> of <strong>{$total_items}</strong> Traefik hosts.";
+}
+elseif ($type === 'groups') {
+    // Get total count
+    $total_items = $conn->query("SELECT COUNT(*) as count FROM `groups`")->fetch_assoc()['count'];
+    $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
+
+    // Get data
+    $stmt = $conn->prepare("
+        SELECT g.*, th.name as traefik_host_name 
+        FROM `groups` g 
+        LEFT JOIN `traefik_hosts` th ON g.traefik_host_id = th.id 
+        ORDER BY g.name ASC LIMIT ? OFFSET ?
+    ");
+    $stmt->bind_param("ii", $limit, $offset);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    $html = '';
+    while ($group = $result->fetch_assoc()) {
+        $hosts_html = '';
+        if (!empty($group['traefik_host_name'])) {
+            $hosts_html = '<span class="badge bg-dark me-1">' . htmlspecialchars($group['traefik_host_name']) . '</span>';
+        } else {
+            $hosts_html = '<span class="badge bg-secondary">Global</span>';
+        }
+
+        $html .= '<tr>';
+        $html .= '<td>' . $group['id'] . '</td>';
+        $html .= '<td>' . htmlspecialchars($group['name']) . '</td>';
+        $html .= '<td>' . $hosts_html . '</td>';
+        $html .= '<td>' . htmlspecialchars($group['description'] ?? '') . '</td>';
+        $html .= '<td>' . $group['created_at'] . '</td>';
+        $html .= '<td class="text-end">';
+        if ($group['id'] != 1) { // Don't allow editing/deleting the default General group
+            $html .= '<button class="btn btn-sm btn-outline-info preview-group-config-btn" 
+                            data-bs-toggle="modal" 
+                            data-bs-target="#previewConfigModal" 
+                            data-group-id="' . $group['id'] . '" 
+                            data-group-name="' . htmlspecialchars($group['name']) . '"
+                            title="Preview Config for this Group"><i class="bi bi-eye"></i></button> ';
+            $html .= '<button class="btn btn-sm btn-outline-warning edit-group-btn"
+                            data-bs-toggle="modal" 
+                            data-bs-target="#groupModal" 
+                            data-id="' . $group['id'] . '" 
+                            data-name="' . htmlspecialchars($group['name']) . '"
+                            data-description="' . htmlspecialchars($group['description'] ?? '') . '"
+                            data-traefik_host_id="' . ($group['traefik_host_id'] ?? '') . '"
+                            title="Edit Group"><i class="bi bi-pencil-square"></i></button> ';
+            $html .= '<button class="btn btn-sm btn-outline-danger delete-btn" data-id="' . $group['id'] . '" data-url="' . base_url('/groups/' . $group['id'] . '/delete') . '" data-type="groups" data-confirm-message="Are you sure you want to delete group \'' . htmlspecialchars($group['name']) . '\'?"><i class="bi bi-trash"></i></button>';
+        }
+        $html .= '</td></tr>';
+    }
+
+    $response['html'] = $html;
+    $response['total_pages'] = $total_pages;
+    $response['info'] = "Showing <strong>{$result->num_rows}</strong> of <strong>{$total_items}</strong> groups.";
 }
 
 $conn->close();

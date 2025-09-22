@@ -10,6 +10,7 @@ while ($row = $settings_result->fetch_assoc()) {
 }
 
 // Ambil daftar grup untuk dropdown
+$traefik_hosts_result = $conn->query("SELECT id, name FROM traefik_hosts ORDER BY name ASC");
 $groups_result = $conn->query("SELECT id, name FROM `groups` ORDER BY name ASC");
 // Ambil daftar middleware untuk dropdown
 $middlewares_result = $conn->query("SELECT id, name FROM middlewares ORDER BY name ASC");
@@ -78,6 +79,27 @@ require_once __DIR__ . '/../includes/header.php';
             <hr>
             <h5 class="mb-3">Deployment Settings</h5>
             <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="yaml_output_path" class="form-label">Traefik Dynamic Config Base Path</label>
+                        <input type="text" class="form-control" id="yaml_output_path" name="yaml_output_path" value="<?= htmlspecialchars($settings['yaml_output_path'] ?? '/var/www/html/config-manager/traefik-configs') ?>">
+                        <small class="form-text text-muted">Base path to store generated `dynamic.yml` files. A subdirectory will be created for each Traefik Host.</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="active_traefik_host_id" class="form-label">Active Traefik Host</label>
+                        <select class="form-select" id="active_traefik_host_id" name="active_traefik_host_id">
+                            <?php mysqli_data_seek($traefik_hosts_result, 0); ?>
+                            <?php while($host = $traefik_hosts_result->fetch_assoc()): ?>
+                                <option value="<?= htmlspecialchars($host['id']) ?>" <?= ($settings['active_traefik_host_id'] ?? 0) == $host['id'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($host['name']) ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                        <small class="form-text text-muted">Select the host whose configuration will be generated. Routers/Services in groups not assigned to a specific host will always be included.</small>
+                    </div>
+                </div>
                 <div class="col-md-6">
                     <div class="mb-3">
                         <label for="default_compose_path" class="form-label">Default Standalone Compose Path</label>
