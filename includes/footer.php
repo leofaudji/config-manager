@@ -181,6 +181,24 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
   </div>
 </div>
 
+<!-- Cron Log Modal -->
+<div class="modal fade" id="cronLogModal" tabindex="-1" aria-labelledby="cronLogModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="cronLogModalLabel">Cron Job Log</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body bg-dark text-light font-monospace">
+        <pre id="cron-log-content">Loading log...</pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Preview Config Modal -->
 <div class="modal fade" id="previewConfigModal" tabindex="-1" aria-labelledby="previewConfigModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">

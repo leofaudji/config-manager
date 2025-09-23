@@ -185,6 +185,15 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/cron-jobs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Cron Job Management">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-clock-history icon-default"></i>
+                        <i class="bi bi-clock-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Cron Jobs</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/stats') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Statistics">
                     <span class="icon-wrapper">
                         <i class="bi bi-bar-chart-line-fill icon-default"></i>

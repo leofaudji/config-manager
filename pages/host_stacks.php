@@ -56,7 +56,8 @@ require_once __DIR__ . '/../includes/host_nav.php';
                         <th><input class="form-check-input" type="checkbox" id="select-all-stacks" title="Select all stacks"></th>
                         <th class="sortable asc" data-sort="Name">Name</th>
                         <th class="sortable" data-sort="SourceType">Source</th>
-                        <th class="sortable" data-sort="Services">Services</th>
+                        <th class="sortable" data-sort="RunningServices">Status</th>
+                        <th class="sortable" data-sort="ThresholdUp">Autoscaling</th>
                         <th class="sortable" data-sort="CreatedAt">Created At</th>
                         <th class="text-end">Actions</th>
                     </tr>
@@ -127,7 +128,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
     function loadStacks(page = 1, limit = 10) {
         currentPage = parseInt(page) || 1;
         currentLimit = parseInt(limit) || 10;
-        stacksContainer.innerHTML = '<tr><td colspan="6" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+        stacksContainer.innerHTML = '<tr><td colspan="7" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
 
         const searchTerm = searchInput.value.trim();
         fetch(`${basePath}/api/hosts/${hostId}/stacks?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${limit}&sort=${currentSort}&order=${currentOrder}`)
@@ -139,12 +140,44 @@ require_once __DIR__ . '/../includes/host_nav.php';
                 let html = '';
                 if (result.data && result.data.length > 0) {
                     result.data.forEach(stack => {
+                        let statusHtml = '';
+                        if (isSwarmManager) {
+                            const running = stack.RunningServices || 0;
+                            const desired = stack.DesiredServices || 0;
+                            let statusClass = 'text-danger';
+                            if (running === desired && desired > 0) {
+                                statusClass = 'text-success';
+                            } else if (running > 0) {
+                                statusClass = 'text-warning';
+                            }
+                            statusHtml = `<span class="fw-bold ${statusClass}">${running}/${desired}</span> Running`;
+                        } else { // Standalone
+                            const running = stack.RunningServices || 0;
+                            const stopped = stack.StoppedServices || 0;
+                            let parts = [];
+                            if (running > 0) {
+                                parts.push(`<span class="text-success fw-bold">${running} Running</span>`);
+                            }
+                            if (stopped > 0) {
+                                parts.push(`<span class="text-danger fw-bold">${stopped} Stopped</span>`);
+                            }
+                            statusHtml = parts.length > 0 ? parts.join(' / ') : '<span class="text-muted">N/A</span>';
+                        }
+
+                        // Make the status clickable, linking to the filtered container view
+                        const containerLink = `${basePath}/hosts/${hostId}/containers?search=${encodeURIComponent(stack.Name)}`;
+
+                        let autoscalingHtml = '<span class="text-muted">Disabled</span>';
+                        if (stack.AutoscalingEnabled) {
+                            autoscalingHtml = `<span class="text-success" title="Scale Up Threshold"><i class="bi bi-arrow-up-circle"></i> ${stack.ThresholdUp}%</span> / <span class="text-danger" title="Scale Down Threshold"><i class="bi bi-arrow-down-circle"></i> ${stack.ThresholdDown}%</span>`;
+                        }
+
                         const stackDbId = stack.DbId;
                         const sourceType = stack.SourceType;
                         let sourceHtml = '<span class="badge bg-secondary" data-bs-toggle="tooltip" title="Discovered on host (unmanaged)."><i class="bi bi-question-circle"></i> Unknown</span>';
 
                         if (sourceType === 'git') {
-                            sourceHtml = '<span class="badge bg-dark" data-bs-toggle="tooltip" title="Deployed from a Git repository."><i class="bi bi-github me-1"></i> Git</span>';
+                            sourceHtml = '<span class="badge bg-dark" data-bs-toggle="tooltip" title="Deployed from a Git repository."><i class="bi bi-git me-1"></i> Git</span>';
                         } else if (sourceType === 'image') {
                             sourceHtml = '<span class="badge bg-primary" data-bs-toggle="tooltip" title="Deployed from an existing image on the host."><i class="bi bi-hdd-stack-fill me-1"></i> Host Image</span>';
                         } else if (sourceType === 'hub') {
@@ -169,7 +202,8 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                     <td><input class="form-check-input stack-checkbox" type="checkbox" value="${stack.Name}"></td>
                                     <td><a href="#" class="view-stack-spec-btn" data-bs-toggle="modal" data-bs-target="#viewStackSpecModal" data-stack-name="${stack.Name}">${stack.Name}</a></td>
                                     <td>${sourceHtml}</td>
-                                    <td>${stack.Services}</td>
+                                    <td><a href="${containerLink}" class="text-decoration-none" title="View containers for this stack">${statusHtml}</a></td>
+                                    <td>${autoscalingHtml}</td>
                                     <td>${new Date(stack.CreatedAt).toLocaleString()}</td>
                                     <td class="text-end">
                                         <button class="btn btn-sm btn-outline-info view-stack-spec-btn" data-bs-toggle="modal" data-bs-target="#viewStackSpecModal" data-stack-name="${stack.Name}" title="View Spec"><i class="bi bi-eye"></i></button>
@@ -179,7 +213,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                  </tr>`;
                     });
                 } else {
-                    html = '<tr><td colspan="6" class="text-center">No stacks found on this host.</td></tr>';
+                    html = '<tr><td colspan="7" class="text-center">No stacks found on this host.</td></tr>';
                 }
                 stacksContainer.innerHTML = html;
                 // Re-initialize tooltips for the new content
@@ -213,7 +247,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                 });
 
             })
-            .catch(error => stacksContainer.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Failed to load stacks: ${error.message}</td></tr>`);
+            .catch(error => stacksContainer.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Failed to load stacks: ${error.message}</td></tr>`);
     }
 
     paginationContainer.addEventListener('click', function(e) {

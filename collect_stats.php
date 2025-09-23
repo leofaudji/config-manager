@@ -1,14 +1,15 @@
+#!/usr/bin/php
 <?php
 // This script is intended to be run from the command line via a cron job.
 // Example cron job (runs every 5 minutes):
-// */5 * * * * /usr/bin/php /path/to/your/project/scripts/collect_stats.php > /dev/null 2>&1
+// */5 * * * * /path/to/your/project/collect_stats.php > /dev/null 2>&1
 
 // Set a long execution time
 set_time_limit(300); // 5 minutes
 
 // Define PROJECT_ROOT if it's not already defined (when running from CLI)
 if (!defined('PROJECT_ROOT')) {
-    define('PROJECT_ROOT', dirname(__DIR__));
+    define('PROJECT_ROOT', __DIR__);
 }
 
 require_once PROJECT_ROOT . '/includes/bootstrap.php';

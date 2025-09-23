@@ -44,6 +44,7 @@ $router->get('/services', 'pages/service_management.php', ['auth', 'admin']);
 $router->get('/settings', 'pages/settings.php', ['auth', 'admin']);
 $router->get('/health-check', 'pages/health_check.php', ['auth', 'admin']);
 $router->get('/changelog', 'pages/changelog.php', ['auth']);
+$router->get('/cron-jobs', 'pages/cron_management.php', ['auth', 'admin']);
 $router->get('/templates', 'pages/template_management.php', ['auth', 'admin']);
 $router->get('/traefik-hosts', 'pages/traefik_host_management.php', ['auth', 'admin']);
 $router->get('/app-launcher', 'pages/app_launcher.php', ['auth', 'admin']);
@@ -83,6 +84,9 @@ $router->get('/api/configurations/preview', 'api/preview_handler.php', ['auth', 
 $router->get('/api/health-check', 'api/health_check_handler.php', ['auth', 'admin']);
 $router->get('/api/templates/{id}', 'api/template_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers', 'api/host_detail_handler.php', ['auth', 'admin']);
+$router->get('/api/cron', 'api/cron_handler.php', ['auth', 'admin']);
+$router->get('/api/cron/log', 'api/cron_log_handler.php', ['auth', 'admin']);
+$router->post('/api/cron', 'api/cron_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->post('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->get('/api/stack-changes', 'api/stack_changes_handler.php', ['auth', 'admin']);
@@ -133,9 +137,6 @@ $router->post('/services/{id}/delete', 'api/service_handler.php', ['auth', 'admi
 $router->post('/servers/new', 'api/server_handler.php', ['auth', 'admin']);
 $router->post('/servers/{id}/edit', 'api/server_handler.php', ['auth', 'admin']);
 $router->post('/servers/{id}/delete', 'api/server_handler.php', ['auth', 'admin']);
-$router->post('/groups/new', 'api/group_handler.php', ['auth', 'admin']);
-$router->post('/groups/{id}/edit', 'api/group_handler.php', ['auth', 'admin']);
-$router->post('/groups/{id}/delete', 'api/group_handler.php', ['auth', 'admin']);
 $router->post('/groups/new', 'api/group_handler.php', ['auth', 'admin']);
 $router->post('/groups/{id}/edit', 'api/group_handler.php', ['auth', 'admin']);
 $router->post('/groups/{id}/delete', 'api/group_handler.php', ['auth', 'admin']);

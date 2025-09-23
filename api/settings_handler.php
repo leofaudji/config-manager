@@ -30,6 +30,7 @@ try {
         'git_pat' => trim($_POST['git_pat'] ?? ''),
         'temp_directory_path' => rtrim(trim($_POST['temp_directory_path'] ?? sys_get_temp_dir()), '/'),
         'git_persistent_repo_path' => rtrim(trim($_POST['git_persistent_repo_path'] ?? ''), '/'),
+        'cron_log_path' => rtrim(trim($_POST['cron_log_path'] ?? '/var/log'), '/'),
     ];
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE for a safe upsert
@@ -49,7 +50,8 @@ try {
         'Traefik Dynamic Config Base Path' => $settings_to_update['yaml_output_path'],
         'Default Standalone Compose Path' => $settings_to_update['default_compose_path'],
         'Git Persistent Repo Path' => $settings_to_update['git_persistent_repo_path'],
-        'Temporary Directory Path' => $settings_to_update['temp_directory_path']
+        'Temporary Directory Path' => $settings_to_update['temp_directory_path'],
+        'Cron Job Log Path' => $settings_to_update['cron_log_path']
     ];
 
     foreach ($paths_to_create as $label => $path) {
@@ -61,10 +63,12 @@ try {
                 }
             } else {
                 // Directory does not exist, try to create it
-                if (!@mkdir($path, 0777, true)) {
+                if (!@mkdir($path, 0777, true) && !is_dir($path)) {
                     $folder_creation_warnings[] = "Failed to create directory for '{$label}' at '{$path}'. Please check permissions of the parent directory.";
                 } else {
-                    // If mkdir succeeded, now attempt to set ownership.
+                    // If mkdir succeeded or the directory was created by a concurrent process,
+                    // now explicitly set permissions and ownership.
+                    @chmod($path, 0777); // Explicitly set permissions to rwxrwxrwx
                     @chown($path, 'www-data');
                     @chgrp($path, 'www-data');
                 }

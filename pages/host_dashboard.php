@@ -151,18 +151,49 @@ require_once __DIR__ . '/../includes/host_nav.php';
                     type: 'line',
                     data: {
                         labels: result.data.labels,
-                        datasets: [{
-                            label: 'CPU Usage (%)',
-                            data: result.data.cpu_usage,
-                            borderColor: 'rgb(75, 192, 192)',
-                            tension: 0.1
-                        }, {
-                            label: 'Memory Usage (%)',
-                            data: result.data.memory_usage,
-                            borderColor: 'rgb(255, 99, 132)',
-                            tension: 0.1
-                        }]
-                    }
+                        datasets: [
+                            {
+                                label: 'CPU Usage (%)',
+                                data: result.data.cpu_usage,
+                                borderColor: 'rgb(75, 192, 192)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 2,
+                                pointHoverRadius: 5
+                            }, 
+                            {
+                                label: 'Memory Usage (%)',
+                                data: result.data.memory_usage,
+                                borderColor: 'rgb(255, 99, 132)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 2,
+                                pointHoverRadius: 5
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100, // Set a fixed max for percentage
+                                ticks: {
+                                    // Include a '%' sign in the ticks
+                                    callback: function(value) {
+                                        return value + '%'
+                                    }
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    },
                 });
             } else {
                 throw new Error(result.message);

@@ -743,6 +743,14 @@ window.pageInit = function() {
 
     // --- Initial Load ---
     function initialize() {
+        // Check for a search term in the URL and pre-fill the search box
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchTermFromUrl = urlParams.get('search');
+        if (searchTermFromUrl) {
+            searchInput.value = searchTermFromUrl;
+        }
+
+
         const initialPage = parseInt(localStorage.getItem(`host_${hostId}_containers_page`)) || 1;
         const initialLimit = parseInt(localStorage.getItem(`host_${hostId}_containers_limit`)) || 10;
         currentSort = localStorage.getItem(`host_${hostId}_containers_sort`) || 'Name';

@@ -98,46 +98,84 @@ try {
     }
 
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        $dockerInfo = $dockerClient->getInfo();
         $search = trim($_GET['search'] ?? '');
         $limit_get = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
         $limit = ($limit_get == -1) ? 1000000 : $limit_get;
         $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
         $sort = $_GET['sort'] ?? 'Name';
         $order = $_GET['order'] ?? 'asc';
+        
+        $dockerInfo = $dockerClient->getInfo();
         $is_swarm_manager = (isset($dockerInfo['Swarm']['ControlAvailable']) && $dockerInfo['Swarm']['ControlAvailable'] === true);
         $discovered_stacks = [];
 
         // --- UNIFIED LOGIC: Fetch managed stacks from DB first for both host types ---
-        $stmt_managed = $conn->prepare("SELECT id, stack_name, source_type FROM application_stacks WHERE host_id = ?");
+        $stmt_managed = $conn->prepare("SELECT id, stack_name, source_type, autoscaling_enabled, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down FROM application_stacks WHERE host_id = ?");
         $stmt_managed->bind_param("i", $host_id);
         $stmt_managed->execute();
         $managed_stacks_result = $stmt_managed->get_result();
         $managed_stacks_map = [];
         while ($row = $managed_stacks_result->fetch_assoc()) {
-            $managed_stacks_map[$row['stack_name']] = ['id' => $row['id'], 'source_type' => $row['source_type']];
+            $managed_stacks_map[$row['stack_name']] = [
+                'id' => $row['id'], 
+                'source_type' => $row['source_type'],
+                'autoscaling_enabled' => $row['autoscaling_enabled'],
+                'autoscaling_cpu_threshold_up' => $row['autoscaling_cpu_threshold_up'],
+                'autoscaling_cpu_threshold_down' => $row['autoscaling_cpu_threshold_down']
+            ];
         }
         $stmt_managed->close();
 
         // Check if the node is a Swarm manager
         if ($is_swarm_manager) {
+            // --- SWARM LOGIC ---
             $remote_services = $dockerClient->listServices();
+            $remote_tasks = $dockerClient->listTasks();
+
+            // Create a map of running tasks per service for efficiency
+            $running_tasks_per_service = [];
+            foreach ($remote_tasks as $task) {
+                $service_id = $task['ServiceID'];
+                if (!isset($running_tasks_per_service[$service_id])) {
+                    $running_tasks_per_service[$service_id] = 0;
+                }
+                if (isset($task['Status']['State']) && $task['Status']['State'] === 'running') {
+                    $running_tasks_per_service[$service_id]++;
+                }
+            }
+
             foreach ($remote_services as $service) {
                 $stack_namespace = $service['Spec']['Labels']['com.docker.stack.namespace'] ?? null;
                 if ($stack_namespace) {
                     if (!isset($discovered_stacks[$stack_namespace])) {
                         $db_info = $managed_stacks_map[$stack_namespace] ?? null;
-                        $discovered_stacks[$stack_namespace] = ['Name' => $stack_namespace, 'Services' => 0, 'CreatedAt' => $service['CreatedAt'], 'DbId' => $db_info['id'] ?? null, 'SourceType' => $db_info['source_type'] ?? null];
+                        $discovered_stacks[$stack_namespace] = [
+                            'Name' => $stack_namespace, 
+                            'Services' => 0, 
+                            'RunningServices' => 0,
+                            'DesiredServices' => 0,
+                            'CreatedAt' => $service['CreatedAt'], 
+                            'DbId' => $db_info['id'] ?? null, 
+                            'SourceType' => $db_info['source_type'] ?? null,
+                            'AutoscalingEnabled' => $db_info['autoscaling_enabled'] ?? 0,
+                            'ThresholdUp' => $db_info['autoscaling_cpu_threshold_up'] ?? 0,
+                            'ThresholdDown' => $db_info['autoscaling_cpu_threshold_down'] ?? 0
+                        ];
                     }
                     $discovered_stacks[$stack_namespace]['Services']++;
+                    $desired_replicas = $service['Spec']['Mode']['Replicated']['Replicas'] ?? 1;
+                    $running_replicas = $running_tasks_per_service[$service['ID']] ?? 0;
+                    
+                    $discovered_stacks[$stack_namespace]['DesiredServices'] += $desired_replicas;
+                    $discovered_stacks[$stack_namespace]['RunningServices'] += $running_replicas;
+
                     if (strtotime($service['CreatedAt']) < strtotime($discovered_stacks[$stack_namespace]['CreatedAt'])) {
                         $discovered_stacks[$stack_namespace]['CreatedAt'] = $service['CreatedAt'];
                     }
                 }
             }
         } else {
-            // Not a swarm manager, so we look for docker-compose projects from container labels.
-            // The $managed_stacks_map is already prepared.
+            // --- STANDALONE LOGIC ---
             $containers = $dockerClient->listContainers();
             foreach ($containers as $container) {
                 $compose_project = $container['Labels']['com.docker.compose.project'] ?? null;
@@ -145,14 +183,25 @@ try {
                     if (!isset($discovered_stacks[$compose_project])) {
                         $db_info = $managed_stacks_map[$compose_project] ?? null;
                         $discovered_stacks[$compose_project] = [
-                            'Name' => $compose_project, 
-                            'Services' => 0, 
+                            'Name' => $compose_project,
+                            'Services' => 0,
+                            'RunningServices' => 0,
+                            'StoppedServices' => 0,
                             'CreatedAt' => date('c', $container['Created']),
                             'DbId' => $db_info['id'] ?? null,
-                            'SourceType' => $db_info['source_type'] ?? null
+                            'SourceType' => $db_info['source_type'] ?? null,
+                            'AutoscalingEnabled' => $db_info['autoscaling_enabled'] ?? 0,
+                            'ThresholdUp' => $db_info['autoscaling_cpu_threshold_up'] ?? 0,
+                            'ThresholdDown' => $db_info['autoscaling_cpu_threshold_down'] ?? 0
                         ];
                     }
                     $discovered_stacks[$compose_project]['Services']++;
+                    if ($container['State'] === 'running') {
+                        $discovered_stacks[$compose_project]['RunningServices']++;
+                    } else {
+                        $discovered_stacks[$compose_project]['StoppedServices']++;
+                    }
+
                     if ($container['Created'] < strtotime($discovered_stacks[$compose_project]['CreatedAt'])) {
                         $discovered_stacks[$compose_project]['CreatedAt'] = date('c', $container['Created']);
                     }
@@ -179,7 +228,13 @@ try {
                 $valB = strtotime($valB);
             }
 
-            $comparison = strnatcasecmp((string)$valA, (string)$valB);
+            // For numeric fields, use numeric comparison
+            if (in_array($sort, ['Services', 'RunningServices', 'ThresholdUp'])) {
+                 $comparison = ($valA ?? 0) <=> ($valB ?? 0);
+            } else {
+                $comparison = strnatcasecmp((string)$valA, (string)$valB);
+            }
+
             return ($order === 'asc') ? $comparison : -$comparison;
         });
 
@@ -195,9 +250,15 @@ try {
                 'ID' => $stack_data['Name'],
                 'Name' => $stack_data['Name'],
                 'Services' => $stack_data['Services'],
+                'RunningServices' => $stack_data['RunningServices'] ?? 0,
+                'DesiredServices' => $stack_data['DesiredServices'] ?? 0,
+                'StoppedServices' => $stack_data['StoppedServices'] ?? 0,
                 'CreatedAt' => $stack_data['CreatedAt'],
                 'DbId' => $stack_data['DbId'] ?? null,
-                'SourceType' => $stack_data['SourceType'] ?? null
+                'SourceType' => $stack_data['SourceType'] ?? null,
+                'AutoscalingEnabled' => $stack_data['AutoscalingEnabled'] ?? 0,
+                'ThresholdUp' => $stack_data['ThresholdUp'] ?? 0,
+                'ThresholdDown' => $stack_data['ThresholdDown'] ?? 0
             ];
         }
 

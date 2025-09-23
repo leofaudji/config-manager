@@ -259,6 +259,40 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="add-volume-btn"><i class="bi bi-plus-circle"></i> Add Volume Mapping</button>
                             <small class="form-text text-muted d-block mt-1">A persistent volume will be created on the host for each mapping. Container Path is required for each entry.</small>
+
+                            <hr>
+                            <h5 class="mt-4">Autoscaling Settings</h5>
+                            <p class="text-muted small">Atur autoscaling untuk stack ini berdasarkan utilisasi CPU dari host tempatnya berjalan. Fitur ini hanya berlaku untuk Docker Swarm.</p>
+
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="autoscaling_enabled" name="autoscaling_enabled" value="1">
+                                <label class="form-check-label" for="autoscaling_enabled">Enable Autoscaling</label>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="autoscaling_min_replicas" class="form-label">Minimum Replicas</label>
+                                    <input type="number" class="form-control" id="autoscaling_min_replicas" name="autoscaling_min_replicas" value="1" min="1">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="autoscaling_max_replicas" class="form-label">Maximum Replicas</label>
+                                    <input type="number" class="form-control" id="autoscaling_max_replicas" name="autoscaling_max_replicas" value="1" min="1">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="autoscaling_cpu_up_slider" class="form-label">CPU Scale-Up Threshold: <strong id="cpu-threshold-up-display">80</strong>%</label>
+                                    <input type="range" class="form-range" id="autoscaling_cpu_up_slider" min="1" max="100" value="80">
+                                    <input type="hidden" name="autoscaling_cpu_threshold_up" id="autoscaling_cpu_threshold_up" value="80">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="autoscaling_cpu_down_slider" class="form-label">CPU Scale-Down Threshold: <strong id="cpu-threshold-down-display">20</strong>%</label>
+                                    <input type="range" class="form-range" id="autoscaling_cpu_down_slider" min="1" max="100" value="20">
+                                    <input type="hidden" name="autoscaling_cpu_threshold_down" id="autoscaling_cpu_threshold_down" value="20">
+                                </div>
+                            </div>
+
                             </div>
                         </div>
                     </div>
@@ -446,6 +480,12 @@ window.pageInit = function() {
     const addVolumeBtn = document.getElementById('add-volume-btn');
     const volumesContainer = document.getElementById('volumes-container');
     const refreshNetworksBtn = document.getElementById('refresh-networks-btn');
+    const cpuThresholdUpSlider = document.getElementById('autoscaling_cpu_up_slider');
+    const cpuThresholdUpDisplay = document.getElementById('cpu-threshold-up-display');
+    const cpuThresholdUpInput = document.getElementById('autoscaling_cpu_threshold_up');
+    const cpuThresholdDownSlider = document.getElementById('autoscaling_cpu_down_slider');
+    const cpuThresholdDownDisplay = document.getElementById('cpu-threshold-down-display');
+    const cpuThresholdDownInput = document.getElementById('autoscaling_cpu_threshold_down');
 
     function ipToLong(ip) {
         if (!ip) return 0;
@@ -852,6 +892,20 @@ window.pageInit = function() {
         memorySlider.addEventListener('input', function() {
             memoryDisplay.textContent = this.value;
             memoryInput.value = `${this.value}M`;
+        });
+    }
+
+    // --- Autoscaling Sliders ---
+    if (cpuThresholdUpSlider) {
+        cpuThresholdUpSlider.addEventListener('input', function() {
+            cpuThresholdUpDisplay.textContent = this.value;
+            cpuThresholdUpInput.value = this.value;
+        });
+    }
+    if (cpuThresholdDownSlider) {
+        cpuThresholdDownSlider.addEventListener('input', function() {
+            cpuThresholdDownDisplay.textContent = this.value;
+            cpuThresholdDownInput.value = this.value;
         });
     }
 

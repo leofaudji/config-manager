@@ -300,6 +300,17 @@ class DockerClient
         return $this->request('/services');
     }
 
+
+    /**
+     * Lists all tasks (Swarm).
+     * @return array The list of tasks.
+     * @throws Exception
+     */
+    public function listTasks(): array
+    {
+        return $this->request('/tasks');
+    }
+
     /**
      * Creates a new stack (Swarm).
      * @param string $name The name of the stack.
@@ -352,6 +363,31 @@ class DockerClient
     public function inspectStack(string $stackId): array
     {
         return $this->request("/stacks/{$stackId}");
+    }
+
+    /**
+     * Updates the number of replicas for a specific service.
+     * @param string $serviceId The ID of the service to update.
+     * @param int $version The current version index of the service object.
+     * @param int $newReplicas The new number of replicas.
+     * @return bool True on success.
+     * @throws Exception
+     */
+    public function updateServiceReplicas(string $serviceId, int $version, int $newReplicas): bool
+    {
+        // 1. Get the current full specification of the service.
+        $serviceSpec = $this->request("/services/{$serviceId}")['Spec'];
+
+        // 2. Modify the number of replicas in the specification.
+        // This ensures we only change what's necessary.
+        $serviceSpec['Mode']['Replicated']['Replicas'] = $newReplicas;
+
+        // 3. Send the update request. The Docker API requires the current version
+        //    to prevent race conditions. The new spec is sent as the JSON body.
+        $this->request("/services/{$serviceId}/update?version={$version}", 'POST', $serviceSpec);
+
+        // If the request did not throw an exception, it was successful.
+        return true;
     }
 
     /**

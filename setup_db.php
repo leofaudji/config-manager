@@ -339,6 +339,14 @@ INSERT INTO `transports` (`name`, `insecure_skip_verify`) VALUES ('dsm-transport
 
 ALTER TABLE `groups` ADD CONSTRAINT `groups_ibfk_1` FOREIGN KEY (`traefik_host_id`) REFERENCES `traefik_hosts` (`id`) ON DELETE SET NULL;
 
+ALTER TABLE `application_stacks`
+ADD COLUMN `autoscaling_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '0 = disabled, 1 = enabled' AFTER `deployment_details`,
+ADD COLUMN `autoscaling_min_replicas` INT NULL DEFAULT 1 AFTER `autoscaling_enabled`,
+ADD COLUMN `autoscaling_max_replicas` INT NULL DEFAULT 1 AFTER `autoscaling_min_replicas`,
+ADD COLUMN `autoscaling_cpu_threshold_up` INT NULL DEFAULT 80 COMMENT 'Scale up if host CPU > this value' AFTER `autoscaling_max_replicas`,
+ADD COLUMN `autoscaling_cpu_threshold_down` INT NULL DEFAULT 20 COMMENT 'Scale down if host CPU < this value' AFTER `autoscaling_cpu_threshold_up`;
+
+
 ";
 
 // --- Execution Logic ---

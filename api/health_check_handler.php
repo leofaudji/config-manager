@@ -53,6 +53,39 @@ $checks[] = [
     'message' => $is_writable ? "The base path '{$base_config_path}' is writable." : "The base path '{$base_config_path}' is NOT writable by the web server or is not a directory. Deployments will fail."
 ];
 
+// Check #5: Cron Job Log Path Writable
+$cron_log_path = get_setting('cron_log_path', '/var/log');
+$cron_log_path_ok = is_dir($cron_log_path) && is_writable($cron_log_path);
+$checks[] = [
+    'check' => 'Cron Job Log Path',
+    'status' => $cron_log_path_ok,
+    'message' => $cron_log_path_ok ? "The log path '{$cron_log_path}' is writable." : "The log path '{$cron_log_path}' is NOT writable by the web server. Cron jobs will fail to write logs."
+];
+
+// Check #6: Cron User Shell
+$web_user = exec('whoami');
+$user_shell_ok = false;
+$user_shell_message = "Could not determine web server user or read /etc/passwd.";
+if ($web_user && file_exists('/etc/passwd') && is_readable('/etc/passwd')) {
+    $passwd_content = file_get_contents('/etc/passwd');
+    if (preg_match('/^' . preg_quote($web_user, '/') . ':x:\d+:\d+:.*:.*:(.*)$/m', $passwd_content, $matches)) {
+        $shell = $matches[1];
+        if ($shell !== '/usr/sbin/nologin' && $shell !== '/bin/false' && $shell !== '/sbin/nologin') {
+            $user_shell_ok = true;
+            $user_shell_message = "Web server user '{$web_user}' has a valid shell: {$shell}.";
+        } else {
+            $user_shell_message = "Web server user '{$web_user}' has a shell set to '{$shell}', which will prevent cron jobs from running. To fix this, an administrator must run the following command on the server: <code>sudo usermod -s /bin/sh {$web_user}</code>";
+        }
+    } else {
+        $user_shell_message = "Could not find user '{$web_user}' in /etc/passwd.";
+    }
+}
+$checks[] = [
+    'check' => 'Cron User Shell',
+    'status' => $user_shell_ok,
+    'message' => $user_shell_message
+];
+
 if ($conn) {
     $conn->close();
 }

@@ -66,6 +66,13 @@ try {
     $container_ip = !empty($_POST['container_ip']) ? trim($_POST['container_ip']) : null;
     $is_update = isset($_POST['update_stack']) && $_POST['update_stack'] === 'true';
 
+    // Autoscaling settings
+    $autoscaling_enabled = isset($_POST['autoscaling_enabled']) ? 1 : 0;
+    $autoscaling_min_replicas = !empty($_POST['autoscaling_min_replicas']) ? (int)$_POST['autoscaling_min_replicas'] : 1;
+    $autoscaling_max_replicas = !empty($_POST['autoscaling_max_replicas']) ? (int)$_POST['autoscaling_max_replicas'] : 1;
+    $autoscaling_cpu_threshold_up = !empty($_POST['autoscaling_cpu_threshold_up']) ? (int)$_POST['autoscaling_cpu_threshold_up'] : 80;
+    $autoscaling_cpu_threshold_down = !empty($_POST['autoscaling_cpu_threshold_down']) ? (int)$_POST['autoscaling_cpu_threshold_down'] : 20;
+
     if (empty($host_id) || empty($stack_name)) {
         throw new Exception("Host and Stack Name are required.");
     }
@@ -535,6 +542,7 @@ try {
     $deployment_details_json = json_encode($deployment_details_to_save);
 
     // --- Record deployment in the database ---
+    // This query now handles both create and update scenarios for autoscaling settings.
     $compose_file_to_save = '';
     if ($source_type === 'git') {
         // $final_compose_path is defined in the git source type block
@@ -544,11 +552,17 @@ try {
     }
 
     $stmt_stack = $conn->prepare(
-        "INSERT INTO application_stacks (host_id, stack_name, source_type, compose_file_path, deployment_details) 
-         VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE source_type = VALUES(source_type), compose_file_path = VALUES(compose_file_path), deployment_details = VALUES(deployment_details), updated_at = NOW()"
+        "INSERT INTO application_stacks (host_id, stack_name, source_type, compose_file_path, deployment_details, autoscaling_enabled, autoscaling_min_replicas, autoscaling_max_replicas, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE 
+            source_type = VALUES(source_type), 
+            compose_file_path = VALUES(compose_file_path), 
+            deployment_details = VALUES(deployment_details), 
+            autoscaling_enabled = VALUES(autoscaling_enabled), autoscaling_min_replicas = VALUES(autoscaling_min_replicas), autoscaling_max_replicas = VALUES(autoscaling_max_replicas), 
+            autoscaling_cpu_threshold_up = VALUES(autoscaling_cpu_threshold_up), autoscaling_cpu_threshold_down = VALUES(autoscaling_cpu_threshold_down), 
+            updated_at = NOW()"
     );
-    $stmt_stack->bind_param("issss", $host_id, $stack_name, $source_type, $compose_file_to_save, $deployment_details_json);
+    $stmt_stack->bind_param("issssiiiii", $host_id, $stack_name, $source_type, $compose_file_to_save, $deployment_details_json, $autoscaling_enabled, $autoscaling_min_replicas, $autoscaling_max_replicas, $autoscaling_cpu_threshold_up, $autoscaling_cpu_threshold_down);
     $stmt_stack->execute();
     $stmt_stack->close();
 

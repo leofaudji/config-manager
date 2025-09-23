@@ -128,6 +128,13 @@ require_once __DIR__ . '/../includes/header.php';
                         <small class="form-text text-muted">Path to store a persistent Git clone. Improves performance by pulling instead of re-cloning. Leave blank to use temporary directories.</small>
                     </div>
                 </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="cron_log_path" class="form-label">Cron Job Log Path</label>
+                        <input type="text" class="form-control" id="cron_log_path" name="cron_log_path" value="<?= htmlspecialchars($settings['cron_log_path'] ?? '/var/log') ?>">
+                        <small class="form-text text-muted">Absolute path to the directory where cron job logs (`collect_stats.log`, `autoscaler.log`) will be stored.</small>
+                    </div>
+                </div>
             </div>
 
             <hr>
