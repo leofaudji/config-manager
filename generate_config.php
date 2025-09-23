@@ -1,19 +1,18 @@
 <?php
-require_once 'includes/bootstrap.php';
-require_once 'includes/GitHelper.php';
-require_once 'includes/YamlGenerator.php';
-
 // Check if it's an AJAX request
 $is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
 
 if ($is_ajax) {
     header('Content-Type: application/json');
 }
-
-$conn = Database::getInstance()->getConnection();
-$conn->begin_transaction();
-
 try {
+    require_once 'includes/bootstrap.php';
+    require_once 'includes/GitHelper.php';
+    require_once 'includes/YamlGenerator.php';
+
+    $conn = Database::getInstance()->getConnection();
+    $conn->begin_transaction();
+
     // --- Determine which host to deploy for ---
     $group_id_from_request = isset($_GET['group_id']) ? (int)$_GET['group_id'] : 0;
     $host_id_for_deployment = 0; // Initialize to 0
@@ -121,13 +120,15 @@ try {
     } else {
         // 6. Set headers to trigger file download for non-AJAX requests
         header('Content-Type: application/x-yaml');
-        header('Content-Disposition: attachment; filename="' . basename(YAML_OUTPUT_PATH) . '"');
+        header('Content-Disposition: attachment; filename="' . basename($final_yaml_file_path) . '"');
         // 7. Output the Traefik content for download
         echo $traefik_yaml_output;
     }
 
-} catch (Exception $e) {
-    $conn->rollback();
+} catch (Throwable $e) { // Catch any throwable error, not just Exceptions
+    if (isset($conn) && $conn->ping() && $conn->in_transaction) {
+        $conn->rollback();
+    }
     $error_message = "Failed to generate configuration: " . $e->getMessage();
     if ($is_ajax) {
         http_response_code(500);
@@ -138,5 +139,7 @@ try {
     exit();
 }
 
-$conn->close();
+if (isset($conn) && $conn->ping()) {
+    $conn->close();
+}
 ?>

@@ -1157,9 +1157,57 @@ function initializePageSpecificScripts() {
             });
         }
 
+        // --- Deploy from Preview Modal Logic ---
+        const deployFromPreviewBtn = document.getElementById('deploy-from-preview-btn');
+        if (deployFromPreviewBtn && !deployFromPreviewBtn.dataset.listenerAttached) {
+            deployFromPreviewBtn.dataset.listenerAttached = 'true';
+            deployFromPreviewBtn.addEventListener('click', function() {
+                const previewModalEl = document.getElementById('previewConfigModal');
+                const groupId = previewModalEl.dataset.groupId; // Get group ID if set from group-specific preview
+
+                const originalBtnText = this.innerHTML;
+                this.disabled = true;
+                this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deploying...`;
+
+                // The deploy URL is always /generate, but we might add a group_id
+                let deployUrl = `${basePath}/generate`;
+                if (groupId) {
+                    deployUrl += `?group_id=${groupId}`;
+                }
+
+                fetch(deployUrl, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                    .then(({ ok, data }) => {
+                        showToast(data.message, ok);
+                        if (ok) {
+                            bootstrap.Modal.getInstance(previewModalEl).hide();
+                            // After deploying, refresh the view.
+                            if (document.getElementById('routers-container')) {
+                                loadPaginatedData('routers', 1);
+                            }
+                            if (document.getElementById('groups-container')) {
+                                loadPaginatedData('groups', 1);
+                            }
+                            checkGitSyncStatus();
+                        }
+                    })
+                    .catch(error => {
+                        showToast(error.message || 'An unknown error occurred during deployment.', false);
+                    })
+                    .finally(() => {
+                        this.disabled = false;
+                        this.innerHTML = originalBtnText;
+                    });
+            });
+        }
+
         // --- Group-specific Preview Config Modal Logic ---
         const groupsContainer = document.getElementById('groups-container');
         if (groupsContainer) {
+            const previewModalEl = document.getElementById('previewConfigModal');
+
             // Use event delegation on the container
             groupsContainer.addEventListener('click', function(e) {
                 const previewGroupBtn = e.target.closest('.preview-group-config-btn');
@@ -1170,7 +1218,6 @@ function initializePageSpecificScripts() {
                 const groupId = previewGroupBtn.dataset.groupId;
                 const groupName = previewGroupBtn.dataset.groupName;
 
-                const previewModalEl = document.getElementById('previewConfigModal');
                 const previewModal = bootstrap.Modal.getInstance(previewModalEl) || new bootstrap.Modal(previewModalEl);
                 const linterContainer = document.getElementById('linter-results-container');
                 const contentContainer = document.getElementById('preview-yaml-content-container');
@@ -1187,13 +1234,6 @@ function initializePageSpecificScripts() {
 
                 linterContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><span class="ms-2">Running validator...</span></div>';
 
-                // When previewing a group, we enable the deploy button.
-                // The deploy button will always deploy the FULL active host config, not just the group's config.
-                // This prevents deploying partial, invalid configurations.
-                deployFromPreviewBtn.disabled = false;
-                deployFromPreviewBtn.title = 'Deploy the full configuration for the active host.';
-
-                // The preview itself, however, should only show the content of the selected group.
                 // This is achieved by passing ignore_host_filter and group_id.
                 const queryParams = new URLSearchParams({
                     ignore_host_filter: 'true',
@@ -1205,10 +1245,32 @@ function initializePageSpecificScripts() {
                     .then(response => response.json().then(data => ({ ok: response.ok, data })))
                     .then(({ ok, data }) => {
                         if (!ok) throw new Error(data.message || 'Failed to generate preview.');
-                        linterContainer.innerHTML = ''; // Clear linter results
+                        
+                        linterContainer.innerHTML = '';
+                        deployFromPreviewBtn.disabled = false;
 
-                        contentContainer.textContent = data.content || 'No configuration generated for this group.';
-                        Prism.highlightElement(contentContainer);
+                        if (data.linter) {
+                            if (data.linter.errors && data.linter.errors.length > 0) {
+                                let errorsHtml = '<div class="alert alert-danger"><h6><i class="bi bi-x-circle-fill me-2"></i>Errors Found</h6><ul class="mb-0">';
+                                data.linter.errors.forEach(err => { errorsHtml += `<li>${err}</li>`; });
+                                errorsHtml += '</ul></div>';
+                                linterContainer.insertAdjacentHTML('beforeend', errorsHtml);
+                                deployFromPreviewBtn.disabled = true;
+                            }
+                            if (data.linter.warnings && data.linter.warnings.length > 0) {
+                                let warningsHtml = '<div class="alert alert-warning"><h6><i class="bi bi-exclamation-triangle-fill me-2"></i>Warnings</h6><ul class="mb-0">';
+                                data.linter.warnings.forEach(warn => { warningsHtml += `<li>${warn}</li>`; });
+                                warningsHtml += '</ul></div>';
+                                linterContainer.insertAdjacentHTML('beforeend', warningsHtml);
+                            }
+                        }
+
+                        if (data.status === 'success' && data.content) {
+                            contentContainer.textContent = data.content;
+                            Prism.highlightElement(contentContainer);
+                        } else if (data.status !== 'success') {
+                            throw new Error(data.message || 'Failed to load preview content.');
+                        }
                     })
                     .catch(error => {
                         linterContainer.innerHTML = '';
@@ -1216,6 +1278,14 @@ function initializePageSpecificScripts() {
                         deployFromPreviewBtn.disabled = true;
                     });
             });
+
+            if (previewModalEl && !previewModalEl.dataset.hiddenListenerAttached) {
+                previewModalEl.dataset.hiddenListenerAttached = 'true';
+                previewModalEl.addEventListener('hidden.bs.modal', function() {
+                    delete this.dataset.groupId;
+                    document.getElementById('previewConfigModalLabel').textContent = 'Preview & Validate Configuration';
+                });
+            }
         }
 
         // --- History Page Logic ---

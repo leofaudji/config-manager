@@ -227,8 +227,14 @@ class YamlGenerator
         $stmt->execute();
         $result = $stmt->get_result();
         while ($mw = $result->fetch_assoc()) {
-            $config = json_decode($mw['config_json'], true);
-            if (json_last_error() === JSON_ERROR_NONE) {
+            // Safely decode the JSON. If it's invalid, log an error but don't stop the process.
+            $config = json_decode($mw['config_json'] ?? '{}', true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                error_log("YAML Generator: Invalid JSON for middleware '{$mw['name']}'. Content: " . ($mw['config_json'] ?? ''));
+                $config = []; // Use an empty config as a fallback
+            }
+            // Only add the middleware if its config is not null (json_decode can return null for "null" string)
+            if (is_array($config)) {
                 $middlewares[$mw['name']] = [
                     $mw['type'] => $config
                 ];
