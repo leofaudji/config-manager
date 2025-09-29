@@ -67,7 +67,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                         <th data-sort="Status">Status</th>
                         <th>IP Address</th>
                         <th>Networks</th>
-                        <th>Published Ports</th>
+                        <th class="sortable" data-sort="HostPort">Published Ports</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -223,7 +223,7 @@ window.pageInit = function() {
                         th.classList.add(currentOrder);
                     }
                 });
-            }).catch(error => containerBody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Failed to load containers: ${error.message}</td></tr>`)
+            }).catch(error => containerBody.innerHTML = `<tr><td colspan="9" class="text-center text-danger">Failed to load containers: ${error.message}</td></tr>`)
             .finally(() => {
                 refreshBtn.disabled = false;
                 refreshBtn.innerHTML = originalBtnContent;

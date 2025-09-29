@@ -86,6 +86,25 @@ $checks[] = [
     'message' => $user_shell_message
 ];
 
+// Check #7: Cron Scripts Executable
+$collect_stats_path = PROJECT_ROOT . '/collect_stats.php';
+$autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
+$collect_stats_ok = is_executable($collect_stats_path);
+$autoscaler_ok = is_executable($autoscaler_path);
+$cron_scripts_ok = $collect_stats_ok && $autoscaler_ok;
+$cron_scripts_message = 'All cron scripts are executable.';
+if (!$cron_scripts_ok) {
+    $failed_scripts = [];
+    if (!$collect_stats_ok) $failed_scripts[] = '`collect_stats.php`';
+    if (!$autoscaler_ok) $failed_scripts[] = '`autoscaler.php`';
+    $cron_scripts_message = 'The following script(s) are not executable by the web server: ' . implode(', ', $failed_scripts) . '. Please run `chmod +x` on these files via SSH.';
+}
+$checks[] = [
+    'check' => 'Cron Scripts Executable',
+    'status' => $cron_scripts_ok,
+    'message' => $cron_scripts_message
+];
+
 if ($conn) {
     $conn->close();
 }

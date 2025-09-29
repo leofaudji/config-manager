@@ -97,6 +97,66 @@ try {
         exit;
     }
 
+    // --- GET Stack Details Logic (Tasks per service) ---
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && preg_match('/^\/api\/hosts\/\d+\/stacks\/([a-zA-Z0-9_.-]+)\/details$/', $request_uri_path, $details_matches)) {
+        $stack_name = $details_matches[1];
+
+        $all_services = $dockerClient->listServices(['label' => ["com.docker.stack.namespace={$stack_name}"]]);
+        // Correctly filter tasks by the stack name.
+        $all_tasks = $dockerClient->listTasks([
+            'label' => ["com.docker.stack.namespace={$stack_name}"]
+        ]);
+        $nodes = $dockerClient->listNodes();
+
+        // Create a map of Node IDs to Hostnames for quick lookup
+        $nodes_map = [];
+        foreach ($nodes as $node) {
+            $nodes_map[$node['ID']] = $node['Description']['Hostname'] ?? $node['ID'];
+        }
+
+        $services_with_tasks = [];
+        foreach ($all_services as $service) {
+            $service_name = str_replace($stack_name . '_', '', $service['Spec']['Name']);
+            $tasks_for_service = array_filter($all_tasks, fn($t) => $t['ServiceID'] === $service['ID']);
+
+            // Sort tasks by timestamp in ascending order (oldest first)
+            usort($tasks_for_service, function ($a, $b) {
+                $timestampA = $a['Status']['Timestamp'] ?? '0';
+                $timestampB = $b['Status']['Timestamp'] ?? '0';
+                return strcmp($timestampA, $timestampB);
+            });
+            
+            $service_tasks = [];
+            foreach ($tasks_for_service as $task) {
+                $node_id = $task['NodeID'];
+                $node_name = $nodes_map[$node_id] ?? $node_id; // Fallback to ID if not found
+
+                // Determine the origin of the task by checking for our custom label.
+                $origin = 'Deployment'; // Default to initial deployment
+                if (isset($task['Spec']['ContainerSpec']['Labels']['com.config-manager.origin']) && $task['Spec']['ContainerSpec']['Labels']['com.config-manager.origin'] === 'autoscaled') {
+                    $origin = 'Autoscaled';
+                }
+
+                $service_tasks[] = [
+                    'ID' => $task['ID'],
+                    'Node' => $node_name,
+                    'CurrentState' => $task['Status']['State'],
+                    'DesiredState' => $task['DesiredState'],
+                    'Timestamp' => $task['Status']['Timestamp'],
+                    'Origin' => $origin,
+                    'Message' => $task['Status']['Message'] ?? '',
+                    'Error' => $task['Status']['Err'] ?? ''
+                ];
+            }
+
+            $services_with_tasks[] = ['Name' => $service_name, 'Image' => $service['Spec']['TaskTemplate']['ContainerSpec']['Image'], 'Tasks' => $service_tasks];
+        }
+
+        echo json_encode(['status' => 'success', 'data' => $services_with_tasks]);
+        $conn->close();
+        exit;
+    }
+
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $search = trim($_GET['search'] ?? '');
         $limit_get = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;
@@ -109,8 +169,8 @@ try {
         $is_swarm_manager = (isset($dockerInfo['Swarm']['ControlAvailable']) && $dockerInfo['Swarm']['ControlAvailable'] === true);
         $discovered_stacks = [];
 
-        // --- UNIFIED LOGIC: Fetch managed stacks from DB first for both host types ---
-        $stmt_managed = $conn->prepare("SELECT id, stack_name, source_type, autoscaling_enabled, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down FROM application_stacks WHERE host_id = ?");
+        // Fetch managed stacks from DB first for both host types
+        $stmt_managed = $conn->prepare("SELECT id, stack_name, source_type, autoscaling_enabled, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down, deploy_placement_constraint FROM application_stacks WHERE host_id = ?");
         $stmt_managed->bind_param("i", $host_id);
         $stmt_managed->execute();
         $managed_stacks_result = $stmt_managed->get_result();
@@ -121,13 +181,14 @@ try {
                 'source_type' => $row['source_type'],
                 'autoscaling_enabled' => $row['autoscaling_enabled'],
                 'autoscaling_cpu_threshold_up' => $row['autoscaling_cpu_threshold_up'],
-                'autoscaling_cpu_threshold_down' => $row['autoscaling_cpu_threshold_down']
+                'autoscaling_cpu_threshold_down' => $row['autoscaling_cpu_threshold_down'],
+                'deploy_placement_constraint' => $row['deploy_placement_constraint']
             ];
         }
         $stmt_managed->close();
 
         // Check if the node is a Swarm manager
-        if ($is_swarm_manager) {
+        if ($is_swarm_manager) { // Swarm Logic
             // --- SWARM LOGIC ---
             $remote_services = $dockerClient->listServices();
             $remote_tasks = $dockerClient->listTasks();
@@ -159,7 +220,8 @@ try {
                             'SourceType' => $db_info['source_type'] ?? null,
                             'AutoscalingEnabled' => $db_info['autoscaling_enabled'] ?? 0,
                             'ThresholdUp' => $db_info['autoscaling_cpu_threshold_up'] ?? 0,
-                            'ThresholdDown' => $db_info['autoscaling_cpu_threshold_down'] ?? 0
+                            'ThresholdDown' => $db_info['autoscaling_cpu_threshold_down'] ?? 0,
+                            'PlacementConstraint' => $db_info['deploy_placement_constraint'] ?? null
                         ];
                     }
                     $discovered_stacks[$stack_namespace]['Services']++;
@@ -174,7 +236,7 @@ try {
                     }
                 }
             }
-        } else {
+        } else { // Standalone Logic
             // --- STANDALONE LOGIC ---
             $containers = $dockerClient->listContainers();
             foreach ($containers as $container) {
@@ -192,7 +254,8 @@ try {
                             'SourceType' => $db_info['source_type'] ?? null,
                             'AutoscalingEnabled' => $db_info['autoscaling_enabled'] ?? 0,
                             'ThresholdUp' => $db_info['autoscaling_cpu_threshold_up'] ?? 0,
-                            'ThresholdDown' => $db_info['autoscaling_cpu_threshold_down'] ?? 0
+                            'ThresholdDown' => $db_info['autoscaling_cpu_threshold_down'] ?? 0,
+                            'PlacementConstraint' => $db_info['deploy_placement_constraint'] ?? null
                         ];
                     }
                     $discovered_stacks[$compose_project]['Services']++;
@@ -208,10 +271,10 @@ try {
                 }
             }
         }
-
+        
         // Filter by search term if provided
         if (!empty($search)) {
-            $discovered_stacks = array_filter($discovered_stacks, function($stack_data, $stack_name) use ($search) {
+            $discovered_stacks = array_filter($discovered_stacks, function($stack_data) use ($search) {
                 return stripos($stack_name, $search) !== false;
             }, ARRAY_FILTER_USE_BOTH);
         }
@@ -258,7 +321,8 @@ try {
                 'SourceType' => $stack_data['SourceType'] ?? null,
                 'AutoscalingEnabled' => $stack_data['AutoscalingEnabled'] ?? 0,
                 'ThresholdUp' => $stack_data['ThresholdUp'] ?? 0,
-                'ThresholdDown' => $stack_data['ThresholdDown'] ?? 0
+                'ThresholdDown' => $stack_data['ThresholdDown'] ?? 0,
+                'PlacementConstraint' => $stack_data['PlacementConstraint'] ?? null
             ];
         }
 
@@ -346,7 +410,38 @@ try {
 
             if ($is_swarm_manager) {
                 // --- SWARM DELETE ---
-                $dockerClient->removeStack($stack_name);
+                $env_vars = "DOCKER_HOST=" . escapeshellarg($host['docker_api_url']);
+                $cert_dir = null;
+                try {
+                    if ($host['tls_enabled']) {
+                        $cert_dir = rtrim(sys_get_temp_dir(), '/') . '/docker_certs_' . uniqid();
+                        if (!mkdir($cert_dir, 0700, true)) throw new Exception("Could not create temporary cert directory.");
+                        
+                        if (!file_exists($host['ca_cert_path']) || !file_exists($host['client_cert_path']) || !file_exists($host['client_key_path'])) {
+                            throw new Exception("One or more TLS certificate files for host '{$host['name']}' not found on the application server.");
+                        }
+                        
+                        copy($host['ca_cert_path'], $cert_dir . '/ca.pem');
+                        copy($host['client_cert_path'], $cert_dir . '/cert.pem');
+                        copy($host['client_key_path'], $cert_dir . '/key.pem');
+
+                        $env_vars .= " DOCKER_TLS_VERIFY=1 DOCKER_CERT_PATH=" . escapeshellarg($cert_dir);
+                    }
+
+                    $command = "docker stack rm " . escapeshellarg($stack_name) . " 2>&1";
+                    $full_command = 'env ' . $env_vars . ' ' . $command;
+
+                    exec($full_command, $output, $return_var);
+
+                    if ($return_var !== 0) {
+                        throw new Exception("Failed to remove Swarm stack. Output: " . implode("\n", $output));
+                    }
+                } finally {
+                    // Always clean up the temporary cert directory
+                    if ($cert_dir && is_dir($cert_dir)) {
+                        shell_exec("rm -rf " . escapeshellarg($cert_dir));
+                    }
+                }
             } else {
                 // --- STANDALONE DELETE ---
                 $base_compose_path = get_setting('default_compose_path', '');

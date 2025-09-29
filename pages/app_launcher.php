@@ -1,9 +1,5 @@
 <?php
 require_once __DIR__ . '/../includes/bootstrap.php';
-$conn = Database::getInstance()->getConnection();
-
-// Get all hosts for the dropdown
-$hosts_result = $conn->query("SELECT id, name, default_volume_path FROM docker_hosts ORDER BY name ASC");
 
 // Get the global default from settings to use as a fallback
 $default_git_compose_path_from_settings = get_setting('default_git_compose_path');
@@ -79,16 +75,25 @@ require_once __DIR__ . '/../includes/header.php';
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingOne">
                         <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
-                            <strong>Step 1: Select Target Host</strong>
+                            <strong>Step 1: Select Deployment Target</strong>
                         </button>
                     </h2>
                     <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#appLauncherAccordion">
                         <div class="accordion-body">
-                            <select class="form-select" id="host_id" name="host_id" required>
-                                <option value="" disabled <?= !$preselected_host_id ? 'selected' : '' ?>>-- Choose a Docker Host --</option>
-                                <?php while ($host = $hosts_result->fetch_assoc()): ?>
-                                    <option value="<?= $host['id'] ?>" data-volume-path="<?= htmlspecialchars($host['default_volume_path'] ?? '/opt/stacks') ?>" <?= ($preselected_host_id == $host['id']) ? 'selected' : '' ?>><?= htmlspecialchars($host['name']) ?></option>
-                                <?php endwhile; ?>
+                            <div class="mb-3">
+                                <label class="form-label">Deployment Mode</label>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="deployment_mode" id="deployment_mode_swarm" value="swarm" autocomplete="off" checked>
+                                    <label class="btn btn-outline-primary" for="deployment_mode_swarm"><i class="bi bi-hdd-stack-fill me-2"></i>Swarm Cluster</label>
+
+                                    <input type="radio" class="btn-check" name="deployment_mode" id="deployment_mode_standalone" value="standalone" autocomplete="off">
+                                    <label class="btn btn-outline-primary" for="deployment_mode_standalone"><i class="bi bi-hdd-network-fill me-2"></i>Standalone Host</label>
+                                </div>
+                            </div>
+                            <label for="host_id" class="form-label" id="host-select-label">Select Swarm Manager</label>
+                            <select class="form-select" id="host_id" name="host_id" required disabled>
+                                <option value="" disabled selected>-- Select a deployment mode first --</option>
+                                <!-- Options will be populated by JavaScript -->
                             </select>
                         </div>
                     </div>
@@ -222,6 +227,15 @@ require_once __DIR__ . '/../includes/header.php';
                                     <input type="range" class="form-range" id="deploy_memory_slider" min="1024" max="8192" step="1024" value="1024">
                                     <input type="hidden" name="deploy_memory" id="deploy_memory" value="1024M">
                                 </div>
+                                <div class="col-md-4 mb-3" id="deploy-placement-group" style="display: none;">
+                                    <label for="deploy_placement_constraint" class="form-label">Placement Constraint</label>
+                                    <select class="form-select" id="deploy_placement_constraint" name="deploy_placement_constraint">
+                                        <option value="">Any Node (Manager or Worker)</option>
+                                        <option value="node.role==worker">Only Worker Nodes</option>
+                                        <option value="node.role==manager">Only Manager Nodes</option>
+                                    </select>
+                                    <small class="form-text text-muted">Where to deploy the service within the Swarm cluster.</small>
+                                </div>
                             </div>
                             <div class="mb-3">
                                 <label for="network_name" class="form-label">Attach to Network</label>
@@ -269,30 +283,31 @@ require_once __DIR__ . '/../includes/header.php';
                                 <label class="form-check-label" for="autoscaling_enabled">Enable Autoscaling</label>
                             </div>
 
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="autoscaling_min_replicas" class="form-label">Minimum Replicas</label>
-                                    <input type="number" class="form-control" id="autoscaling_min_replicas" name="autoscaling_min_replicas" value="1" min="1">
+                            <div id="autoscaling-fields">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoscaling_min_replicas" class="form-label">Minimum Replicas</label>
+                                        <input type="number" class="form-control" id="autoscaling_min_replicas" name="autoscaling_min_replicas" value="1" min="1" disabled>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoscaling_max_replicas" class="form-label">Maximum Replicas</label>
+                                        <input type="number" class="form-control" id="autoscaling_max_replicas" name="autoscaling_max_replicas" value="1" min="1" disabled>
+                                    </div>
                                 </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="autoscaling_max_replicas" class="form-label">Maximum Replicas</label>
-                                    <input type="number" class="form-control" id="autoscaling_max_replicas" name="autoscaling_max_replicas" value="1" min="1">
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoscaling_cpu_up_slider" class="form-label">CPU Scale-Up Threshold: <strong id="cpu-threshold-up-display">80</strong>%</label>
+                                        <input type="range" class="form-range" id="autoscaling_cpu_up_slider" min="1" max="100" value="80" disabled>
+                                        <input type="hidden" name="autoscaling_cpu_threshold_up" id="autoscaling_cpu_threshold_up" value="80">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoscaling_cpu_down_slider" class="form-label">CPU Scale-Down Threshold: <strong id="cpu-threshold-down-display">20</strong>%</label>
+                                        <input type="range" class="form-range" id="autoscaling_cpu_down_slider" min="1" max="100" value="20" disabled>
+                                        <input type="hidden" name="autoscaling_cpu_threshold_down" id="autoscaling_cpu_threshold_down" value="20">
+                                    </div>
                                 </div>
                             </div>
-
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="autoscaling_cpu_up_slider" class="form-label">CPU Scale-Up Threshold: <strong id="cpu-threshold-up-display">80</strong>%</label>
-                                    <input type="range" class="form-range" id="autoscaling_cpu_up_slider" min="1" max="100" value="80">
-                                    <input type="hidden" name="autoscaling_cpu_threshold_up" id="autoscaling_cpu_threshold_up" value="80">
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="autoscaling_cpu_down_slider" class="form-label">CPU Scale-Down Threshold: <strong id="cpu-threshold-down-display">20</strong>%</label>
-                                    <input type="range" class="form-range" id="autoscaling_cpu_down_slider" min="1" max="100" value="20">
-                                    <input type="hidden" name="autoscaling_cpu_threshold_down" id="autoscaling_cpu_threshold_down" value="20">
-                                </div>
-                            </div>
-
                             </div>
                         </div>
                     </div>
@@ -426,6 +441,9 @@ require_once __DIR__ . '/../includes/header.php';
 
 <script>
 window.pageInit = function() {
+    const preselectedHostId = <?= json_encode($preselected_host_id) ?>;
+    const deploymentModeSwarm = document.getElementById('deployment_mode_swarm');
+    const deploymentModeStandalone = document.getElementById('deployment_mode_standalone');
     const mainForm = document.getElementById('main-form');
     const hostSelect = document.getElementById('host_id');
     const networkSelect = document.getElementById('network_name');
@@ -436,6 +454,7 @@ window.pageInit = function() {
     const cpuInput = document.getElementById('deploy_cpu');
     const memorySlider = document.getElementById('deploy_memory_slider');
     const memoryDisplay = document.getElementById('memory-limit-display');
+    const deployPlacementGroup = document.getElementById('deploy-placement-group');
     const memoryInput = document.getElementById('deploy_memory');
     const sourceTypeGitRadio = document.getElementById('source_type_git');
     const sourceTypeLocalImageRadio = document.getElementById('source_type_local_image');
@@ -480,12 +499,16 @@ window.pageInit = function() {
     const addVolumeBtn = document.getElementById('add-volume-btn');
     const volumesContainer = document.getElementById('volumes-container');
     const refreshNetworksBtn = document.getElementById('refresh-networks-btn');
+    const autoscalingSwitch = document.getElementById('autoscaling_enabled');
     const cpuThresholdUpSlider = document.getElementById('autoscaling_cpu_up_slider');
     const cpuThresholdUpDisplay = document.getElementById('cpu-threshold-up-display');
     const cpuThresholdUpInput = document.getElementById('autoscaling_cpu_threshold_up');
     const cpuThresholdDownSlider = document.getElementById('autoscaling_cpu_down_slider');
     const cpuThresholdDownDisplay = document.getElementById('cpu-threshold-down-display');
     const cpuThresholdDownInput = document.getElementById('autoscaling_cpu_threshold_down');
+
+    deploymentModeSwarm.addEventListener('change', loadHostsForMode);
+    deploymentModeStandalone.addEventListener('change', loadHostsForMode);
 
     function ipToLong(ip) {
         if (!ip) return 0;
@@ -496,6 +519,41 @@ window.pageInit = function() {
     function longToIp(long) {
         // Use bitwise shifts to extract octets
         return [(long >>> 24), (long >>> 16) & 255, (long >>> 8) & 255, long & 255].join('.');
+    }
+
+    function loadHostsForMode() {
+        const isSwarmMode = deploymentModeSwarm.checked;
+        const mode = isSwarmMode ? 'managers' : 'standalone';
+        const label = isSwarmMode ? 'Select Swarm Manager' : 'Select Standalone Host';
+        const placeholder = isSwarmMode ? '-- Choose a Swarm Manager --' : '-- Choose a Standalone Host --';
+
+        document.getElementById('host-select-label').textContent = label;
+        hostSelect.innerHTML = `<option value="">-- Loading hosts... --</option>`;
+        hostSelect.disabled = true;
+
+        // Use the dedicated API endpoint to fetch the correct type of hosts
+        fetch(`${basePath}/api/hosts/list?filter=${mode}`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.status !== 'success') throw new Error(result.message);
+                
+                let optionsHtml = `<option value="" disabled ${!preselectedHostId ? 'selected' : ''}>${placeholder}</option>`;
+                result.data.forEach(host => {
+                    // The data-volume-path is less critical for Swarm but kept for consistency
+                    optionsHtml += `<option value="${host.id}" data-volume-path="${host.default_volume_path || '/opt/stacks'}" ${preselectedHostId == host.id ? 'selected' : ''}>${host.name}</option>`;
+                });
+                hostSelect.innerHTML = optionsHtml;
+                hostSelect.disabled = false;
+
+                // If a host was pre-selected, trigger the change event to load its data
+                if (preselectedHostId) {
+                    hostSelect.dispatchEvent(new Event('change'));
+                }
+            })
+            .catch(error => {
+                hostSelect.innerHTML = `<option value="">Error: ${error.message}</option>`;
+                hostSelect.disabled = false;
+            });
     }
 
     function loadNetworks(hostId) {
@@ -516,7 +574,10 @@ window.pageInit = function() {
                     
                     availableNetworks = result.data; // Store full network objects
                     let optionsHtml = '<option value="">-- Do not attach to a specific network --</option>';
+                    // Add a specific option for the default bridge network behavior
+                    optionsHtml += '<option value="bridge">-- Use Stack Default (Bridge) --</option>';
                     availableNetworks.forEach(net => {
+                        if (['bridge', 'host', 'none', 'ingress'].includes(net.Name)) return; // Don't list default/special docker networks
                         optionsHtml += `<option value="${net.Name}">${net.Name}</option>`;
                     });
                     networkSelect.innerHTML = optionsHtml;
@@ -801,6 +862,21 @@ window.pageInit = function() {
                     }
                     memorySlider.dispatchEvent(new Event('input'));
 
+                    // Show/hide placement constraint option based on Swarm status
+                    deployPlacementGroup.style.display = isSwarmManager ? 'block' : 'none';
+                    // Reset to default if not Swarm
+                    if (!isSwarmManager) document.getElementById('deploy_placement_constraint').value = '';
+
+                    // For Swarm, it's better to pull from a registry than use a local image.
+                    // Hide the 'local image' option and default to 'hub'.
+                    const localImageLabel = document.querySelector('label[for="source_type_local_image"]');
+                    if (localImageLabel) {
+                        localImageLabel.style.display = isSwarmManager ? 'none' : '';
+                        if (isSwarmManager && sourceTypeLocalImageRadio.checked) {
+                            sourceTypeHubImageRadio.checked = true;
+                            toggleSourceSections();
+                        }
+                    }
                 } else {
                     isSwarmManager = false;
                     throw new Error(result.message || 'Host stats not available.');
@@ -909,6 +985,21 @@ window.pageInit = function() {
         });
     }
 
+    // --- Autoscaling Fields Toggle ---
+    if (autoscalingSwitch) {
+        const autoscalingFields = document.getElementById('autoscaling-fields');
+        const toggleAutoscalingFields = () => {
+            const isEnabled = autoscalingSwitch.checked;
+            autoscalingFields.querySelectorAll('input, select').forEach(el => {
+                el.disabled = !isEnabled;
+            });
+            autoscalingFields.style.opacity = isEnabled ? '1' : '0.5';
+        };
+
+        autoscalingSwitch.addEventListener('change', toggleAutoscalingFields);
+        toggleAutoscalingFields(); // Initial state
+    }
+
     // --- YAML Preview ---
     const viewYamlBtn = document.getElementById('view-compose-yaml-btn');
     const previewModalEl = document.getElementById('previewConfigModal');
@@ -950,6 +1041,7 @@ window.pageInit = function() {
         const replicas = document.getElementById('deploy_replicas').value;
         const cpu = cpuInput.value;
         const memory = memoryInput.value;
+        const placementConstraint = document.getElementById('deploy_placement_constraint').value;
 
         if (isSwarmManager) {
             service.deploy = {
@@ -962,6 +1054,11 @@ window.pageInit = function() {
                 },
                 restart_policy: {
                     condition: 'any'
+                }
+            };
+            if (placementConstraint) {
+                service.deploy.placement = {
+                    constraints: [placementConstraint]
                 }
             };
         } else { // Standalone
@@ -1400,12 +1497,11 @@ window.pageInit = function() {
         }
     });
 
-    // If a host is pre-selected from the URL, trigger the change event to load its data.
-    if (hostSelect.value) {
-        hostSelect.dispatchEvent(new Event('change'));
-    }
+    loadHostsForMode(); // Initial load based on default checked radio
 };
 </script>
+
+
 
 <?php
 require_once __DIR__ . '/../includes/footer.php';

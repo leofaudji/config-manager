@@ -21,6 +21,7 @@ class AppLauncherHelper
         $host_port = $params['host_port'] ?? null;
         $container_port = $params['container_port'] ?? null;
         $container_ip = $params['container_ip'] ?? null;
+        $placement_constraint = $params['deploy_placement_constraint'] ?? null;
         $stack_name = $params['stack_name'] ?? '';
 
         if (!isset($compose_data['services']) || !is_array($compose_data['services'])) {
@@ -33,22 +34,35 @@ class AppLauncherHelper
             // Apply universal settings to all services
             if ($is_swarm_manager) {
                 // Ensure deploy section exists
-                if (!isset($compose_data['services'][$service_key]['deploy'])) {
-                    $compose_data['services'][$service_key]['deploy'] = [];
-                }
+                $compose_data['services'][$service_key]['deploy'] = $compose_data['services'][$service_key]['deploy'] ?? [];
 
                 // Set/replace resource limits from form
-                $compose_data['services'][$service_key]['deploy']['resources']['limits']['cpus'] = (string)$cpu;
-                $compose_data['services'][$service_key]['deploy']['resources']['limits']['memory'] = $memory;
+                if ($cpu || $memory) {
+                    $compose_data['services'][$service_key]['deploy']['resources']['limits'] = [];
+                    if ($cpu) {
+                        // Explicitly cast to string to satisfy Docker Swarm's requirement (e.g., "1.5" not 1.5)
+                        $compose_data['services'][$service_key]['deploy']['resources']['limits']['cpus'] = (string)$cpu;
+                    }
+                    if ($memory) $compose_data['services'][$service_key]['deploy']['resources']['limits']['memory'] = $memory;
+                }
 
                 // Set/replace restart policy
                 $compose_data['services'][$service_key]['deploy']['restart_policy'] = [
                     'condition' => 'any'
                 ];
+
+                // Apply placement constraint if specified
+                if ($placement_constraint) {
+                    $compose_data['services'][$service_key]['deploy']['placement']['constraints'] = [$placement_constraint];
+                }
             } else { // Standalone host
-                // Set/replace resource limits from form
-                $compose_data['services'][$service_key]['cpus'] = (float)$cpu;
-                $compose_data['services'][$service_key]['mem_limit'] = $memory;
+                // For standalone, resource limits are at the top level of the service
+                if ($cpu) {
+                    $compose_data['services'][$service_key]['cpus'] = (float)$cpu;
+                }
+                if ($memory) {
+                    $compose_data['services'][$service_key]['mem_limit'] = $memory;
+                }
 
                 // Set restart policy only if it's not already defined in the compose file.
                 if (!isset($compose_data['services'][$service_key]['restart'])) {
@@ -60,12 +74,8 @@ class AppLauncherHelper
             // This avoids the default "{project}_{service}_1" naming convention.
             // This is not recommended for Swarm as it conflicts with scaling.
             if (!$is_swarm_manager) {
-                // If there's only one service, name the container after the stack. Otherwise, name it after the service key.
-                if ($num_services === 1) {
-                    $compose_data['services'][$service_key]['container_name'] = $stack_name;
-                } else {
-                    $compose_data['services'][$service_key]['container_name'] = $service_key;
-                }
+                // Always set the container name based on the stack and service key to ensure uniqueness and clarity.
+                $compose_data['services'][$service_key]['container_name'] = $stack_name . '_' . $service_key;
             }
 
             // Also set the hostname. This is generally safe.
@@ -76,8 +86,22 @@ class AppLauncherHelper
                 $compose_data['services'][$service_key]['hostname'] = $service_key;
             }
 
+            // Ensure that if a hostname is set, the service is attached to at least one network.
+            // If no specific network is chosen, attach it to the default network to support the alias.
+            if (isset($compose_data['services'][$service_key]['hostname'])) {
+                // Only create a default network if NO other network is specified by the user or in the compose file.
+                // Also, do not create a default network if the user intended to use 'ingress' or the default 'bridge'.
+                if (empty($network) && !isset($compose_data['services'][$service_key]['networks'])) {
+                    if (!isset($compose_data['networks']['default'])) {
+                        $compose_data['networks']['default'] = null; // Define a default network if none exists
+                    }
+                    // Explicitly attach the service to the default network to support the hostname alias.
+                    $compose_data['services'][$service_key]['networks'] = ['default'];
+                }
+            }
             // Apply network attachment to all services
-            if ($network) {
+            // Only apply network settings if a specific, non-default network is chosen.
+            if ($network && $network !== 'bridge' && $network !== 'ingress') {
                 $network_key = preg_replace('/[^\w.-]+/', '_', $network);
 
                 if (!isset($compose_data['services'][$service_key]['networks'])) {
@@ -162,7 +186,8 @@ class AppLauncherHelper
         }
 
         // Add top-level network definition
-        if ($network) {
+        // Only add the top-level network if it's a specific, non-default network.
+        if ($network && $network !== 'bridge' && $network !== 'ingress') {
             $network_key = preg_replace('/[^\w.-]+/', '_', $network);
             if (!isset($compose_data['networks'][$network_key])) {
             if (!isset($compose_data['networks'])) $compose_data['networks'] = [];

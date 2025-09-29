@@ -64,6 +64,7 @@ try {
     $host_port = !empty($_POST['host_port']) ? (int)$_POST['host_port'] : null;
     $container_port = !empty($_POST['container_port']) ? (int)$_POST['container_port'] : null;
     $container_ip = !empty($_POST['container_ip']) ? trim($_POST['container_ip']) : null;
+    $deploy_placement_constraint = !empty($_POST['deploy_placement_constraint']) ? trim($_POST['deploy_placement_constraint']) : null;
     $is_update = isset($_POST['update_stack']) && $_POST['update_stack'] === 'true';
 
     // Autoscaling settings
@@ -102,6 +103,7 @@ try {
         'host_port' => $host_port,
         'container_port' => $container_port,
         'container_ip' => $container_ip,
+        'deploy_placement_constraint' => $deploy_placement_constraint,
     ];
 
     $compose_content = '';
@@ -149,6 +151,44 @@ try {
         throw new Exception("A stack with the name '{$stack_name}' already exists on the host '{$host['name']}'. Please choose a different name.");
     }
     stream_message("Stack name is available.");
+
+    // --- Pre-deployment check for Swarm: Check for ingress network if a port is being published ---
+    if ($is_swarm_manager && $host_port) {
+        stream_message("Checking for Swarm ingress network...");
+        $networks = $dockerClient->listNetworks();
+        $ingress_found = false;
+        foreach ($networks as $network) {
+            if (isset($network['Ingress']) && $network['Ingress'] === true) {
+                $ingress_found = true;
+                break;
+            }
+        }
+        if (!$ingress_found) {
+            throw new Exception("Swarm ingress network not found. This is required for publishing ports. Please ensure your Swarm cluster is healthy. You may need to run 'docker swarm init --force-new-cluster' on your manager node to recreate it.");
+        }
+        stream_message("Swarm ingress network found.");
+    }
+
+    // --- Pre-deployment check for Swarm: Verify host port is not already in use by another service ---
+    if ($is_swarm_manager && $host_port) {
+        stream_message("Checking for port conflicts on Swarm ingress network...");
+        $all_services = $dockerClient->listServices();
+        foreach ($all_services as $service) {
+            // Skip services belonging to the stack we are currently updating
+            if (($service['Spec']['Labels']['com.docker.stack.namespace'] ?? null) === $stack_name) {
+                continue;
+            }
+            if (isset($service['Spec']['EndpointSpec']['Ports'])) {
+                foreach ($service['Spec']['EndpointSpec']['Ports'] as $port_spec) {
+                    if (isset($port_spec['PublishedPort']) && $port_spec['PublishedPort'] == $host_port) {
+                        $conflicting_service_name = $service['Spec']['Name'];
+                        throw new Exception("Deployment failed: Port {$host_port} is already in use by service '{$conflicting_service_name}' on the Swarm ingress network. Please choose a different host port.");
+                    }
+                }
+            }
+        }
+        stream_message("No port conflicts found.");
+    }
 
     // --- Generate Compose Content ---
     stream_message("Generating compose file content based on source type: {$source_type}...");
@@ -322,11 +362,6 @@ try {
 
     // --- Deployment ---
     if ($is_swarm_manager) {
-        stream_message("Deploying to Swarm manager...");
-        $dockerClient->createStack($stack_name, $compose_content);
-        stream_message("Stack '{$stack_name}' deployment initiated on Swarm host '{$host['name']}'.");
-    } else {
-        // --- Standalone Host Deployment ---
         $deployment_dir = '';
         $compose_file_name = ''; // Relative path to the compose file within the deployment_dir
         $base_compose_path = get_setting('default_compose_path', '');
@@ -392,6 +427,7 @@ try {
         }
 
         stream_message("Configuring remote Docker environment...");
+        // This logic is now shared between Standalone and Swarm
         $env_vars = "DOCKER_HOST=" . escapeshellarg($host['docker_api_url']);
         if ($host['tls_enabled']) {
             $env_vars .= " DOCKER_TLS_VERIFY=1";
@@ -493,24 +529,22 @@ try {
             }
         }
 
-        $main_compose_command = '';
-        $compose_up_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes 2>&1";
-
-        // A build is performed if the user explicitly checked the box, or if we auto-detected a 'build' directive in the compose file.
-        if ($build_from_dockerfile || $is_build_required) {
-            stream_message("Build required (explicitly requested or auto-detected). Preparing build command...");
-            $compose_build_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " build --pull 2>&1";
-            $main_compose_command = $compose_build_command . ' && ' . $compose_up_command;
-        } else {
-            // For 'hub' or 'git' (without build), we pull. For 'image' (local), we don't.
-            if ($source_type === 'image') {
-                stream_message("Source is an existing host image. Skipping pull command...");
-                $main_compose_command = $compose_up_command;
-            } else {
-                stream_message("No build required. Preparing pull command...");
-                $compose_pull_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1";
-                $main_compose_command = $compose_pull_command . ' && ' . $compose_up_command;
+        if ($is_swarm_manager) {
+            stream_message("Host is a Swarm Manager. Preparing 'docker stack deploy' command...");
+            $main_compose_command = "docker stack deploy -c " . escapeshellarg($compose_file_name) . " " . escapeshellarg($stack_name) . " --with-registry-auth --prune 2>&1";
+            // For Swarm, we don't need to explicitly pull. The --with-registry-auth flag handles it.
+            // However, if a build is required, we must build first.
+            if ($is_build_required) {
+                stream_message("Build directive detected. Running 'docker-compose build' before deployment...");
+                $build_command = "docker-compose -f " . escapeshellarg($compose_file_name) . " build --pull 2>&1";
+                $main_compose_command = $build_command . " && " . $main_compose_command;
             }
+        } else {
+            // --- Standalone Host Deployment ---
+            stream_message("Host is Standalone. Preparing 'docker-compose' commands...");
+            $compose_up_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes 2>&1";
+            // For Standalone, we always try to pull first to get the latest image.
+            $main_compose_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1 && " . $compose_up_command;
         }
 
         $script_to_run = $cd_command . ' && ' . $login_command . $mkdir_command . $main_compose_command;
@@ -536,10 +570,12 @@ try {
     stream_message("Saving deployment configuration to database...");
     $log_details = "Launched app '{$stack_name}' on host '{$host['name']}'. Source: {$source_type}.";
 
-    $deployment_details_to_save = $_POST;
+    $deployment_details_to_save = $_POST; // Start with all POST data
     // Unset fields we don't want to store or that are large/irrelevant for re-deployment
-    unset($deployment_details_to_save['id']); // This is the host ID, not needed
-    $deployment_details_json = json_encode($deployment_details_to_save);
+    unset($deployment_details_to_save['host_id']);
+    unset($deployment_details_to_save['volume_paths']); // Unset the volume paths array to prevent conversion warnings
+    unset($deployment_details_to_save['env_vars']); // Unset environment variables array
+    $deployment_details_json = json_encode($deployment_details_to_save, JSON_UNESCAPED_SLASHES);
 
     // --- Record deployment in the database ---
     // This query now handles both create and update scenarios for autoscaling settings.
@@ -552,17 +588,22 @@ try {
     }
 
     $stmt_stack = $conn->prepare(
-        "INSERT INTO application_stacks (host_id, stack_name, source_type, compose_file_path, deployment_details, autoscaling_enabled, autoscaling_min_replicas, autoscaling_max_replicas, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO application_stacks (host_id, stack_name, source_type, compose_file_path, deployment_details, autoscaling_enabled, autoscaling_min_replicas, autoscaling_max_replicas, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down, deploy_placement_constraint) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE 
             source_type = VALUES(source_type), 
             compose_file_path = VALUES(compose_file_path), 
             deployment_details = VALUES(deployment_details), 
             autoscaling_enabled = VALUES(autoscaling_enabled), autoscaling_min_replicas = VALUES(autoscaling_min_replicas), autoscaling_max_replicas = VALUES(autoscaling_max_replicas), 
-            autoscaling_cpu_threshold_up = VALUES(autoscaling_cpu_threshold_up), autoscaling_cpu_threshold_down = VALUES(autoscaling_cpu_threshold_down), 
+            autoscaling_cpu_threshold_up = VALUES(autoscaling_cpu_threshold_up), autoscaling_cpu_threshold_down = VALUES(autoscaling_cpu_threshold_down),
+            deploy_placement_constraint = VALUES(deploy_placement_constraint),
             updated_at = NOW()"
     );
-    $stmt_stack->bind_param("issssiiiii", $host_id, $stack_name, $source_type, $compose_file_to_save, $deployment_details_json, $autoscaling_enabled, $autoscaling_min_replicas, $autoscaling_max_replicas, $autoscaling_cpu_threshold_up, $autoscaling_cpu_threshold_down);
+    // Ensure that a null value for placement constraint is handled correctly.
+    // bind_param doesn't like nulls for 's' type, so we provide an empty string as a fallback.
+    $placement_to_save = $deploy_placement_constraint ?? '';
+
+    $stmt_stack->bind_param("issssiiiiis", $host_id, $stack_name, $source_type, $compose_file_to_save, $deployment_details_json, $autoscaling_enabled, $autoscaling_min_replicas, $autoscaling_max_replicas, $autoscaling_cpu_threshold_up, $autoscaling_cpu_threshold_down, $placement_to_save);
     $stmt_stack->execute();
     $stmt_stack->close();
 
@@ -595,7 +636,11 @@ try {
         $details_parts[] = "{$vol_count} volume(s) mapped.";
     }
 
-    $log_details_for_stack_change = implode(' | ', $details_parts);
+    // Sanitize details for logging to prevent array to string conversion
+    $log_details_for_stack_change = array_map(function($item) {
+        return is_array($item) ? json_encode($item) : $item;
+    }, $details_parts);
+    $log_details_for_stack_change = implode(' | ', $log_details_for_stack_change);
     if (empty($log_details_for_stack_change)) {
         $log_details_for_stack_change = ($is_update ? "Stack configuration updated." : "New stack deployed.");
     }

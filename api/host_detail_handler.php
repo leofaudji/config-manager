@@ -114,10 +114,29 @@ try {
     // Generate HTML for the table rows
     $html = '';
     if (empty($paginatedContainers)) {
-        $html = '<tr><td colspan="8" class="text-center">No containers found for the current filter.</td></tr>';
+        $html = '<tr><td colspan="9" class="text-center">No containers found for the current filter.</td></tr>';
     } else {
         foreach ($paginatedContainers as $cont) {
             $name = $cont['Names'] && count($cont['Names']) > 0 ? htmlspecialchars(substr($cont['Names'][0], 1)) : 'N/A';
+
+            // --- New, more robust name cleaning logic ---
+            $stack_name = $cont['Labels']['com.docker.stack.namespace'] ?? $cont['Labels']['com.docker.compose.project'] ?? null;
+
+            if ($stack_name) {
+                // Remove stack name prefix if it exists, e.g., "my-stack_web.1.xyz..." -> "web.1.xyz..."
+                $prefix = $stack_name . '_';
+                if (str_starts_with($name, $prefix)) {
+                    $name = substr($name, strlen($prefix));
+                }
+            }
+            // Clean up the long random string from Swarm replicas, e.g., "web.1.xyz..." -> "web.1"
+            $name = preg_replace('/(\.\d+)\.[a-z0-9]{25}$/', '$1', $name);
+            // --- End of new logic ---
+
+            // Clean up the image name to remove the sha256 digest
+            $image_name_raw = $cont['Image'] ?? 'N/A';
+            $image_name = preg_replace('/@sha256:[a-f0-9]+$/', '', $image_name_raw);
+
             $state = htmlspecialchars($cont['State']);
             $status = htmlspecialchars($cont['Status']);
             
@@ -141,6 +160,23 @@ try {
             }
             if (empty($ipAddressHtml)) $ipAddressHtml = '<span class="text-muted small">N/A</span>';
 
+            // Build Published Ports HTML
+            $portsHtml = '';
+            if (!empty($cont['Ports'])) {
+                $port_parts = [];
+                foreach ($cont['Ports'] as $port) {
+                    $mapping_parts = [];
+                    if (isset($port['PublicPort'])) {
+                        $mapping_parts[] = htmlspecialchars($port['PublicPort']);
+                    }
+                    $mapping_parts[] = htmlspecialchars($port['PrivatePort']) . '/' . htmlspecialchars($port['Type'] ?? 'tcp');
+
+                    $port_parts[] = '<code>' . implode(':', $mapping_parts) . '</code>';
+                }
+                $portsHtml = implode('<br>', $port_parts);
+            }
+            if (empty($portsHtml)) $portsHtml = '<span class="text-muted small">None</span>';
+
             // Build Networks HTML
             $networksHtml = '';
             if (!empty($cont['NetworkSettings']['Networks'])) {
@@ -159,17 +195,26 @@ try {
                 $stack_db_id = $managed_stacks_map[$compose_project];
             }
 
+            $is_self = ($name === 'traefik-manager');
+
             $actionButtons = '<div class="btn-group" role="group">';
             // Add the update check button first
             $actionButtons .= "<button class=\"btn btn-sm btn-outline-secondary update-check-btn\" data-container-id=\"{$cont['Id']}\" " . ($stack_db_id ? "data-stack-id=\"{$stack_db_id}\"" : "") . " title=\"Check for image update\"><i class=\"bi bi-patch-question-fill\"></i></button>";
 
-            if ($state === 'running') {
-                $actionButtons .= "<button class=\"btn btn-sm btn-outline-warning container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"restart\" title=\"Restart\"><i class=\"bi bi-arrow-repeat\"></i></button>";
-                $actionButtons .= "<button class=\"btn btn-sm btn-outline-danger container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"stop\" title=\"Stop\"><i class=\"bi bi-stop-fill\"></i></button>";
+            if ($is_self) {
+                $actionButtons .= "<button class=\"btn btn-sm btn-outline-warning\" disabled title=\"Cannot restart self\"><i class=\"bi bi-arrow-repeat\"></i></button>";
+                $actionButtons .= "<button class=\"btn btn-sm btn-outline-danger\" disabled title=\"Cannot stop self\"><i class=\"bi bi-stop-fill\"></i></button>";
                 $actionButtons .= "<button class=\"btn btn-sm btn-outline-info live-stats-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#liveStatsModal\" data-container-id=\"{$cont['Id']}\" data-container-name=\"{$name}\" title=\"Live Stats\"><i class=\"bi bi-bar-chart-line-fill\"></i></button>";
                 $actionButtons .= "<button class=\"btn btn-sm btn-outline-dark exec-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#execCommandModal\" data-container-id=\"{$cont['Id']}\" data-container-name=\"{$name}\" title=\"Exec Command (Console)\"><i class=\"bi bi-terminal-fill\"></i></button>";
             } else {
-                $actionButtons .= "<button class=\"btn btn-sm btn-outline-success container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"start\" title=\"Start\"><i class=\"bi bi-play-fill\"></i></button>";
+                if ($state === 'running') {
+                    $actionButtons .= "<button class=\"btn btn-sm btn-outline-warning container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"restart\" title=\"Restart\"><i class=\"bi bi-arrow-repeat\"></i></button>";
+                    $actionButtons .= "<button class=\"btn btn-sm btn-outline-danger container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"stop\" title=\"Stop\"><i class=\"bi bi-stop-fill\"></i></button>";
+                    $actionButtons .= "<button class=\"btn btn-sm btn-outline-info live-stats-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#liveStatsModal\" data-container-id=\"{$cont['Id']}\" data-container-name=\"{$name}\" title=\"Live Stats\"><i class=\"bi bi-bar-chart-line-fill\"></i></button>";
+                    $actionButtons .= "<button class=\"btn btn-sm btn-outline-dark exec-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#execCommandModal\" data-container-id=\"{$cont['Id']}\" data-container-name=\"{$name}\" title=\"Exec Command (Console)\"><i class=\"bi bi-terminal-fill\"></i></button>";
+                } else {
+                    $actionButtons .= "<button class=\"btn btn-sm btn-outline-success container-action-btn\" data-container-id=\"{$cont['Id']}\" data-action=\"start\" title=\"Start\"><i class=\"bi bi-play-fill\"></i></button>";
+                }
             }
             $actionButtons .= "<button class=\"btn btn-sm btn-outline-primary view-logs-btn\" data-bs-toggle=\"modal\" data-bs-target=\"#viewLogsModal\" data-container-id=\"{$cont['Id']}\" data-container-name=\"{$name}\" title=\"View Logs\"><i class=\"bi bi-card-text\"></i></button>";
             $actionButtons .= '</div>';
@@ -177,11 +222,12 @@ try {
             $html .= "<tr>";
             $html .= "<td><input class=\"form-check-input container-checkbox\" type=\"checkbox\" value=\"{$cont['Id']}\"></td>";
             $html .= "<td>{$name}</td>";
-            $html .= "<td><small>" . htmlspecialchars($cont['Image']) . "</small></td>";
+            $html .= "<td><small>" . htmlspecialchars($image_name) . "</small></td>";
             $html .= "<td><span class=\"badge bg-{$stateBadgeClass}\">{$state}</span></td>";
             $html .= "<td>{$status}</td>";
             $html .= "<td>{$ipAddressHtml}</td>";
             $html .= "<td>{$networksHtml}</td>";
+            $html .= "<td>{$portsHtml}</td>";
             $html .= "<td class=\"text-end\">{$actionButtons}</td>";
             $html .= "</tr>";
         }

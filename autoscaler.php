@@ -44,7 +44,7 @@ try {
         try {
             // 3. Dapatkan metrik CPU terbaru untuk host terkait
             $stmt_metrics = $conn->prepare(
-                "SELECT AVG(cpu_usage_percent) as avg_cpu
+                "SELECT AVG(host_cpu_usage_percent) as avg_cpu
                  FROM host_stats_history
                  WHERE host_id = ? AND created_at >= NOW() - INTERVAL 10 MINUTE"
             );
@@ -65,56 +65,115 @@ try {
             $dockerClient = new DockerClient($stack); // Class DockerClient menerima array host
             $info = $dockerClient->getInfo();
 
+            // --- Logika Scaling Berdasarkan Tipe Host ---
             if (!isset($info['Swarm']['ControlAvailable']) || !$info['Swarm']['ControlAvailable']) {
-                echo "  -> INFO: Host '{$stack['host_name']}' adalah Standalone. Melewati proses autoscaling berbasis replika.\n";
-                continue;
-            }
+                // --- STANDALONE HOST: Vertical Scaling (Ubah Resource) ---
+                echo "  -> INFO: Host '{$stack['host_name']}' adalah Standalone. Menerapkan Vertical Scaling.\n";
 
-            $services = $dockerClient->listServices();
-            $target_service = null;
-            foreach ($services as $service) {
-                // Mencocokkan service berdasarkan label 'com.docker.stack.namespace'
-                if (isset($service['Spec']['Labels']['com.docker.stack.namespace']) && $service['Spec']['Labels']['com.docker.stack.namespace'] === $stack['stack_name']) {
-                    $target_service = $service;
-                    break;
+                // Temukan kontainer yang cocok dengan nama stack
+                $containers = $dockerClient->listContainers();
+                $target_container = null;
+                foreach ($containers as $container) {
+                    // Match by project label, which is more reliable than container name
+                    if (($container['Labels']['com.docker.compose.project'] ?? null) === $stack['stack_name']) {
+                        $target_container = $container;
+                        break;
+                    }
                 }
-            }
 
-            if (!$target_service) {
-                echo "  -> Tidak dapat menemukan service yang cocok untuk stack '{$stack['stack_name']}'. Melewati.\n";
-                continue;
-            }
+                if (!$target_container) {
+                    echo "  -> WARN: Tidak dapat menemukan kontainer yang berjalan untuk stack '{$stack['stack_name']}'. Melewati.\n";
+                    continue;
+                }
 
-            $service_id = $target_service['ID'];
-            $current_replicas = $target_service['Spec']['Mode']['Replicated']['Replicas'];
-            $service_version = $target_service['Version']['Index'];
+                $container_id = $target_container['Id'];
+                $container_details = $dockerClient->inspectContainer($container_id);
+                $current_cpu_limit_nano = $container_details['HostConfig']['CpuQuota'] ?? 0;
+                // Convert from nano-CPUs (per 100ms period) back to vCPU count
+                $current_cpu_limit = $current_cpu_limit_nano > 0 ? $current_cpu_limit_nano / 100000 : ($container_details['HostConfig']['NanoCpus'] / 1e9);
 
-            echo "  -> Menemukan service '{$target_service['Spec']['Name']}' (Replika saat ini: {$current_replicas})\n";
+                echo "  -> Menemukan kontainer '{$target_container['Names'][0]}' (Batas CPU saat ini: {$current_cpu_limit} vCPU)\n";
 
-            // 5. Terapkan logika scaling
-            $new_replicas = $current_replicas;
-            if ($avg_cpu > $stack['autoscaling_cpu_threshold_up'] && $current_replicas < $stack['autoscaling_max_replicas']) {
-                $new_replicas = $current_replicas + 1;
-                echo "    -> KEPUTUSAN: SCALING NAIK. CPU ({$avg_cpu}%) > Threshold ({$stack['autoscaling_cpu_threshold_up']}%). Mengubah replika menjadi {$new_replicas}\n";
-            } elseif ($avg_cpu < $stack['autoscaling_cpu_threshold_down'] && $current_replicas > $stack['autoscaling_min_replicas']) {
-                $new_replicas = $current_replicas - 1;
-                echo "    -> KEPUTUSAN: SCALING TURUN. CPU ({$avg_cpu}%) < Threshold ({$stack['autoscaling_cpu_threshold_down']}%). Mengubah replika menjadi {$new_replicas}\n";
-            }
+                $new_cpu_limit = $current_cpu_limit;
+                $scaling_step = 0.25; // How much to increase/decrease CPU by at a time
 
-            // 6. Lakukan update jika jumlah replika berubah
-            if ($new_replicas !== $current_replicas) {
-                $dockerClient->updateServiceReplicas($service_id, $service_version, $new_replicas);
-                echo "    -> SUKSES: Service berhasil di-update ke {$new_replicas} replika.\n";
-                log_activity('autoscaler', 'Service Scaled', "Service '{$target_service['Spec']['Name']}' di-scale ke {$new_replicas} replika karena utilisasi CPU host.");
+                if ($avg_cpu > $stack['autoscaling_cpu_threshold_up'] && $current_cpu_limit < $stack['autoscaling_max_replicas']) {
+                    // For vertical scaling, we use max_replicas as max_cpu_cores
+                    $new_cpu_limit = min($current_cpu_limit + $scaling_step, $stack['autoscaling_max_replicas']);
+                    echo "    -> KEPUTUSAN: SCALING NAIK (Vertical). CPU Host ({$avg_cpu}%) > Threshold ({$stack['autoscaling_cpu_threshold_up']}%). Mengubah batas CPU menjadi {$new_cpu_limit} vCPU.\n";
+                } elseif ($avg_cpu < $stack['autoscaling_cpu_threshold_down'] && $current_cpu_limit > $stack['autoscaling_min_replicas']) {
+                    // For vertical scaling, we use min_replicas as min_cpu_cores
+                    $new_cpu_limit = max($current_cpu_limit - $scaling_step, $stack['autoscaling_min_replicas']);
+                    echo "    -> KEPUTUSAN: SCALING TURUN (Vertical). CPU Host ({$avg_cpu}%) < Threshold ({$stack['autoscaling_cpu_threshold_down']}%). Mengubah batas CPU menjadi {$new_cpu_limit} vCPU.\n";
+                }
+
+                // Execute the update if the limit has changed
+                if ($new_cpu_limit != $current_cpu_limit) {
+                    try {
+                        $dockerClient->updateContainerResources($container_id, $new_cpu_limit);
+                        echo "    -> SUKSES: Batas CPU kontainer berhasil di-update ke {$new_cpu_limit} vCPU.\n";
+                        log_activity('SYSTEM', 'Container Scaled (Vertical)', "Batas CPU untuk kontainer '{$target_container['Names'][0]}' diubah menjadi {$new_cpu_limit} vCPU karena utilisasi CPU host.");
+                    } catch (Exception $update_e) {
+                        echo "    -> ERROR: Gagal meng-update resource kontainer: " . $update_e->getMessage() . "\n";
+                    }
+                }
+
+            } else {
+                // --- SWARM HOST: Horizontal Scaling (Ubah Replika) ---
+                echo "  -> INFO: Host '{$stack['host_name']}' adalah Swarm Manager. Menerapkan Horizontal Scaling.\n";
+                $services = $dockerClient->listServices();
+                $target_service = null;
+                foreach ($services as $service) {
+                    if (isset($service['Spec']['Labels']['com.docker.stack.namespace']) && $service['Spec']['Labels']['com.docker.stack.namespace'] === $stack['stack_name']) {
+                        $target_service = $service;
+                        break;
+                    }
+                }
+
+                if (!$target_service) {
+                    echo "  -> WARN: Tidak dapat menemukan service yang cocok untuk stack '{$stack['stack_name']}'. Melewati.\n";
+                    continue;
+                }
+
+                $service_id = $target_service['ID'];
+                $current_replicas = $target_service['Spec']['Mode']['Replicated']['Replicas'];
+                $service_version = $target_service['Version']['Index'];
+
+                echo "  -> Menemukan service '{$target_service['Spec']['Name']}' (Replika saat ini: {$current_replicas})\n";
+
+                $new_replicas = $current_replicas;
+                if ($avg_cpu > $stack['autoscaling_cpu_threshold_up'] && $current_replicas < $stack['autoscaling_max_replicas']) {
+                    $new_replicas = $current_replicas + 1;
+                    echo "    -> KEPUTUSAN: SCALING NAIK. CPU ({$avg_cpu}%) > Threshold ({$stack['autoscaling_cpu_threshold_up']}%). Mengubah replika menjadi {$new_replicas}\n";
+                } elseif ($avg_cpu < $stack['autoscaling_cpu_threshold_down'] && $current_replicas > $stack['autoscaling_min_replicas']) {
+                    $new_replicas = $current_replicas - 1;
+                    echo "    -> KEPUTUSAN: SCALING TURUN. CPU ({$avg_cpu}%) < Threshold ({$stack['autoscaling_cpu_threshold_down']}%). Mengubah replika menjadi {$new_replicas}\n";
+                }
+
+                if ($new_replicas !== $current_replicas) {
+                    // Get the current service spec to modify it
+                    $service_spec = $target_service['Spec'];
+
+                    // Add a label to the task template so new tasks are identifiable
+                    $service_spec['TaskTemplate']['ContainerSpec']['Labels']['com.config-manager.origin'] = 'autoscaled';
+
+                    // Update the replica count in the spec
+                    $service_spec['Mode']['Replicated']['Replicas'] = $new_replicas;
+
+                    // Call the generic service update method with the modified spec
+                    $dockerClient->updateServiceSpec($service_id, $service_version, $service_spec);
+                    echo "    -> SUKSES: Service '{$target_service['Spec']['Name']}' di-update ke {$new_replicas} replika dengan label autoscaled.\n";
+                    log_activity('SYSTEM', 'Service Scaled', "Service '{$target_service['Spec']['Name']}' di-scale ke {$new_replicas} replika karena utilisasi CPU host.");
+                }
             }
         } catch (Exception $e) {
             echo "  -> ERROR memproses stack '{$stack['stack_name']}': " . $e->getMessage() . "\n";
-            log_activity('autoscaler', 'Autoscaler Error', "Gagal memproses stack '{$stack['stack_name']}': " . $e->getMessage());
+            log_activity('SYSTEM', 'Autoscaler Error', "Gagal memproses stack '{$stack['stack_name']}': " . $e->getMessage());
         }
     }
 } catch (Exception $e) {
     echo "Terjadi error kritis pada skrip autoscaler: " . $e->getMessage() . "\n";
-    log_activity('autoscaler', 'Autoscaler Error', "Error kritis: " . $e->getMessage());
+    log_activity('SYSTEM', 'Autoscaler Error', "Error kritis: " . $e->getMessage());
 }
 
 $conn->close();

@@ -135,6 +135,13 @@ require_once __DIR__ . '/../includes/header.php';
                         <small class="form-text text-muted">Absolute path to the directory where cron job logs (`collect_stats.log`, `autoscaler.log`) will be stored.</small>
                     </div>
                 </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="log_cleanup_days" class="form-label">Log Cleanup Threshold (days)</label>
+                        <input type="number" class="form-control" id="log_cleanup_days" name="log_cleanup_days" value="<?= htmlspecialchars($settings['log_cleanup_days'] ?? 7) ?>" min="0">
+                        <small class="form-text text-muted">Automatically delete cron job log files older than this many days. Set to 0 to disable.</small>
+                    </div>
+                </div>
             </div>
 
             <hr>

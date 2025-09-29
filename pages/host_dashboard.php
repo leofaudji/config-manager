@@ -153,14 +153,26 @@ require_once __DIR__ . '/../includes/host_nav.php';
                         labels: result.data.labels,
                         datasets: [
                             {
-                                label: 'CPU Usage (%)',
-                                data: result.data.cpu_usage,
+                                label: 'Host CPU Usage (%)',
+                                data: result.data.host_cpu_usage,
+                                borderColor: 'rgb(255, 159, 64)',
+                                backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 2,
+                                pointHoverRadius: 5,
+                                yAxisID: 'y' // Associate with the main Y-axis (0-100%)
+                            },
+                            {
+                                label: 'Container CPU Usage (%)',
+                                data: result.data.container_cpu_usage,
                                 borderColor: 'rgb(75, 192, 192)',
                                 backgroundColor: 'rgba(75, 192, 192, 0.2)',
                                 fill: true,
                                 tension: 0.4,
                                 pointRadius: 2,
-                                pointHoverRadius: 5
+                                pointHoverRadius: 5,
+                                yAxisID: 'y1' // Associate with the secondary Y-axis
                             }, 
                             {
                                 label: 'Memory Usage (%)',
@@ -170,7 +182,8 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                 fill: true,
                                 tension: 0.4,
                                 pointRadius: 2,
-                                pointHoverRadius: 5
+                                pointHoverRadius: 5,
+                                yAxisID: 'y' // Associate with the main Y-axis (0-100%)
                             }
                         ]
                     },
@@ -179,6 +192,9 @@ require_once __DIR__ . '/../includes/host_nav.php';
                         maintainAspectRatio: false,
                         scales: {
                             y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
                                 beginAtZero: true,
                                 max: 100, // Set a fixed max for percentage
                                 ticks: {
@@ -186,6 +202,14 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                     callback: function(value) {
                                         return value + '%'
                                     }
+                                }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                grid: {
+                                    drawOnChartArea: false, // only want the grid lines for one axis to show up
                                 }
                             }
                         },

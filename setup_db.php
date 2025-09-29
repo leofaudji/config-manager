@@ -346,6 +346,19 @@ ADD COLUMN `autoscaling_max_replicas` INT NULL DEFAULT 1 AFTER `autoscaling_min_
 ADD COLUMN `autoscaling_cpu_threshold_up` INT NULL DEFAULT 80 COMMENT 'Scale up if host CPU > this value' AFTER `autoscaling_max_replicas`,
 ADD COLUMN `autoscaling_cpu_threshold_down` INT NULL DEFAULT 20 COMMENT 'Scale down if host CPU < this value' AFTER `autoscaling_cpu_threshold_up`;
 
+ALTER TABLE `host_stats_history` 
+CHANGE COLUMN `cpu_usage_percent` `container_cpu_usage_percent` DECIMAL(5,2) NOT NULL COMMENT 'Aggregated CPU usage of all containers relative to total host cores (can be > 100%)',
+ADD COLUMN `host_cpu_usage_percent` DECIMAL(5,2) NULL COMMENT 'Overall host CPU usage (0-100%)' AFTER `container_cpu_usage_percent`;
+
+ALTER TABLE `docker_hosts` 
+ADD COLUMN `swarm_manager_id` INT(11) NULL DEFAULT NULL AFTER `registry_password`,
+ADD CONSTRAINT `fk_swarm_manager` FOREIGN KEY (`swarm_manager_id`) REFERENCES `docker_hosts` (`id`) ON DELETE SET NULL;
+
+ALTER TABLE `application_stacks`
+ADD COLUMN `deploy_placement_constraint` VARCHAR(50) NULL DEFAULT NULL COMMENT 'Placement constraint for swarm deployment (e.g., node.role==worker)' AFTER `autoscaling_cpu_threshold_down`;
+
+ALTER TABLE `docker_hosts` ADD `swarm_status` VARCHAR(20) NULL DEFAULT 'unreachable' AFTER `description`;
+
 
 ";
 

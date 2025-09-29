@@ -181,6 +181,32 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
   </div>
 </div>
 
+<!-- Join Swarm Modal -->
+<div class="modal fade" id="joinSwarmModal" tabindex="-1" aria-labelledby="joinSwarmModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="joinSwarmModalLabel">Join Swarm Cluster</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Select a manager node to join this host to its Swarm cluster as a worker.</p>
+        <form id="join-swarm-form">
+            <input type="hidden" name="target_host_id" id="join-swarm-target-host-id">
+            <div class="mb-3">
+                <label for="manager-host-select" class="form-label">Select Manager Host</label>
+                <select class="form-select" id="manager-host-select" name="manager_host_id" required></select>
+            </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirm-join-swarm-btn">Join Cluster</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Cron Log Modal -->
 <div class="modal fade" id="cronLogModal" tabindex="-1" aria-labelledby="cronLogModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">

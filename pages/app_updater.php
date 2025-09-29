@@ -264,6 +264,15 @@ require_once __DIR__ . '/../includes/header.php';
                                     <input type="range" class="form-range" id="deploy_memory_slider" min="1024" max="8192" step="1024" value="<?= $mem_val_int ?>">
                                     <input type="hidden" name="deploy_memory" id="deploy_memory" value="<?= $mem_val_str ?>">
                                 </div>
+                                <div class="col-md-4 mb-3" id="deploy-placement-group" style="display: none;">
+                                    <label for="deploy_placement_constraint" class="form-label">Placement Constraint</label>
+                                    <select class="form-select" id="deploy_placement_constraint" name="deploy_placement_constraint">
+                                        <option value="" <?= ($details['deploy_placement_constraint'] ?? '') === '' ? 'selected' : '' ?>>Any Node (Manager or Worker)</option>
+                                        <option value="node.role==worker" <?= ($details['deploy_placement_constraint'] ?? '') === 'node.role==worker' ? 'selected' : '' ?>>Only Worker Nodes</option>
+                                        <option value="node.role==manager" <?= ($details['deploy_placement_constraint'] ?? '') === 'node.role==manager' ? 'selected' : '' ?>>Only Manager Nodes</option>
+                                    </select>
+                                    <small class="form-text text-muted">Where to deploy the service within the Swarm cluster.</small>
+                                </div>
                             </div>
                             <div class="mb-3">
                                 <label for="network_name" class="form-label">Attach to Network</label>
@@ -318,34 +327,35 @@ require_once __DIR__ . '/../includes/header.php';
                                 <label class="form-check-label" for="autoscaling_enabled">Enable Autoscaling</label>
                             </div>
 
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="autoscaling_min_replicas" class="form-label">Minimum Replicas</label>
-                                    <input type="number" class="form-control" id="autoscaling_min_replicas" name="autoscaling_min_replicas" value="<?= htmlspecialchars($stack_data['autoscaling_min_replicas'] ?? 1) ?>" min="1">
+                            <div id="autoscaling-fields">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoscaling_min_replicas" class="form-label">Minimum Replicas</label>
+                                        <input type="number" class="form-control" id="autoscaling_min_replicas" name="autoscaling_min_replicas" value="<?= htmlspecialchars($stack_data['autoscaling_min_replicas'] ?? 1) ?>" min="1">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoscaling_max_replicas" class="form-label">Maximum Replicas</label>
+                                        <input type="number" class="form-control" id="autoscaling_max_replicas" name="autoscaling_max_replicas" value="<?= htmlspecialchars($stack_data['autoscaling_max_replicas'] ?? 1) ?>" min="1">
+                                    </div>
                                 </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="autoscaling_max_replicas" class="form-label">Maximum Replicas</label>
-                                    <input type="number" class="form-control" id="autoscaling_max_replicas" name="autoscaling_max_replicas" value="<?= htmlspecialchars($stack_data['autoscaling_max_replicas'] ?? 1) ?>" min="1">
+
+                                <div class="row">
+                                    <?php
+                                        $cpu_up_val = $stack_data['autoscaling_cpu_threshold_up'] ?? 80;
+                                        $cpu_down_val = $stack_data['autoscaling_cpu_threshold_down'] ?? 20;
+                                    ?>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoscaling_cpu_up_slider" class="form-label">CPU Scale-Up Threshold: <strong id="cpu-threshold-up-display"><?= $cpu_up_val ?></strong>%</label>
+                                        <input type="range" class="form-range" id="autoscaling_cpu_up_slider" min="1" max="100" value="<?= $cpu_up_val ?>">
+                                        <input type="hidden" name="autoscaling_cpu_threshold_up" id="autoscaling_cpu_threshold_up" value="<?= $cpu_up_val ?>">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="autoscaling_cpu_down_slider" class="form-label">CPU Scale-Down Threshold: <strong id="cpu-threshold-down-display"><?= $cpu_down_val ?></strong>%</label>
+                                        <input type="range" class="form-range" id="autoscaling_cpu_down_slider" min="1" max="100" value="<?= $cpu_down_val ?>">
+                                        <input type="hidden" name="autoscaling_cpu_threshold_down" id="autoscaling_cpu_threshold_down" value="<?= $cpu_down_val ?>">
+                                    </div>
                                 </div>
                             </div>
-
-                            <div class="row">
-                                <?php
-                                    $cpu_up_val = $stack_data['autoscaling_cpu_threshold_up'] ?? 80;
-                                    $cpu_down_val = $stack_data['autoscaling_cpu_threshold_down'] ?? 20;
-                                ?>
-                                <div class="col-md-6 mb-3">
-                                    <label for="autoscaling_cpu_up_slider" class="form-label">CPU Scale-Up Threshold: <strong id="cpu-threshold-up-display"><?= $cpu_up_val ?></strong>%</label>
-                                    <input type="range" class="form-range" id="autoscaling_cpu_up_slider" min="1" max="100" value="<?= $cpu_up_val ?>">
-                                    <input type="hidden" name="autoscaling_cpu_threshold_up" id="autoscaling_cpu_threshold_up" value="<?= $cpu_up_val ?>">
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="autoscaling_cpu_down_slider" class="form-label">CPU Scale-Down Threshold: <strong id="cpu-threshold-down-display"><?= $cpu_down_val ?></strong>%</label>
-                                    <input type="range" class="form-range" id="autoscaling_cpu_down_slider" min="1" max="100" value="<?= $cpu_down_val ?>">
-                                    <input type="hidden" name="autoscaling_cpu_threshold_down" id="autoscaling_cpu_threshold_down" value="<?= $cpu_down_val ?>">
-                                </div>
-                            </div>
-
                         </div>
                     </div>
                 </div>
@@ -423,6 +433,7 @@ window.pageInit = function() {
     const cpuInput = document.getElementById('deploy_cpu');
     const memorySlider = document.getElementById('deploy_memory_slider');
     const memoryDisplay = document.getElementById('memory-limit-display');
+    const deployPlacementGroup = document.getElementById('deploy-placement-group');
     const memoryInput = document.getElementById('deploy_memory');
     const sourceTypeGitRadio = document.getElementById('source_type_git');
     const sourceTypeLocalImageRadio = document.getElementById('source_type_local_image');
@@ -472,6 +483,7 @@ window.pageInit = function() {
     const previewModalLabel = document.getElementById('previewConfigModalLabel');
     const previewCodeContainer = document.getElementById('preview-yaml-content-container');
     const deployFromPreviewBtn = document.getElementById('deploy-from-preview-btn');
+    const autoscalingSwitch = document.getElementById('autoscaling_enabled');
     const cpuThresholdUpSlider = document.getElementById('autoscaling_cpu_up_slider');
     const cpuThresholdUpDisplay = document.getElementById('cpu-threshold-up-display');
     const cpuThresholdUpInput = document.getElementById('autoscaling_cpu_threshold_up');
@@ -504,7 +516,10 @@ window.pageInit = function() {
                     result.data.sort((a, b) => a.Name.localeCompare(b.Name));
                     availableNetworks = result.data;
                     let optionsHtml = '<option value="">-- Do not attach to a specific network --</option>';
+                    // Add a specific option for the default bridge network behavior
+                    optionsHtml += '<option value="bridge">-- Use Stack Default (Bridge) --</option>';
                     availableNetworks.forEach(net => {
+                        if (net.Name === 'bridge' || net.Name === 'host' || net.Name === 'none') return; // Don't list default docker networks
                         optionsHtml += `<option value="${net.Name}">${net.Name}</option>`;
                     });
                     networkSelect.innerHTML = optionsHtml;
@@ -814,6 +829,21 @@ window.pageInit = function() {
         });
     }
 
+    // --- Autoscaling Fields Toggle ---
+    if (autoscalingSwitch) {
+        const autoscalingFields = document.getElementById('autoscaling-fields');
+        const toggleAutoscalingFields = () => {
+            const isEnabled = autoscalingSwitch.checked;
+            autoscalingFields.querySelectorAll('input, select').forEach(el => {
+                el.disabled = !isEnabled;
+            });
+            autoscalingFields.style.opacity = isEnabled ? '1' : '0.5';
+        };
+
+        autoscalingSwitch.addEventListener('change', toggleAutoscalingFields);
+        toggleAutoscalingFields(); // Initial state
+    }
+
     // --- YAML Preview Logic ---
     function buildComposeObject() {
         const stackName = stackNameInput.value.trim();
@@ -844,6 +874,7 @@ window.pageInit = function() {
         const replicas = document.getElementById('deploy_replicas').value;
         const cpu = cpuInput.value;
         const memory = memoryInput.value;
+        const placementConstraint = document.getElementById('deploy_placement_constraint').value;
 
         if (isSwarmManager) {
             service.deploy = {
@@ -856,6 +887,11 @@ window.pageInit = function() {
                 },
                 restart_policy: {
                     condition: 'any'
+                }
+            };
+            if (placementConstraint) {
+                service.deploy.placement = {
+                    constraints: [placementConstraint]
                 }
             };
         } else { // Standalone

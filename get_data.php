@@ -31,6 +31,20 @@ $response = [
 
 $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 
+function getHostSwarmStatus(array $host): string {
+    try {
+        $dockerClient = new DockerClient($host);
+        $info = $dockerClient->getInfo();
+        if (isset($info['Swarm']['LocalNodeState']) && $info['Swarm']['LocalNodeState'] !== 'inactive') {
+            return (isset($info['Swarm']['ControlAvailable']) && $info['Swarm']['ControlAvailable']) ? 'manager' : 'worker';
+        }
+        return 'standalone';
+    } catch (Exception $e) {
+        return 'unreachable';
+    }
+}
+
+
 if ($type === 'routers') {
     $where_conditions = [];
     $params = [];
@@ -542,13 +556,57 @@ elseif ($type === 'hosts') {
     $html = '';
     while ($host = $result->fetch_assoc()) {
         $uptime_status = 'N/A';
+        $manager_status_text = '';
+        $swarm_status_for_db = 'unreachable'; // Default value
+
+        // Prepare statement for updating swarm status
+        $stmt_update_status = $conn->prepare("UPDATE docker_hosts SET swarm_status = ? WHERE id = ?");
+
+
         $connection_status_badge = '<span class="badge bg-secondary">Unknown</span>';
 
         try {
             $dockerClient = new DockerClient($host);
-            $containers = $dockerClient->listContainers();
+            $dockerInfo = $dockerClient->getInfo();
             $connection_status_badge = '<span class="badge bg-success">Reachable</span>';
 
+            // Check Swarm status
+            if (isset($dockerInfo['Swarm']['LocalNodeState']) && $dockerInfo['Swarm']['LocalNodeState'] !== 'inactive') {
+                if (isset($dockerInfo['Swarm']['ControlAvailable']) && $dockerInfo['Swarm']['ControlAvailable']) {
+                    $manager_status_text = 'Manager' . (isset($dockerInfo['Swarm']['IsManager']) && $dockerInfo['Swarm']['IsManager'] ? ' (Leader)' : '');
+                    $swarm_status_for_db = 'manager';
+                } else {
+                    $manager_status_text = 'Worker';
+                    $swarm_status_for_db = 'worker';
+                    // --- New Logic: Automatically detect the manager from the remote host ---
+                    $remote_managers = $dockerInfo['Swarm']['RemoteManagers'] ?? null;
+                    if (is_array($remote_managers) && !empty($remote_managers)) {
+                        $manager_addr = $remote_managers[0]['Addr'] ?? null; // Get the address of the first manager
+                        if ($manager_addr) {
+                            // Extract IP from the address (e.g., 192.168.1.100:2377 -> 192.168.1.100)
+                            $manager_ip = explode(':', $manager_addr)[0];
+                            // Find the manager's name in our database using its IP
+                            $stmt_find_manager = $conn->prepare("SELECT name FROM docker_hosts WHERE docker_api_url LIKE ?");
+                            $search_ip = "%{$manager_ip}%";
+                            $stmt_find_manager->bind_param("s", $search_ip);
+                            $stmt_find_manager->execute();
+                            $found_manager = $stmt_find_manager->get_result()->fetch_assoc();
+                            if ($found_manager) {
+                                $manager_status_text .= ' for: ' . htmlspecialchars($found_manager['name']);
+                            }
+                        }
+                    } elseif (!empty($host['swarm_manager_id']) && !empty($host['manager_name'])) {
+                        // Fallback to the database record if remote detection fails
+                        $manager_status_text .= ' for: ' . htmlspecialchars($host['manager_name']);
+                    }
+                }
+            } else {
+                $manager_status_text = 'Standalone';
+                $swarm_status_for_db = 'standalone';
+            }
+
+            // Get uptime from oldest running container
+            $containers = $dockerClient->listContainers();
             $oldest_container_creation = PHP_INT_MAX;
             $oldest_container = null;
             $running_containers_list = array_filter($containers, fn($c) => $c['State'] === 'running');
@@ -567,10 +625,13 @@ elseif ($type === 'hosts') {
         } catch (Exception $e) {
             $uptime_status = 'Error';
             $connection_status_badge = '<span class="badge bg-danger" title="' . htmlspecialchars($e->getMessage()) . '">Unreachable</span>';
+            $swarm_status_for_db = 'unreachable';
         }
+        $stmt_update_status->bind_param("si", $swarm_status_for_db, $host['id']);
+        $stmt_update_status->execute();
 
         $html .= '<tr>';
-        $html .= '<td><a href="' . base_url('/hosts/' . $host['id'] . '/details') . '">' . htmlspecialchars($host['name']) . '</a></td>';
+        $html .= '<td><a href="' . base_url('/hosts/' . $host['id'] . '/details') . '">' . htmlspecialchars($host['name']) . '</a><br><small class="text-muted">' . $manager_status_text . '</small></td>';
         $html .= '<td><code>' . htmlspecialchars($host['docker_api_url']) . '</code></td>';
         $html .= '<td>' . $connection_status_badge . '</td>';
         $html .= '<td>' . $uptime_status . '</td>';
@@ -583,6 +644,13 @@ elseif ($type === 'hosts') {
         $html .= '<td>' . htmlspecialchars($host['description'] ?? '') . '</td>';
         $html .= '<td>' . $host['updated_at'] . '</td>';
         $html .= '<td class="text-end">';
+        if ($manager_status_text === 'Worker' || str_starts_with($manager_status_text, 'Worker for:')) {
+            $html .= '<button class="btn btn-sm btn-outline-success node-action-btn" data-host-id="' . $host['id'] . '" data-action="promote" title="Promote to Manager"><i class="bi bi-arrow-up-square"></i></button> ';
+        } elseif (str_starts_with($manager_status_text, 'Manager') && !str_contains($manager_status_text, 'Leader')) {
+            $html .= '<button class="btn btn-sm btn-outline-secondary node-action-btn" data-host-id="' . $host['id'] . '" data-action="demote" title="Demote to Worker"><i class="bi bi-arrow-down-square"></i></button> ';
+        } elseif ($manager_status_text === 'Standalone') {
+            $html .= '<button class="btn btn-sm btn-outline-primary join-swarm-btn" data-host-id="' . $host['id'] . '" data-bs-toggle="modal" data-bs-target="#joinSwarmModal" title="Join a Swarm Cluster"><i class="bi bi-person-plus-fill"></i> Join Swarm</button> ';
+        }
         $html .= '<a href="' . base_url('/hosts/' . $host['id'] . '/details') . '" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Manage Host"><i class="bi bi-box-arrow-in-right"></i></a> ';
         $html .= '<a href="' . base_url('/hosts/' . $host['id'] . '/clone') . '" class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Clone Host"><i class="bi bi-copy"></i></a> ';
         $html .= '<button class="btn btn-sm btn-outline-info test-connection-btn" data-id="' . $host['id'] . '" data-bs-toggle="tooltip" title="Test Connection"><i class="bi bi-plug-fill"></i></button> ';
@@ -590,6 +658,7 @@ elseif ($type === 'hosts') {
         $html .= '<button class="btn btn-sm btn-outline-danger delete-btn" data-id="' . $host['id'] . '" data-url="' . base_url('/hosts/' . $host['id'] . '/delete') . '" data-type="hosts" data-confirm-message="Are you sure you want to delete host \'' . htmlspecialchars($host['name']) . '\'?"><i class="bi bi-trash"></i></button>';
         $html .= '</td></tr>';
     }
+    $stmt_update_status->close();
 
     $response['html'] = $html;
     $response['total_pages'] = $total_pages;
@@ -601,7 +670,7 @@ elseif ($type === 'traefik-hosts') {
     $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
 
     // Get data
-    $stmt = $conn->prepare("SELECT * FROM `traefik_hosts` ORDER BY name ASC LIMIT ? OFFSET ?");
+    $stmt = $conn->prepare("SELECT h.*, m.name as manager_name FROM `docker_hosts` h LEFT JOIN `docker_hosts` m ON h.swarm_manager_id = m.id ORDER BY h.name ASC LIMIT ? OFFSET ?");
     $stmt->bind_param("ii", $limit, $offset);
     $stmt->execute();
     $result = $stmt->get_result();

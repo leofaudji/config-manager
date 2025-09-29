@@ -1,10 +1,28 @@
 <?php
 $host_id = $host['id'] ?? 0;
+require_once __DIR__ . '/DockerClient.php';
+$is_swarm_node = false;
+$swarm_status_text = '';
+try {
+    $dockerClientForNav = new DockerClient($host);
+    $dockerInfoForNav = $dockerClientForNav->getInfo();
+    if (isset($dockerInfoForNav['Swarm']['LocalNodeState']) && $dockerInfoForNav['Swarm']['LocalNodeState'] !== 'inactive') {
+        $is_swarm_node = true;
+        if (isset($dockerInfoForNav['Swarm']['ControlAvailable']) && $dockerInfoForNav['Swarm']['ControlAvailable']) {
+            $swarm_status_text = 'This node is a <strong>Manager</strong> in a Swarm cluster.';
+        } else {
+            $swarm_status_text = 'This node is a <strong>Worker</strong> in a Swarm cluster.';
+        }
+    }
+} catch (Exception $e) {
+    // Ignore connection errors for this informational check
+}
 ?>
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <div>
         <h1 class="h2"><i class="bi bi-hdd-network-fill"></i> <?= htmlspecialchars($host['name']) ?></h1>
         <p class="text-muted mb-0">Managing host at <code><?= htmlspecialchars($host['docker_api_url']) ?></code></p>
+        <?php if ($is_swarm_node): ?><p class="small text-info mb-0 mt-1"><i class="bi bi-info-circle-fill"></i> <?= $swarm_status_text ?> Resources shown are specific to this node only.</p><?php endif; ?>
     </div>
     <div class="btn-toolbar mb-2 mb-md-0">
         <a href="<?= base_url('/hosts') ?>" class="btn btn-sm btn-outline-secondary">

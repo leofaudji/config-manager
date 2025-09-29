@@ -292,12 +292,17 @@ class DockerClient
 
     /**
      * Lists all services (Swarm).
+     * @param array $filters An array of filters to apply (e.g., ['label' => ['com.docker.stack.namespace=mystack']]).
      * @return array The list of services.
      * @throws Exception
      */
-    public function listServices(): array
+    public function listServices(array $filters = []): array
     {
-        return $this->request('/services');
+        $path = '/services';
+        if (!empty($filters)) {
+            $path .= '?filters=' . urlencode(json_encode($filters));
+        }
+        return $this->request($path);
     }
 
 
@@ -306,10 +311,26 @@ class DockerClient
      * @return array The list of tasks.
      * @throws Exception
      */
-    public function listTasks(): array
+    public function listTasks(array $filters = []): array
     {
-        return $this->request('/tasks');
+        $path = '/tasks';
+        if (!empty($filters)) {
+            // The 'filters' parameter needs to be a JSON-encoded string.
+            $path .= '?filters=' . urlencode(json_encode($filters));
+        }
+        return $this->request($path);
     }
+
+    /**
+     * Lists all nodes in the Swarm.
+     * @return array The list of nodes.
+     * @throws Exception
+     */
+    public function listNodes(): array
+    {
+        return $this->request('/nodes');
+    }
+
 
     /**
      * Creates a new stack (Swarm).
@@ -391,6 +412,24 @@ class DockerClient
     }
 
     /**
+     * Updates a service with a full new specification.
+     * @param string $serviceId The ID of the service to update.
+     * @param int $version The current version index of the service object.
+     * @param array $serviceSpec The new full service specification.
+     * @return bool True on success.
+     * @throws Exception
+     */
+    public function updateServiceSpec(string $serviceId, int $version, array $serviceSpec): bool
+    {
+        // Send the update request. The Docker API requires the current version
+        // to prevent race conditions. The new spec is sent as the JSON body.
+        $this->request("/services/{$serviceId}/update?version={$version}", 'POST', $serviceSpec);
+
+        // If the request did not throw an exception, it was successful.
+        return true;
+    }
+
+    /**
      * Gets system-wide information from the Docker daemon.
      * @return array The Docker system info.
      * @throws Exception
@@ -427,6 +466,38 @@ class DockerClient
         curl_setopt($ch, CURLOPT_URL, $this->apiUrl . $path);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+
+        if ($this->tlsEnabled) {
+            curl_setopt($ch, CURLOPT_SSLCERT, $this->clientCertPath);
+            curl_setopt($ch, CURLOPT_SSLKEY, $this->clientKeyPath);
+            curl_setopt($ch, CURLOPT_CAINFO, $this->caCertPath);
+        }
+
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+
+        if ($curl_error) throw new RuntimeException("cURL Error: " . $curl_error);
+        if ($http_code >= 400) throw new RuntimeException("Docker API Error (HTTP {$http_code}): " . $response);
+
+        // Clean non-printable characters from the raw log stream header, but keep line breaks.
+        return preg_replace('/[^\x20-\x7E\n\r\t]/', '', $response);
+    }
+
+    /**
+     * Makes a raw request to the Docker API, returning the raw response body.
+     * Useful for endpoints like logs that don't return JSON.
+     * @param string $path The API endpoint path.
+     * @return string The raw response body.
+     * @throws RuntimeException
+     */
+    public function rawRequest(string $path): string
+    {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $this->apiUrl . $path);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
 
         if ($this->tlsEnabled) {
             curl_setopt($ch, CURLOPT_SSLCERT, $this->clientCertPath);
@@ -510,10 +581,12 @@ class DockerClient
      * Executes a command in a running container.
      * @param string $containerId The ID of the container.
      * @param string $command The command to execute.
+     * @param bool $useTempContainer If true, runs the command in a new temporary container with docker socket mounted.
+     * @param bool $pullImage If true, attempts to pull the image for the temp container first.
      * @return string The output of the command.
      * @throws Exception
      */
-    public function exec(string $containerId, string $command): string
+    public function exec(string $containerId, string $command, bool $useTempContainer = false, bool $pullImage = false): string
     {
         $env_vars = "DOCKER_HOST=" . escapeshellarg($this->host['docker_api_url']);
         $cert_dir = null;
@@ -531,8 +604,17 @@ class DockerClient
             $env_vars .= " DOCKER_TLS_VERIFY=1 DOCKER_CERT_PATH=" . escapeshellarg($cert_dir);
         }
 
-        // The `sh -c` wrapper allows for more complex commands with pipes, etc.
-        $full_command = 'env ' . $env_vars . ' docker exec ' . escapeshellarg($containerId) . ' sh -c ' . escapeshellarg($command) . ' 2>&1';
+        if ($useTempContainer) {
+            if ($pullImage) {
+                // Attempt to pull the image first to ensure it's available.
+                $this->pullImage($containerId);
+            }
+            // Run a temporary container with the docker socket mounted to execute a host-level docker command.
+            $full_command = 'env ' . $env_vars . ' docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ' . escapeshellarg($containerId) . ' ' . $command . ' 2>&1';
+        } else {
+            // Standard exec in an existing container.
+            $full_command = 'env ' . $env_vars . ' docker exec ' . escapeshellarg($containerId) . ' sh -c ' . escapeshellarg($command) . ' 2>&1';
+        }
 
         exec($full_command, $output, $return_var);
 
@@ -546,5 +628,56 @@ class DockerClient
         if ($return_var !== 0) throw new RuntimeException("Command failed with exit code {$return_var}: " . $output_string);
 
         return $output_string;
+    }
+
+    /**
+     * Creates and starts a lightweight helper container for reading host stats.
+     * This container needs access to the host's PID namespace.
+     * @param string $containerName The name for the helper container.
+     * @return void
+     * @throws Exception
+     */
+    public function createAndStartHelperContainer(string $containerName): void
+    {
+        $config = [
+            'Image' => 'alpine:latest',
+            'Cmd' => ['sleep', 'infinity'],
+            'HostConfig' => [
+                'PidMode' => 'host', // IMPORTANT: Allows the container to see host processes (like `top`)
+                'RestartPolicy' => ['Name' => 'unless-stopped']
+            ]
+        ];
+
+        // Create the container with a specific name
+        $create_response = $this->request("/containers/create?name={$containerName}", 'POST', $config);
+        $containerId = $create_response['Id'] ?? null;
+
+        if (!$containerId) {
+            throw new Exception("Failed to create helper container. Response: " . json_encode($create_response));
+        }
+
+        // Start the newly created container
+        $this->startContainer($containerId);
+    }
+
+    /**
+     * Updates the resource limits of a running container (Vertical Scaling).
+     * @param string $containerId The ID of the container to update.
+     * @param float $newCpuLimit The new CPU limit (e.g., 1.5 for 1.5 cores).
+     * @return bool True on success.
+     * @throws Exception
+     */
+    public function updateContainerResources(string $containerId, float $newCpuLimit): bool
+    {
+        // The modern way to update CPU limits is via NanoCpus.
+        // 1 vCPU = 1,000,000,000 nanoseconds (1e9).
+        $nanoCpus = (int)($newCpuLimit * 1e9);
+
+        $updateConfig = [
+            'NanoCpus' => $nanoCpus
+        ];
+        $this->request("/containers/{$containerId}/update", 'POST', $updateConfig);
+        // If the request did not throw an exception, it was successful.
+        return true;
     }
 }

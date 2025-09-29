@@ -392,6 +392,7 @@ class Spyc {
       $value_indent = $indent + $this->_dumpIndent;
       $value = "|-\n" . str_repeat(' ', $value_indent) . $this->LiteralPlaceHolder . str_replace("\n", "\n" . str_repeat(' ', $value_indent), $value);
     } elseif (($key === 'version' && !is_array($value) && $value !== null) || // Force 'version' to be a string
+        ($key === 'cpus' && !is_array($value) && $value !== null) || // Force 'cpus' to be a string for Docker Swarm
         (is_string($value) && ((strpos($value, ":") !== false || strpos($value, "- ") !== false || strpos($value, " ") !== false || // Quote strings with colons, starting dash, or spaces
         strpos($value, "*") !== false || strpos($value, "#") !== false || strpos($value, "<") !== false || strpos($value, ">") !== false || strpos($value, "!") !== false ||
         strpos($value, "[") !== false || strpos($value, "]") !== false || strpos($value, "{") !== false || strpos($value, "}") !== false) || substr($value, -1, 1) == ':')))

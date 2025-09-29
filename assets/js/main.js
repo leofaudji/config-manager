@@ -269,6 +269,38 @@ document.body.addEventListener('click', function(e) {
         return;
     }
 
+    // Node action buttons (promote/demote)
+    const nodeActionBtn = target.closest('.node-action-btn');
+    if (nodeActionBtn) {
+        e.preventDefault();
+        const hostId = nodeActionBtn.dataset.hostId;
+        const action = nodeActionBtn.dataset.action;
+
+        if (!confirm(`Are you sure you want to ${action} this node?`)) {
+            return;
+        }
+
+        const originalIcon = nodeActionBtn.innerHTML;
+        nodeActionBtn.disabled = true;
+        nodeActionBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
+
+        const formData = new FormData();
+        formData.append('host_id', hostId);
+        formData.append('action', action);
+
+        fetch(`${basePath}/api/nodes/action`, { method: 'POST', body: formData })
+            .then(response => response.json().then(data => ({ ok: response.ok, data })))
+            .then(({ ok, data }) => {
+                showToast(data.message, ok);
+                if (ok) {
+                    // Reload the hosts table to show the new status
+                    loadPaginatedData('hosts', localStorage.getItem('hosts_page') || 1, localStorage.getItem('hosts_limit') || 10);
+                }
+            })
+            .catch(error => showToast(error.message || 'An unknown error occurred.', false))
+            .finally(() => nodeActionBtn.disabled = false); // Button will be re-rendered, no need to restore icon
+    }
+
     // --- SPA Navigation Logic (as the fallback) ---
     if (link) {
         // Conditions to let the browser handle the click normally
@@ -1087,6 +1119,65 @@ function initializePageSpecificScripts() {
                     .catch(error => showToast(error.message, false));
             });
         }
+    }
+
+    // --- Join Swarm Modal Logic ---
+    const joinSwarmModalEl = document.getElementById('joinSwarmModal');
+    if (joinSwarmModalEl && !joinSwarmModalEl.dataset.listenerAttached) {
+        joinSwarmModalEl.dataset.listenerAttached = 'true'; // Prevent re-attaching
+
+        const joinSwarmModal = new bootstrap.Modal(joinSwarmModalEl);
+        const managerSelect = document.getElementById('manager-host-select');
+        const targetHostIdInput = document.getElementById('join-swarm-target-host-id');
+        const confirmJoinBtn = document.getElementById('confirm-join-swarm-btn');
+
+        joinSwarmModalEl.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const targetHostId = button.dataset.hostId;
+            targetHostIdInput.value = targetHostId;
+
+            // Populate the manager dropdown
+            managerSelect.innerHTML = '<option>Loading managers...</option>';
+            
+            // Fetch only manager hosts from the new dedicated endpoint
+            fetch(`${basePath}/api/hosts/list?filter=managers`)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.status !== 'success') throw new Error(result.message);
+
+                    let optionsHtml = '<option value="">-- Select a Manager --</option>';
+                    result.data.forEach(host => { optionsHtml += `<option value="${host.id}">${host.name}</option>`; });
+                    managerSelect.innerHTML = optionsHtml;
+                })
+                .catch(error => {
+                    managerSelect.innerHTML = '<option value="">Error loading managers</option>';
+                    showToast('Could not load manager hosts: ' + error.message, false);
+                });
+        });
+
+        confirmJoinBtn.addEventListener('click', function() {
+            const formData = new FormData(document.getElementById('join-swarm-form'));
+            if (!formData.get('manager_host_id')) {
+                showToast('Please select a manager host.', false);
+                return;
+            }
+
+            const originalBtnText = this.innerHTML;
+            this.disabled = true;
+            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Joining...`;
+
+            fetch(`${basePath}/api/swarm/join`, { method: 'POST', body: formData })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (ok) {
+                        showToast(data.message, true);
+                        joinSwarmModal.hide();
+                        loadPaginatedData('hosts', localStorage.getItem('hosts_page') || 1, localStorage.getItem('hosts_limit') || 10);
+                    } else { throw new Error(data.message || 'Failed to join swarm.'); }
+                })
+                .catch(error => showToast(error.message, false))
+                .finally(() => { this.disabled = false; this.innerHTML = originalBtnText; });
+        });
     }
 
 // --- Preview Config Modal Logic ---

@@ -46,6 +46,7 @@ try {
     $total_stacks = 0;
     $is_swarm_manager = false;
     try {
+        // This call is necessary to get swarm status, but also gives us CPU and Memory info.
         $dockerInfo = $dockerClient->getInfo();
         $is_swarm_manager = (isset($dockerInfo['Swarm']['ControlAvailable']) && $dockerInfo['Swarm']['ControlAvailable'] === true);
 
@@ -123,6 +124,8 @@ try {
         'total_stacks' => $total_stacks,
         'total_images' => $total_images,
         'is_swarm_manager' => $is_swarm_manager,
+        'cpus' => $dockerInfo['NCPU'] ?? 0, // Add total CPUs
+        'memory' => $dockerInfo['MemTotal'] ?? 0, // Add total memory in bytes
     ];
 
     echo json_encode(['status' => 'success', 'data' => $stats]);

@@ -31,6 +31,7 @@ try {
         'temp_directory_path' => rtrim(trim($_POST['temp_directory_path'] ?? sys_get_temp_dir()), '/'),
         'git_persistent_repo_path' => rtrim(trim($_POST['git_persistent_repo_path'] ?? ''), '/'),
         'cron_log_path' => rtrim(trim($_POST['cron_log_path'] ?? '/var/log'), '/'),
+        'log_cleanup_days' => (int)($_POST['log_cleanup_days'] ?? 7),
     ];
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE for a safe upsert

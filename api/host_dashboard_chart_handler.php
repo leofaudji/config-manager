@@ -23,7 +23,8 @@ try {
     $stmt = $conn->prepare("
         SELECT 
             DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00') as hour_slot,
-            AVG(cpu_usage_percent) as avg_cpu,
+            AVG(container_cpu_usage_percent) as avg_container_cpu,
+            AVG(host_cpu_usage_percent) as avg_host_cpu,
             AVG(memory_usage_bytes) as avg_mem_usage,
             AVG(memory_limit_bytes) as avg_mem_limit
         FROM host_stats_history
@@ -36,18 +37,25 @@ try {
     $result = $stmt->get_result();
 
     $labels = [];
-    $cpu_data = [];
+    $container_cpu_data = [];
+    $host_cpu_data = [];
     $mem_data = [];
 
     while ($row = $result->fetch_assoc()) {
         $labels[] = date('H:i', strtotime($row['hour_slot']));
-        $cpu_data[] = round($row['avg_cpu'], 2);
+        $container_cpu_data[] = round($row['avg_container_cpu'], 2);
+        $host_cpu_data[] = round($row['avg_host_cpu'], 2);
         $mem_percent = ($row['avg_mem_limit'] > 0) ? ($row['avg_mem_usage'] / $row['avg_mem_limit']) * 100 : 0;
         $mem_data[] = round($mem_percent, 2);
     }
     $stmt->close();
 
-    echo json_encode(['status' => 'success', 'data' => ['labels' => $labels, 'cpu_usage' => $cpu_data, 'memory_usage' => $mem_data]]);
+    echo json_encode(['status' => 'success', 'data' => [
+        'labels' => $labels, 
+        'container_cpu_usage' => $container_cpu_data, 
+        'host_cpu_usage' => $host_cpu_data, 
+        'memory_usage' => $mem_data
+    ]]);
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);

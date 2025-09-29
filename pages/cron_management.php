@@ -35,6 +35,7 @@ $autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
             </div>
             <div class="mt-2">
                 <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="collect_stats"><i class="bi bi-card-text"></i> View Log</button>
+                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="collect_stats"><i class="bi bi-eraser-fill"></i> Clear Log</button>
             </div>
         </div>
     </div>
@@ -62,6 +63,7 @@ $autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
             </div>
             <div class="mt-2">
                 <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="autoscaler"><i class="bi bi-card-text"></i> View Log</button>
+                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="autoscaler"><i class="bi bi-eraser-fill"></i> Clear Log</button>
             </div>
         </div>
     </div>
@@ -136,8 +138,46 @@ window.pageInit = function() {
         });
     });
 
+    document.querySelectorAll('.clear-log-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const scriptName = this.dataset.script;
+            if (!confirm(`Are you sure you want to clear the log file for '${scriptName}.php'? This action cannot be undone.`)) {
+                return;
+            }
+
+            const originalBtnText = this.innerHTML;
+            this.disabled = true;
+            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Clearing...`;
+
+            const formData = new FormData();
+            formData.append('action', 'clear');
+            formData.append('script', scriptName);
+
+            fetch('<?= base_url('/api/cron/log') ?>', { method: 'POST', body: formData })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => showToast(data.message, ok))
+                .catch(error => showToast('An error occurred: ' + error.message, false))
+                .finally(() => {
+                    this.disabled = false;
+                    this.innerHTML = originalBtnText;
+                });
+        });
+    });
+
+    // Add event listeners to the enable/disable switches
+    ['collect_stats', 'autoscaler'].forEach(scriptKey => {
+        const enableSwitch = document.getElementById(`${scriptKey}_enabled`);
+        const scheduleInput = document.getElementById(`${scriptKey}_schedule`);
+        if (enableSwitch && scheduleInput) {
+            enableSwitch.addEventListener('change', function() {
+                scheduleInput.value = scheduleInput.value.replace(/^#\s*/, '');
+            });
+        }
+    });
+
     loadCronJobs();
 };
+
 </script>
 
 <?php

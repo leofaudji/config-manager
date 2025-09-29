@@ -67,7 +67,13 @@ function expandCidrToIpRange(string $cidr): array
 function log_activity(string $username, string $action, string $details = ''): void {
     try {
         $conn = Database::getInstance()->getConnection();
-        $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
+        $ip_address = 'UNKNOWN';
+        if (php_sapi_name() === 'cli') {
+            // For command-line scripts, use the server's loopback address.
+            $ip_address = '127.0.0.1';
+        } elseif (isset($_SERVER['REMOTE_ADDR'])) {
+            $ip_address = $_SERVER['REMOTE_ADDR'];
+        }
         $stmt = $conn->prepare("INSERT INTO activity_log (username, action, details, ip_address) VALUES (?, ?, ?, ?)");
         $stmt->bind_param("ssss", $username, $action, $details, $ip_address);
         $stmt->execute();
