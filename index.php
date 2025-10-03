@@ -43,12 +43,14 @@ $router->get('/middlewares', 'pages/middleware_management.php', ['auth', 'admin'
 $router->get('/services', 'pages/service_management.php', ['auth', 'admin']);
 $router->get('/settings', 'pages/settings.php', ['auth', 'admin']);
 $router->get('/health-check', 'pages/health_check.php', ['auth', 'admin']);
+$router->get('/health-status', 'pages/health_status_dashboard.php', ['auth']);
 $router->get('/changelog', 'pages/changelog.php', ['auth']);
 $router->get('/cron-jobs', 'pages/cron_management.php', ['auth', 'admin']);
 $router->get('/templates', 'pages/template_management.php', ['auth', 'admin']);
 $router->get('/traefik-hosts', 'pages/traefik_host_management.php', ['auth', 'admin']);
 $router->get('/app-launcher', 'pages/app_launcher.php', ['auth', 'admin']);
 $router->get('/hosts', 'pages/host_management.php', ['auth', 'admin']);
+$router->get('/swarm/details', 'pages/swarm_details.php', ['auth', 'admin']);
 
 // Rute untuk form edit
 $router->get('/routers/new', 'pages/router_form.php', ['auth', 'admin']);
@@ -82,6 +84,8 @@ $router->get('/api/stats', 'api/stats_handler.php', ['auth', 'admin']);
 $router->get('/api/dashboard-stats', 'api/dashboard_stats_handler.php', ['auth']);
 $router->get('/api/configurations/preview', 'api/preview_handler.php', ['auth', 'admin']);
 $router->get('/api/health-check', 'api/health_check_handler.php', ['auth', 'admin']);
+$router->get('/api/swarm/nodes', 'api/swarm_nodes_handler.php', ['auth', 'admin']);
+$router->get('/api/health-status', 'api/health_status_handler.php', ['auth']);
 $router->get('/api/templates/{id}', 'api/template_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers', 'api/host_detail_handler.php', ['auth', 'admin']);
 $router->get('/api/cron', 'api/cron_handler.php', ['auth', 'admin']);
@@ -100,7 +104,6 @@ $router->get('/api/stacks/check-git-diff', 'api/check_git_diff_handler.php', ['a
 $router->post('/api/git/test-compose-path', 'api/git_compose_test_handler.php', ['auth', 'admin']);
 $router->post('/api/app-launcher/deploy', 'api/app_launcher_handler.php', ['auth', 'admin']);
 $router->post('/api/app-launcher/preview', 'api/app_launcher_preview_handler.php', ['auth', 'admin']);
-$router->get('/api/hosts/{id}/chart-data', 'api/host_dashboard_chart_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/stats', 'api/host_dashboard_stats_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/networks', 'api/network_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/images', 'api/network_handler.php', ['auth', 'admin']);

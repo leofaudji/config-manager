@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $script_name = $_POST['script'] ?? '';
 
-    if ($action !== 'clear' || empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler'])) {
+    if ($action !== 'clear' || empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler', 'health_monitor'])) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Invalid action or script name.']);
         exit;
@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $script_name = $_GET['script'] ?? '';
 
-    if (empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler'])) {
+    if (empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler', 'health_monitor'])) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Invalid script name provided.']);
         exit;

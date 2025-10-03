@@ -685,6 +685,8 @@ function initializePageSpecificScripts() {
 
     // --- Dashboard Widgets Logic ---
     function loadDashboardWidgets() {
+        //const basePath = window.basePath || ''; // Ensure basePath is available in this scope
+        let containerStatusChart = null; // Variable to hold the chart instance
         const widgets = [
             'total-routers-widget',
             'total-services-widget',
@@ -692,10 +694,7 @@ function initializePageSpecificScripts() {
             'total-hosts-widget',
             'total-users-widget',
             'health-check-widget',
-            'agg-total-containers-widget',
-            'agg-running-containers-widget',
-            'agg-stopped-containers-widget',
-            'agg-reachable-hosts-widget'
+            'agg-total-containers-widget'
         ];
 
         // Check if we are on the dashboard page by looking for one of the widgets
@@ -720,29 +719,138 @@ function initializePageSpecificScripts() {
             .then(result => {
                 if (result.status === 'success') {
                     const data = result.data;
-                    document.getElementById('total-routers-widget').textContent = data.total_routers;
-                    document.getElementById('total-services-widget').textContent = data.total_services;
-                    document.getElementById('total-middlewares-widget').textContent = data.total_middlewares;
-                    document.getElementById('total-hosts-widget').textContent = data.total_hosts;
-                    document.getElementById('total-users-widget').textContent = data.total_users;
 
-                    const healthWidget = document.getElementById('health-check-widget');
-                    const healthCard = document.getElementById('health-check-card');
-                    if (healthWidget && healthCard) {
-                        if (data.health_status === 'OK') {
-                            healthWidget.textContent = 'OK';
-                            healthCard.classList.replace('bg-danger', 'bg-success');
+                    // Defensive check: Ensure elements exist before updating. This prevents errors on rapid SPA navigation.
+                    const totalRoutersWidget = document.getElementById('total-routers-widget');
+                    if (totalRoutersWidget) totalRoutersWidget.textContent = data.total_routers;
+
+                    const totalServicesWidget = document.getElementById('total-services-widget');
+                    if (totalServicesWidget) totalServicesWidget.textContent = data.total_services;
+
+                    // Populate Recent Activity
+                    const activityContainer = document.getElementById('recent-activity-container');
+                    if (data.recent_activity && activityContainer) {
+                        if (data.recent_activity.length > 0) {
+                            let activityHtml = '';
+                            data.recent_activity.forEach(log => {
+                                const logDate = new Date(log.created_at.replace(' ', 'T') + 'Z'); // Make it UTC
+                                const now = new Date();
+                                const seconds = Math.round((now - logDate) / 1000);
+                                let timeAgo;
+
+                                if (seconds < 60) timeAgo = `${seconds}s ago`;
+                                else if (seconds < 3600) timeAgo = `${Math.floor(seconds / 60)}m ago`;
+                                else if (seconds < 86400) timeAgo = `${Math.floor(seconds / 3600)}h ago`;
+                                else timeAgo = `${Math.floor(seconds / 86400)}d ago`;
+
+                                activityHtml += `
+                                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                                        <div class="ms-2 me-auto">
+                                            <div class="fw-bold">${log.username} <span class="fw-normal">${log.action}</span></div>
+                                            <small class="text-muted">${log.details}</small>
+                                        </div>
+                                        <span class="badge bg-light text-dark rounded-pill" title="${logDate.toLocaleString()}">${timeAgo}</span>
+                                    </li>
+                                `;
+                            });
+                            activityContainer.innerHTML = activityHtml;
                         } else {
-                            healthWidget.textContent = 'Error';
-                            healthCard.classList.replace('bg-success', 'bg-danger');
+                            activityContainer.innerHTML = '<li class="list-group-item text-center text-muted">No recent activity found.</li>';
                         }
                     }
 
+                    // Populate System Status
+                    const systemStatusContainer = document.getElementById('system-status-container');
+                    if (data.system_status && systemStatusContainer) {
+                        const createStatusItem = (label, value) => {
+                            let badgeClass = 'secondary';
+                            if (value === 'OK' || value === 'Enabled') badgeClass = 'success';
+                            if (value === 'Error' || value === 'Disabled') badgeClass = 'danger';
+                            return `
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    ${label}
+                                    <span class="badge bg-${badgeClass} rounded-pill">${value}</span>
+                                </li>
+                            `;
+                        };
+
+                        let statusHtml = '';
+                        statusHtml += createStatusItem('Database Connection', data.system_status.db_connection);
+                        statusHtml += createStatusItem('Config File Writable', data.system_status.config_writable);
+                        statusHtml += createStatusItem('PHP Version', data.system_status.php_version);
+                        statusHtml += createStatusItem('Cron: Stats Collector', data.system_status.cron_stats_collector);
+                        statusHtml += createStatusItem('Cron: Autoscaler', data.system_status.cron_autoscaler);
+                        statusHtml += createStatusItem('Cron: Health Monitor', data.system_status.cron_health_monitor);
+
+                        systemStatusContainer.innerHTML = statusHtml;
+                    }
+
                     if (data.agg_stats) {
-                        document.getElementById('agg-total-containers-widget').textContent = data.agg_stats.total_containers;
-                        document.getElementById('agg-running-containers-widget').textContent = data.agg_stats.running_containers;
-                        document.getElementById('agg-stopped-containers-widget').textContent = data.agg_stats.stopped_containers;
-                        document.getElementById('agg-reachable-hosts-widget').textContent = `${data.agg_stats.reachable_hosts} / ${data.agg_stats.total_hosts_scanned}`;
+                        const aggTotalContainersWidget = document.getElementById('agg-total-containers-widget');
+                        if (aggTotalContainersWidget) aggTotalContainersWidget.textContent = data.agg_stats.total_containers;
+
+                        const statusWidget = document.getElementById('agg-container-status-widget');
+                        if (statusWidget) {
+                            statusWidget.innerHTML = `<span class="text-success">${data.agg_stats.running_containers} Running</span> / <span class="text-danger">${data.agg_stats.stopped_containers} Stopped</span>`;
+                        }
+
+                        const aggTotalImagesWidget = document.getElementById('agg-total-images-widget');
+                        if (aggTotalImagesWidget) aggTotalImagesWidget.textContent = data.total_images;
+
+                        const aggTotalVolumesWidget = document.getElementById('agg-total-volumes-widget');
+                        if (aggTotalVolumesWidget) aggTotalVolumesWidget.textContent = data.total_volumes;
+
+                        // Create or update the container status pie chart
+                        const chartCanvas = document.getElementById('containerStatusChart');
+                        if (chartCanvas) {
+                            const chartData = {
+                                labels: ['Running', 'Stopped'],
+                                datasets: [{
+                                    data: [data.agg_stats.running_containers, data.agg_stats.stopped_containers],
+                                    backgroundColor: [
+                                        'rgba(25, 135, 84, 0.7)', // Success color
+                                        'rgba(220, 53, 69, 0.7)'  // Danger color
+                                    ],
+                                    borderColor: [
+                                        'rgba(25, 135, 84, 1)',
+                                        'rgba(220, 53, 69, 1)'
+                                    ],
+                                    borderWidth: 1
+                                }]
+                            };
+
+                            if (window.dashboardContainerChart) {
+                                window.dashboardContainerChart.destroy();
+                            }
+
+                            window.dashboardContainerChart = new Chart(chartCanvas, {
+                                type: 'doughnut',
+                                data: chartData,
+                                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                            });
+                        }
+                    }
+
+                // Populate Swarm Info
+                const swarmSection = document.getElementById('swarm-overview-section');
+                if (data.swarm_info && swarmSection) {
+                    const swarmTotalNodesWidget = document.getElementById('swarm-total-nodes-widget');
+                    if (swarmTotalNodesWidget) swarmTotalNodesWidget.textContent = data.swarm_info.total_nodes || '0';
+
+                    const swarmManagerWorkerWidget = document.getElementById('swarm-manager-worker-widget');
+                    if (swarmManagerWorkerWidget) swarmManagerWorkerWidget.textContent = `${data.swarm_info.managers || '0'} M / ${data.swarm_info.workers || '0'} W`;
+
+                    swarmSection.style.display = 'block'; // Show the section
+                } else if (swarmSection) {
+                    // If swarm_info is null or not present, ensure the section is hidden
+                    swarmSection.style.display = 'none';
+                }
+
+                const unhealthyItemsWidget = document.getElementById('unhealthy-items-widget');
+                if (unhealthyItemsWidget) unhealthyItemsWidget.textContent = data.total_unhealthy;
+
+                if (data.total_unhealthy > 0) {
+                    document.getElementById('unhealthy-items-widget').classList.add('blinking-badge');
                     }
 
                     if (data.per_host_stats) {
@@ -761,6 +869,19 @@ function initializePageSpecificScripts() {
                                 const totalCpus = host.cpus !== 'N/A' ? `${host.cpus} vCPUs` : 'N/A';
                                 const totalMemory = host.memory !== 'N/A' ? formatBytes(host.memory) : 'N/A';
 
+                                let diskUsageHtml = 'N/A';
+                                if (host.disk_usage !== 'N/A') {
+                                    const diskUsage = parseFloat(host.disk_usage);
+                                    let progressColor = 'bg-success';
+                                    if (diskUsage > 90) progressColor = 'bg-danger';
+                                    else if (diskUsage > 75) progressColor = 'bg-warning';
+                                    diskUsageHtml = `
+                                        <div class="progress" style="height: 20px; font-size: .75rem;">
+                                            <div class="progress-bar ${progressColor}" role="progressbar" style="width: ${diskUsage}%;" aria-valuenow="${diskUsage}" aria-valuemin="0" aria-valuemax="100">${diskUsage}%</div>
+                                        </div>
+                                    `;
+                                }
+
                                 html += `
                                     <tr>
                                         <td data-sort-key="name" data-sort-value="${host.name.toLowerCase()}"><a href="${basePath}/hosts/${host.id}/details">${host.name}</a></td>
@@ -768,6 +889,7 @@ function initializePageSpecificScripts() {
                                         <td data-sort-key="running_containers" data-sort-value="${host.running_containers}">${containers}</td>
                                         <td data-sort-key="cpus" data-sort-value="${host.cpus}">${totalCpus}</td>
                                         <td data-sort-key="memory" data-sort-value="${host.memory}">${totalMemory}</td>
+                                        <td data-sort-key="disk_usage" data-sort-value="${host.disk_usage}">${diskUsageHtml}</td>
                                         <td data-sort-key="uptime_timestamp" data-sort-value="${host.uptime_timestamp || 0}">${host.uptime || 'N/A'}</td>
                                         <td>${dockerVersion}</td>
                                         <td>${os}</td>
@@ -778,6 +900,70 @@ function initializePageSpecificScripts() {
                                 `;
                             });
                             container.innerHTML = html;
+
+                            // --- NEW: Populate Containers per Host Chart ---
+                            const hostChartCanvas = document.getElementById('containersPerHostChart');
+                            if (hostChartCanvas) {
+                                const reachableHosts = data.per_host_stats.filter(h => h.status === 'Reachable');
+                                const labels = reachableHosts.map(h => h.name);
+                                const runningData = reachableHosts.map(h => h.running_containers);
+                                const stoppedData = reachableHosts.map(h => h.total_containers - h.running_containers);
+
+                                const chartData = {
+                                    labels: labels,
+                                    datasets: [
+                                        {
+                                            label: 'Running',
+                                            data: runningData,
+                                            backgroundColor: 'rgba(25, 135, 84, 0.7)', // Success
+                                        },
+                                        {
+                                            label: 'Stopped',
+                                            data: stoppedData,
+                                            backgroundColor: 'rgba(220, 53, 69, 0.7)', // Danger
+                                        }
+                                    ]
+                                };
+
+                                if (window.dashboardHostChart) {
+                                    window.dashboardHostChart.destroy();
+                                }
+
+                                window.dashboardHostChart = new Chart(hostChartCanvas, {
+                                    type: 'bar',
+                                    data: chartData,
+                                    options: {
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        plugins: { legend: { position: 'top' } },
+                                        scales: {
+                                            x: { stacked: true },
+                                            y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } },
+                                        },
+                                        onHover: (event, chartElement) => {
+                                            const canvas = event.native.target;
+                                            canvas.style.cursor = chartElement[0] ? 'pointer' : 'default';
+                                        },
+                                        onClick: (evt) => {
+                                            const points = window.dashboardHostChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+                                            if (points.length) {
+                                                const firstPoint = points[0];
+                                                const index = firstPoint.index;
+                                                const datasetIndex = firstPoint.datasetIndex;
+                                                const host = reachableHosts[index];
+
+                                                // Determine filter based on which part of the stacked bar was clicked
+                                                // 0 = Running, 1 = Stopped, based on the dataset order
+                                                const filter = datasetIndex === 0 ? 'running' : 'stopped';
+
+                                                // Construct the URL with the filter parameter
+                                                const url = `${window.location.origin}${basePath}/hosts/${host.id}/containers?filter=${filter}`;
+                                                loadPage(url); // Use SPA navigation
+                                            }
+                                        }
+                                    }
+                                });
+                            }
                         }
                     }
                 }
@@ -866,6 +1052,74 @@ function initializePageSpecificScripts() {
         });
     }
 
+    // --- Swarm Details Page Logic ---
+    function loadSwarmNodes() {
+        const container = document.getElementById('swarm-nodes-container');
+        if (!container) return;
+
+        // Show loading state
+        container.innerHTML = `<tr><td colspan="7" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>`;
+
+        return fetch(`${basePath}/api/swarm/nodes`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to load Swarm nodes.');
+                }
+
+                let html = '';
+                if (result.data && result.data.length > 0) {
+                    result.data.forEach(node => {
+                        const status = node.Status?.State || 'unknown';
+                        const availability = node.Spec?.Availability || 'unknown';
+
+                        let statusBadge = 'secondary';
+                        if (status === 'ready') statusBadge = 'success';
+                        else if (status === 'down') statusBadge = 'danger';
+
+                        let availabilityBadge = 'secondary';
+                        if (availability === 'active') availabilityBadge = 'success';
+                        else if (availability === 'drain') availabilityBadge = 'warning';
+                        else if (availability === 'pause') availabilityBadge = 'info';
+
+                        html += `
+                            <tr>
+                                <td><small><code>${node.ID}</code></small></td>
+                                <td>${node.Description?.Hostname || 'N/A'}</td>
+                                <td><span class="badge bg-primary">${node.Spec?.Role || 'unknown'}</span></td>
+                                <td><span class="badge bg-${availabilityBadge}">${availability}</span></td>
+                                <td><span class="badge bg-${statusBadge}">${status}</span></td>
+                                <td>${node.Status?.Addr || 'N/A'}</td>
+                                <td><span class="badge bg-info">${node.Description?.Engine?.EngineVersion || 'N/A'}</span></td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    html = `<tr><td colspan="7" class="text-center">No Swarm nodes found.</td></tr>`;
+                }
+                container.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error loading Swarm nodes:', error);
+                container.innerHTML = `<tr><td colspan="7" class="text-center text-danger">${error.message}</td></tr>`;
+            });
+    }
+
+    // Attach listener for the refresh button on the swarm details page
+    const refreshSwarmBtn = document.getElementById('refresh-swarm-nodes-btn');
+    if (refreshSwarmBtn && !refreshSwarmBtn.dataset.listenerAttached) {
+        refreshSwarmBtn.dataset.listenerAttached = 'true';
+        refreshSwarmBtn.addEventListener('click', function() {
+            const originalContent = this.innerHTML;
+            this.disabled = true;
+            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing...`;
+            loadSwarmNodes().finally(() => {
+                this.disabled = false;
+                this.innerHTML = originalContent;
+            });
+        });
+    }
+
     // --- Initial Data Load ---
     if (document.getElementById('routers-container')) {
         const urlParams = new URLSearchParams(window.location.search);
@@ -949,6 +1203,11 @@ function initializePageSpecificScripts() {
         const initialPage = localStorage.getItem('traefik-hosts_page') || 1;
         const initialLimit = localStorage.getItem('traefik-hosts_limit') || 10;
         loadPaginatedData('traefik-hosts', initialPage, initialLimit);
+    }
+
+    // --- Swarm Details Page Initial Load ---
+    if (document.getElementById('swarm-nodes-container')) {
+        loadSwarmNodes();
     }
 
     // --- Health Check Page Logic ---

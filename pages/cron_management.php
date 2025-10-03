@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/header.php';
 $php_path = PHP_BINARY;
 $collect_stats_path = PROJECT_ROOT . '/collect_stats.php';
 $autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
+$health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
 ?>
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -40,7 +41,7 @@ $autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
         </div>
     </div>
 
-    <div class="card">
+    <div class="card mb-4">
         <div class="card-header">
             <h5><i class="bi bi-arrows-angle-expand"></i> Service Autoscaler</h5>
         </div>
@@ -68,6 +69,34 @@ $autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
         </div>
     </div>
 
+    <div class="card">
+        <div class="card-header">
+            <h5><i class="bi bi-heart-pulse"></i> Service Health Monitor</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Skrip ini secara aktif memeriksa kesehatan layanan Anda dan secara otomatis me-restart layanan yang tidak responsif (auto-healing).</p>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="health_monitor_enabled" name="health_monitor[enabled]" value="1">
+                <label class="form-check-label" for="health_monitor_enabled">
+                    Enable Health Monitor
+                    <span id="health_monitor_status_badge" class="badge rounded-pill ms-2"></span>
+                </label>
+            </div>
+            <div class="mb-3">
+                <label for="health_monitor_schedule" class="form-label">Schedule (Format Cron)</label>
+                <input type="text" class="form-control" id="health_monitor_schedule" name="health_monitor[schedule]" placeholder="* * * * *">
+                <small class="form-text text-muted">Direkomendasikan untuk berjalan setiap 1 menit.</small>
+            </div>
+            <div class="bg-light p-2 rounded">
+                <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($health_monitor_path) ?></code></small>
+            </div>
+            <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="health_monitor"><i class="bi bi-card-text"></i> View Log</button>
+                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="health_monitor"><i class="bi bi-eraser-fill"></i> Clear Log</button>
+            </div>
+        </div>
+    </div>
+
     <div class="mt-4">
         <button type="submit" class="btn btn-primary" id="save-cron-btn">Save Crontab</button>
     </div>
@@ -80,12 +109,13 @@ window.pageInit = function() {
     function loadCronJobs() {
         const collectStatsBadge = document.getElementById('collect_stats_status_badge');
         const autoscalerBadge = document.getElementById('autoscaler_status_badge');
+        const healthMonitorBadge = document.getElementById('health_monitor_status_badge');
 
         fetch('<?= base_url('/api/cron') ?>')
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    const { collect_stats, autoscaler } = data.jobs;
+                    const { collect_stats, autoscaler, health_monitor } = data.jobs;
                     if (collect_stats) {
                         document.getElementById('collect_stats_enabled').checked = collect_stats.enabled;
                         document.getElementById('collect_stats_schedule').value = collect_stats.schedule;
@@ -106,6 +136,17 @@ window.pageInit = function() {
                         } else {
                             autoscalerBadge.textContent = 'Not Set';
                             autoscalerBadge.className = 'badge rounded-pill ms-2 text-bg-light';
+                        }
+                    }
+                    if (health_monitor) {
+                        document.getElementById('health_monitor_enabled').checked = health_monitor.enabled;
+                        document.getElementById('health_monitor_schedule').value = health_monitor.schedule;
+                        if (health_monitor.schedule) {
+                            healthMonitorBadge.textContent = health_monitor.enabled ? 'Scheduled' : 'Disabled';
+                            healthMonitorBadge.className = `badge rounded-pill ms-2 text-bg-${health_monitor.enabled ? 'success' : 'secondary'}`;
+                        } else {
+                            healthMonitorBadge.textContent = 'Not Set';
+                            healthMonitorBadge.className = 'badge rounded-pill ms-2 text-bg-light';
                         }
                     }
                 } else {
@@ -165,7 +206,7 @@ window.pageInit = function() {
     });
 
     // Add event listeners to the enable/disable switches
-    ['collect_stats', 'autoscaler'].forEach(scriptKey => {
+    ['collect_stats', 'autoscaler', 'health_monitor'].forEach(scriptKey => {
         const enableSwitch = document.getElementById(`${scriptKey}_enabled`);
         const scheduleInput = document.getElementById(`${scriptKey}_schedule`);
         if (enableSwitch && scheduleInput) {

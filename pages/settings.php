@@ -145,6 +145,19 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <hr>
+            <h5 class="mb-3">Health Check & Auto-Healing</h5>
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="form-check form-switch mb-3">
+                        <input type="hidden" name="health_check_global_enable" value="0">
+                        <input class="form-check-input" type="checkbox" role="switch" id="health_check_global_enable" name="health_check_global_enable" value="1" <?= ((int)($settings['health_check_global_enable'] ?? 0)) === 1 ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="health_check_global_enable">Enable Health Check for ALL Services</label>
+                        <small class="form-text text-muted d-block"><strong>Warning:</strong> When enabled, the system will attempt to monitor every service, ignoring individual health check settings. This is useful for ensuring all services are monitored by default. A service must still have a valid health check endpoint (HTTP or Docker) to be monitored.</small>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
             <h5 class="mb-3">Git Integration</h5>
             <div class="form-check form-switch mb-3">
                 <input type="hidden" name="git_integration_enabled" value="0">

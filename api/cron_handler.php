@@ -17,6 +17,7 @@ class CronManager {
         $this->scripts = [
             'collect_stats' => PROJECT_ROOT . '/collect_stats.php',
             'autoscaler' => PROJECT_ROOT . '/autoscaler.php',
+            'health_monitor' => PROJECT_ROOT . '/health_monitor.php',
         ];
     }
 

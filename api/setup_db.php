@@ -47,7 +47,7 @@ $default_password_hash = password_hash('password', PASSWORD_DEFAULT);
 $webhook_token = bin2hex(random_bytes(32)); // Generate a secure random token
 
 $sql = "
-DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `container_health_status`, `service_health_status`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`,`traefik_hosts`;
+DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `service_health_status`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`,`traefik_hosts`;
 
 CREATE TABLE `stack_change_log` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -194,15 +194,13 @@ CREATE TABLE `service_health_status` (
 CREATE TABLE `container_health_status` (
   `container_id` varchar(64) NOT NULL,
   `host_id` int(11) NOT NULL,
-  `container_name` varchar(255) DEFAULT NULL,
   `status` enum('healthy','unhealthy','unknown') NOT NULL DEFAULT 'unknown',
   `consecutive_failures` int(11) NOT NULL DEFAULT 0,
   `consecutive_successes` int(11) NOT NULL DEFAULT 0,
   `last_checked_at` timestamp NULL DEFAULT NULL,
   `last_log` text DEFAULT NULL,
   PRIMARY KEY (`container_id`),
-  KEY `host_id` (`host_id`),
-  CONSTRAINT `container_health_status_ibfk_1` FOREIGN KEY (`host_id`) REFERENCES `docker_hosts` (`id`) ON DELETE CASCADE
+  KEY `host_id` (`host_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `routers` (
@@ -375,6 +373,8 @@ INSERT INTO `transports` (`name`, `insecure_skip_verify`) VALUES ('dsm-transport
 ALTER TABLE `groups` ADD CONSTRAINT `groups_ibfk_1` FOREIGN KEY (`traefik_host_id`) REFERENCES `traefik_hosts` (`id`) ON DELETE SET NULL;
 
 ALTER TABLE `services` ADD CONSTRAINT `fk_target_stack` FOREIGN KEY (`target_stack_id`) REFERENCES `application_stacks` (`id`) ON DELETE SET NULL;
+
+ALTER TABLE `container_health_status` ADD CONSTRAINT `container_health_status_ibfk_1` FOREIGN KEY (`host_id`) REFERENCES `docker_hosts` (`id`) ON DELETE CASCADE;
 
 ALTER TABLE `application_stacks`
 ADD COLUMN `autoscaling_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '0 = disabled, 1 = enabled' AFTER `deployment_details`,

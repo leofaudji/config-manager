@@ -228,6 +228,26 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
             </li>
 
+        <li class="sidebar-header">Monitoring</li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/health-status') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Service Health Status">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-heart-pulse icon-default"></i>
+                        <i class="bi bi-heart-pulse-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Service Health</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/stats') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Statistics">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-bar-chart-line icon-default"></i>
+                        <i class="bi bi-bar-chart-line-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Statistics</span>
+                </a>
+            </li>
+
             <li class="sidebar-header">System</li>
             <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/users') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Users">
@@ -272,15 +292,6 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <i class="bi bi-clock-fill icon-active"></i>
                     </span>
                     <span class="nav-link-text">Cron Jobs</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/stats') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Statistics">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-bar-chart-line icon-default"></i>
-                        <i class="bi bi-bar-chart-line-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Statistics</span>
                 </a>
             </li>
         <?php endif; ?>

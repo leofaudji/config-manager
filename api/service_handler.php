@@ -93,6 +93,16 @@ if ($server_input_type === 'cidr') {
 } else { // individual
     $server_urls = array_filter($_POST['server_urls'] ?? []);
 }
+
+// --- Health Check Data ---
+$health_check_enabled = isset($_POST['health_check_enabled']) && $_POST['health_check_enabled'] == '1' ? 1 : 0;
+$health_check_type = $_POST['health_check_type'] ?? 'http';
+$target_stack_id = !empty($_POST['target_stack_id']) ? (int)$_POST['target_stack_id'] : null;
+$health_check_endpoint = $_POST['health_check_endpoint'] ?? '/health';
+$health_check_interval = (int)($_POST['health_check_interval'] ?? 30);
+$health_check_timeout = (int)($_POST['health_check_timeout'] ?? 5);
+$unhealthy_threshold = (int)($_POST['unhealthy_threshold'] ?? 3);
+$healthy_threshold = (int)($_POST['healthy_threshold'] ?? 2);
 $is_edit = !empty($id);
 
 // Validasi untuk nama duplikat
@@ -117,8 +127,19 @@ $stmt_check->close();
 if (!$is_edit) {
     $conn->begin_transaction();
     try {
-        $stmt = $conn->prepare("INSERT INTO services (name, pass_host_header, load_balancer_method, group_id) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("sisi", $name, $pass_host_header, $load_balancer_method, $group_id);
+        $stmt = $conn->prepare(
+            "INSERT INTO services (name, pass_host_header, load_balancer_method, group_id, 
+                                  health_check_enabled, health_check_type, target_stack_id, health_check_endpoint, 
+                                  health_check_interval, health_check_timeout, unhealthy_threshold, healthy_threshold) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        );
+        $stmt->bind_param(
+            "sisisisiiiii", 
+            $name, $pass_host_header, $load_balancer_method, $group_id,
+            $health_check_enabled, $health_check_type, $target_stack_id, $health_check_endpoint,
+            $health_check_interval, $health_check_timeout, $unhealthy_threshold, $healthy_threshold
+        );
+
         if (!$stmt->execute()) throw new Exception('Gagal menyimpan service: ' . $stmt->error);
         $new_service_id = $conn->insert_id;
         $stmt->close();
@@ -153,8 +174,20 @@ if (!$is_edit) {
         $old_service_name = $stmt_old_name->get_result()->fetch_assoc()['name'];
         $stmt_old_name->close();
 
-        $stmt_update_service = $conn->prepare("UPDATE services SET name = ?, pass_host_header = ?, load_balancer_method = ?, group_id = ? WHERE id = ?");
-        $stmt_update_service->bind_param("sisii", $name, $pass_host_header, $load_balancer_method, $group_id, $id);
+        $stmt_update_service = $conn->prepare(
+            "UPDATE services SET 
+                name = ?, pass_host_header = ?, load_balancer_method = ?, group_id = ?,
+                health_check_enabled = ?, health_check_type = ?, target_stack_id = ?, health_check_endpoint = ?, 
+                health_check_interval = ?, health_check_timeout = ?, unhealthy_threshold = ?, healthy_threshold = ?
+             WHERE id = ?"
+        );
+        $stmt_update_service->bind_param(
+            "sisisisiiiiii", 
+            $name, $pass_host_header, $load_balancer_method, $group_id,
+            $health_check_enabled, $health_check_type, $target_stack_id, $health_check_endpoint,
+            $health_check_interval, $health_check_timeout, $unhealthy_threshold, $healthy_threshold,
+            $id
+        );
         $stmt_update_service->execute();
         $stmt_update_service->close();
 

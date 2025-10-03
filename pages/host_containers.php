@@ -67,7 +67,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                         <th data-sort="Status">Status</th>
                         <th>IP Address</th>
                         <th>Networks</th>
-                        <th>Published Ports</th>
+                        <th class="sortable" data-sort="HostPort">Published Ports</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
@@ -320,8 +320,8 @@ window.pageInit = function() {
                 .finally(() => {
                     completed++;
                     if (completed === total) {
-                        showToast(`Bulk action '${action}' completed.`, true);
-                        reloadCurrentView();
+                        showToast(`Bulk action '${action}' completed. Refreshing list...`, true);
+                        setTimeout(reloadCurrentView, 2000); // Wait 2 seconds for Docker to process actions
                     }
                 });
         });
@@ -744,11 +744,18 @@ window.pageInit = function() {
 
     // --- Initial Load ---
     function initialize() {
-        // Check for a search term in the URL and pre-fill the search box
         const urlParams = new URLSearchParams(window.location.search);
+
+        // Check for a search term in the URL and pre-fill the search box
         const searchTermFromUrl = urlParams.get('search');
         if (searchTermFromUrl) {
             searchInput.value = searchTermFromUrl;
+        }
+
+        // Check for a filter in the URL and set it as the current filter
+        const filterFromUrl = urlParams.get('filter');
+        if (filterFromUrl && ['all', 'running', 'stopped'].includes(filterFromUrl)) {
+            currentFilter = filterFromUrl;
         }
 
 

@@ -430,6 +430,22 @@ class DockerClient
     }
 
     /**
+     * Forces a service to update, which effectively restarts its tasks.
+     * @param string $serviceId The ID of the service to update.
+     * @param int $version The current version index of the service object.
+     * @return bool True on success.
+     * @throws Exception
+     */
+    public function forceServiceUpdate(string $serviceId, int $version): bool
+    {
+        // The `--force` flag in the CLI is equivalent to sending an empty POST request.
+        // The API will re-evaluate and re-create tasks.
+        $this->request("/services/{$serviceId}/update?version={$version}", 'POST', []);
+
+        return true;
+    }
+
+    /**
      * Gets system-wide information from the Docker daemon.
      * @return array The Docker system info.
      * @throws Exception
@@ -610,7 +626,19 @@ class DockerClient
                 $this->pullImage($containerId);
             }
             // Run a temporary container with the docker socket mounted to execute a host-level docker command.
-            $full_command = 'env ' . $env_vars . ' docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ' . escapeshellarg($containerId) . ' ' . $command . ' 2>&1';
+            // --- NEW: Smarter network attachment for TCP checks ---
+            // If the command is a netcat check, we need to attach to the target container's network.
+            $network_attach_arg = '';
+            if (str_starts_with($command, 'nc -z')) {
+                // Extract the target IP from the nc command
+                preg_match('/nc -z -w \d+ (\S+)/', $command, $matches);
+                $target_ip = $matches[1] ?? null;
+                if ($target_ip) {
+                    $target_network_name = $this->findNetworkByContainerIp($target_ip);
+                    if ($target_network_name) $network_attach_arg = ' --network=' . escapeshellarg($target_network_name);
+                }
+            }
+            $full_command = 'env ' . $env_vars . ' docker run --rm' . $network_attach_arg . ' ' . escapeshellarg($containerId) . ' sh -c ' . escapeshellarg($command) . ' 2>&1';
         } else {
             // Standard exec in an existing container.
             $full_command = 'env ' . $env_vars . ' docker exec ' . escapeshellarg($containerId) . ' sh -c ' . escapeshellarg($command) . ' 2>&1';
@@ -679,5 +707,83 @@ class DockerClient
         $this->request("/containers/{$containerId}/update", 'POST', $updateConfig);
         // If the request did not throw an exception, it was successful.
         return true;
+    }
+
+    /**
+     * Recreates a container managed by a docker-compose stack on a standalone host.
+     * This mimics the behavior of `docker-compose up -d --force-recreate <service_name>`.
+     *
+     * @param string $stackName The name of the stack (compose project).
+     * @param string $serviceName The name of the service within the compose file.
+     * @return string The output from the docker-compose command.
+     * @throws Exception
+     */
+    public function recreateContainerFromStack(string $stackName, string $serviceName): string
+    {
+        $base_compose_path = get_setting('default_compose_path');
+        if (empty($base_compose_path)) {
+            throw new Exception("Cannot recreate container. 'Default Standalone Compose Path' is not configured in settings.");
+        }
+
+        // Construct the path to the deployment directory on the application server
+        $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $this->host['name']);
+        $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stackName;
+
+        if (!is_dir($deployment_dir)) {
+            throw new Exception("Deployment directory '{$deployment_dir}' not found. Cannot manage this stack.");
+        }
+
+        // Assume the compose file is named 'docker-compose.yml' for simplicity, as this is our convention.
+        $compose_file_path = $deployment_dir . '/docker-compose.yml';
+        if (!file_exists($compose_file_path)) {
+            throw new Exception("Compose file not found at '{$compose_file_path}'.");
+        }
+
+        // Prepare environment variables for the remote docker-compose command
+        $env_vars = "DOCKER_HOST=" . escapeshellarg($this->host['docker_api_url']) . " COMPOSE_NONINTERACTIVE=1";
+        if ($this->tlsEnabled) {
+            $cert_path_dir = $deployment_dir . '/certs';
+            if (!is_dir($cert_path_dir)) throw new Exception("Certs directory not found in deployment folder for TLS connection.");
+            $env_vars .= " DOCKER_TLS_VERIFY=1 DOCKER_CERT_PATH=" . escapeshellarg($cert_path_dir);
+        }
+
+        // Build the full command
+        $cd_command = "cd " . escapeshellarg($deployment_dir);
+        $compose_command = "docker-compose -p " . escapeshellarg($stackName) . " up -d --force-recreate " . escapeshellarg($serviceName);
+        $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($cd_command . ' && ' . $compose_command) . ' 2>&1';
+
+        exec($full_command, $output, $return_var);
+
+        if ($return_var !== 0) {
+            throw new Exception("Failed to recreate container for service '{$serviceName}'. Output: " . implode("\n", $output));
+        }
+
+        return implode("\n", $output);
+    }
+
+    /**
+     * Finds the name of a Docker network that a container with a specific IP is connected to.
+     *
+     * @param string $containerIp The internal IP address of the target container.
+     * @return string|null The name of the network, or null if not found.
+     * @throws Exception
+     */
+    private function findNetworkByContainerIp(string $containerIp): ?string
+    {
+        $containers = $this->listContainers();
+        foreach ($containers as $container) {
+            if (isset($container['NetworkSettings']['Networks']) && is_array($container['NetworkSettings']['Networks'])) {
+                foreach ($container['NetworkSettings']['Networks'] as $networkName => $networkDetails) {
+                    if (isset($networkDetails['IPAddress']) && $networkDetails['IPAddress'] === $containerIp) {
+                        // We found the container and its network.
+                        // We should not use default networks like 'bridge', 'host', or 'none' for connection.
+                        if (!in_array($networkName, ['bridge', 'host', 'none'])) {
+                            return $networkName;
+                        }
+                    }
+                }
+            }
+        }
+        return null; // Return null if no matching network is found
     }
 }

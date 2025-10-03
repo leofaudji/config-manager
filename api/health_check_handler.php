@@ -62,6 +62,34 @@ $checks[] = [
     'message' => $cron_log_path_ok ? "The log path '{$cron_log_path}' is writable." : "The log path '{$cron_log_path}' is NOT writable by the web server. Cron jobs will fail to write logs."
 ];
 
+// Check #5a: Health Monitor Log File Writable
+$health_monitor_log_file = rtrim($cron_log_path, '/') . '/health_monitor.log';
+$health_monitor_log_ok = false;
+$health_monitor_log_message = '';
+
+if (file_exists($health_monitor_log_file)) {
+    if (is_writable($health_monitor_log_file)) {
+        $health_monitor_log_ok = true;
+        $health_monitor_log_message = "Log file '{$health_monitor_log_file}' exists and is writable.";
+    } else {
+        $health_monitor_log_ok = false;
+        $health_monitor_log_message = "Log file '{$health_monitor_log_file}' exists but is NOT writable by the web server. Please check file permissions.";
+    }
+} else {
+    if ($cron_log_path_ok) { // Check if the parent directory is writable
+        $health_monitor_log_ok = true;
+        $health_monitor_log_message = "Log file does not exist yet, but the directory '{$cron_log_path}' is writable. The file will be created when the health monitor cron job runs.";
+    } else {
+        $health_monitor_log_ok = false;
+        $health_monitor_log_message = "Log file does not exist and the directory '{$cron_log_path}' is NOT writable. The cron job will fail to create the log file.";
+    }
+}
+$checks[] = [
+    'check' => 'Health Monitor Log File',
+    'status' => $health_monitor_log_ok,
+    'message' => $health_monitor_log_message
+];
+
 // Check #6: Cron User Shell
 $web_user = exec('whoami');
 $user_shell_ok = false;

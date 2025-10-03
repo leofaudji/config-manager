@@ -20,120 +20,82 @@ $host_id = $matches[1];
 $conn = Database::getInstance()->getConnection();
 
 try {
-    // Get Host details
+    // --- Get Host Details ---
     $stmt = $conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
     $stmt->bind_param("i", $host_id);
     $stmt->execute();
     $result = $stmt->get_result();
     if (!($host = $result->fetch_assoc())) {
-        throw new Exception("Host not found.");
+        http_response_code(404);
+        echo json_encode(['status' => 'error', 'message' => 'Host not found.']);
+        exit;
     }
     $stmt->close();
 
-    $dockerClient = new DockerClient($host);
+    $stats = [];
 
-    // Get container stats
-    $containers = $dockerClient->listContainers();
-    $total_containers = count($containers);
-    $running_containers = count(array_filter($containers, fn($c) => $c['State'] === 'running'));
-    $stopped_containers = count(array_filter($containers, fn($c) => $c['State'] === 'exited'));
-
-    // Get network stats
-    $networks = $dockerClient->listNetworks();
-    $total_networks = count($networks);
-
-    // Get stack stats and swarm status. This needs to be robust for both Swarm and non-Swarm nodes.
-    $total_stacks = 0;
-    $is_swarm_manager = false;
+    // --- Get Live Stats from Docker Host ---
     try {
-        // This call is necessary to get swarm status, but also gives us CPU and Memory info.
-        $dockerInfo = $dockerClient->getInfo();
-        $is_swarm_manager = (isset($dockerInfo['Swarm']['ControlAvailable']) && $dockerInfo['Swarm']['ControlAvailable'] === true);
+        $dockerClient = new DockerClient($host);
+        $containers = $dockerClient->listContainers();
+        $info = $dockerClient->getInfo();
+        $networks = $dockerClient->listNetworks();
 
-        if ($is_swarm_manager) {
-            // Swarm Manager: Count stacks via services
-            $remote_services = $dockerClient->listServices();
-            $discovered_stacks = [];
-            foreach ($remote_services as $service) {
-                $stack_namespace = $service['Spec']['Labels']['com.docker.stack.namespace'] ?? null;
-                if ($stack_namespace) {
-                    $discovered_stacks[$stack_namespace] = true; // Use keys for uniqueness
-                }
-            }
-            $total_stacks = count($discovered_stacks);
-        } else {
-            // Not a swarm manager, so we look for docker-compose projects from container labels
-            $discovered_stacks = [];
-            foreach ($containers as $container) {
-                $compose_project = $container['Labels']['com.docker.compose.project'] ?? null;
-                if ($compose_project) {
-                    $discovered_stacks[$compose_project] = true; // Use keys for uniqueness
-                }
-            }
-            $total_stacks = count($discovered_stacks);
-        }
+        $stats['total_containers'] = count($containers);
+        $stats['running_containers'] = count(array_filter($containers, fn($c) => $c['State'] === 'running'));
+        $stats['stopped_containers'] = count(array_filter($containers, fn($c) => $c['State'] === 'exited'));
+        $stats['total_networks'] = count($networks);
+        $stats['total_images'] = $info['Images'] ?? 0;
+
     } catch (Exception $e) {
-        // If the /services or /info endpoint fails, it's not a swarm manager.
-        error_log("Could not get Swarm stats for host {$host['name']}: " . $e->getMessage());
-        $is_swarm_manager = false;
-        $total_stacks = 0; // Fallback for the widget
+        // If host is unreachable, we can still serve chart data, but widget data will be 'N/A'
+        // Throw the exception to be caught by the main handler, ensuring a consistent error response.
+        throw new Exception("Failed to connect to host '{$host['name']}': " . $e->getMessage());
     }
 
-    // Get image stats
-    $total_images = 0;
-    try {
-        // This logic is duplicated from network_handler.php for simplicity, as we can't easily share it.
-        $url = $host['docker_api_url'];
-        $is_socket = strpos($url, 'unix://') === 0;
-        $ch = curl_init();
-        if ($is_socket) {
-            curl_setopt($ch, CURLOPT_UNIX_SOCKET_PATH, substr($url, 7));
-            curl_setopt($ch, CURLOPT_URL, 'http://localhost/images/json');
-        } else {
-            $curl_url = ($host['tls_enabled'] ? 'https://' : 'http://') . str_replace('tcp://', '', $url);
-            curl_setopt($ch, CURLOPT_URL, rtrim($curl_url, '/') . '/images/json');
-        }
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-        if (!empty($host['tls_enabled'])) {
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-            if (!empty($host['ca_cert_path']) && file_exists($host['ca_cert_path'])) curl_setopt($ch, CURLOPT_CAINFO, $host['ca_cert_path']);
-            if (!empty($host['client_cert_path']) && file_exists($host['client_cert_path'])) curl_setopt($ch, CURLOPT_SSLCERT, $host['client_cert_path']);
-            if (!empty($host['client_key_path']) && file_exists($host['client_key_path'])) curl_setopt($ch, CURLOPT_SSLKEY, $host['client_key_path']);
-        }
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $images_data = json_decode($response, true);
-        if (is_array($images_data)) {
-            $filtered_images = array_filter($images_data, function($image) {
-                return !(empty($image['RepoTags']) || $image['RepoTags'][0] === '<none>:<none>');
-            });
-            $total_images = count($filtered_images);
-        }
-    } catch (Exception $e) {
-        error_log("Could not get Image stats for host {$host['name']}: " . $e->getMessage());
-        $total_images = 'N/A';
-    }
+    // --- Get Stack Count from DB ---
+    $stmt = $conn->prepare("SELECT COUNT(*) as count FROM application_stacks WHERE host_id = ?");
+    $stmt->bind_param("i", $host_id);
+    $stmt->execute();
+    $stats['total_stacks'] = $stmt->get_result()->fetch_assoc()['count'] ?? 0;
+    $stmt->close();
 
-    $stats = [
-        'total_containers' => $total_containers,
-        'running_containers' => $running_containers,
-        'stopped_containers' => $stopped_containers,
-        'total_networks' => $total_networks,
-        'total_stacks' => $total_stacks,
-        'total_images' => $total_images,
-        'is_swarm_manager' => $is_swarm_manager,
-        'cpus' => $dockerInfo['NCPU'] ?? 0, // Add total CPUs
-        'memory' => $dockerInfo['MemTotal'] ?? 0, // Add total memory in bytes
+    // --- Get Chart Data (from host_dashboard_chart_handler.php) ---
+    $chart_stmt = $conn->prepare("
+        SELECT 
+            DATE_FORMAT(created_at, '%Y-%m-%d %H:00:00') as hour_slot,
+            AVG(container_cpu_usage_percent) as avg_container_cpu,
+            AVG(host_cpu_usage_percent) as avg_host_cpu,
+            (AVG(memory_usage_bytes) / AVG(memory_limit_bytes)) * 100 as avg_mem_usage
+        FROM host_stats_history
+        WHERE host_id = ? AND created_at >= NOW() - INTERVAL 24 HOUR
+        GROUP BY hour_slot
+        ORDER BY hour_slot ASC
+    ");
+    $chart_stmt->bind_param("i", $host_id);
+    $chart_stmt->execute();
+    $chart_result = $chart_stmt->get_result();
+
+    $chart_data = [
+        'labels' => [],
+        'host_cpu_usage' => [],
+        'container_cpu_usage' => [],
+        'memory_usage' => [],
     ];
 
-    echo json_encode(['status' => 'success', 'data' => $stats]);
+    while ($row = $chart_result->fetch_assoc()) {
+        $chart_data['labels'][] = date('H:i', strtotime($row['hour_slot']));
+        $chart_data['container_cpu_usage'][] = round($row['avg_container_cpu'] ?? 0, 2);
+        $chart_data['host_cpu_usage'][] = round($row['avg_host_cpu'] ?? 0, 2);
+        $chart_data['memory_usage'][] = round($row['avg_mem_usage'] ?? 0, 2);
+    }
+    $chart_stmt->close();
+    $stats['chart_data'] = $chart_data;
 
+    echo json_encode(['status' => 'success', 'data' => $stats]);
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => 'Failed to fetch host dashboard data: ' . $e->getMessage()]);
 }
 
 $conn->close();
-?>

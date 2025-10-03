@@ -21,17 +21,18 @@ try {
         'default_service_prefix' => $_POST['default_service_prefix'] ?? 'service-',
         'default_compose_path' => trim($_POST['default_compose_path'] ?? ''),
         'default_git_compose_path' => trim($_POST['default_git_compose_path'] ?? ''),
-        'git_integration_enabled' => $_POST['git_integration_enabled'] ?? 0,
         'git_repository_url' => trim($_POST['git_repository_url'] ?? ''),
         'git_branch' => trim($_POST['git_branch'] ?? 'main'),
         'git_user_name' => trim($_POST['git_user_name'] ?? 'Config Manager'),
         'git_user_email' => trim($_POST['git_user_email'] ?? 'bot@config-manager.local'),
         'git_ssh_key_path' => trim($_POST['git_ssh_key_path'] ?? ''),
         'git_pat' => trim($_POST['git_pat'] ?? ''),
-        'temp_directory_path' => rtrim(trim($_POST['temp_directory_path'] ?? sys_get_temp_dir()), '/'),
-        'git_persistent_repo_path' => rtrim(trim($_POST['git_persistent_repo_path'] ?? ''), '/'),
-        'cron_log_path' => rtrim(trim($_POST['cron_log_path'] ?? '/var/log'), '/'),
-        'log_cleanup_days' => (int)($_POST['log_cleanup_days'] ?? 7),
+        'temp_directory_path' => rtrim(trim($_POST['temp_directory_path'] ?? sys_get_temp_dir()), '/'), // Already handled by form
+        'git_persistent_repo_path' => rtrim(trim($_POST['git_persistent_repo_path'] ?? ''), '/'), // Already handled by form
+        'cron_log_path' => rtrim(trim($_POST['cron_log_path'] ?? '/var/log'), '/'), // Already handled by form
+        'log_cleanup_days' => (int)($_POST['log_cleanup_days'] ?? 7), // Already handled by form
+        'health_check_global_enable' => isset($_POST['health_check_global_enable']) ? 1 : 0, // Handles unchecked case
+        'git_integration_enabled' => isset($_POST['git_integration_enabled']) ? 1 : 0, // Handles unchecked case
     ];
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE for a safe upsert

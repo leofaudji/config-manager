@@ -136,13 +136,26 @@ require_once __DIR__ . '/../includes/host_nav.php';
 (function() { // IIFE to ensure script runs on AJAX load
     const hostId = <?= $id ?>;
 
-    // Fetch and render the chart
-    const ctx = document.getElementById('resourceUsageChart').getContext('2d');
-    fetch(`${basePath}/api/hosts/${hostId}/chart-data`)
+    // Fetch all dashboard data (widgets and chart) in a single request
+    fetch(`${basePath}/api/hosts/${hostId}/stats`)
         .then(response => response.json())
         .then(result => {
             if (result.status === 'success') {
-                if (result.data.labels.length === 0) {
+                const data = result.data;
+
+                // 1. Populate Widgets
+                document.getElementById('total-containers-widget').textContent = data.total_containers;
+                document.getElementById('running-containers-widget').textContent = data.running_containers;
+                document.getElementById('stopped-containers-widget').textContent = data.stopped_containers;
+                document.getElementById('total-stacks-widget').textContent = data.total_stacks;
+                document.getElementById('total-networks-widget').textContent = data.total_networks;
+                document.getElementById('total-images-widget').textContent = data.total_images;
+
+                // 2. Populate Chart
+                const ctx = document.getElementById('resourceUsageChart').getContext('2d');
+                const chartData = data.chart_data;
+
+                if (!chartData || chartData.labels.length === 0) {
                     ctx.font = "16px Arial";
                     ctx.fillText("No historical data available for the last 24 hours.", 10, 50);
                     return;
@@ -150,11 +163,11 @@ require_once __DIR__ . '/../includes/host_nav.php';
                 new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: result.data.labels,
+                        labels: chartData.labels,
                         datasets: [
                             {
                                 label: 'Host CPU Usage (%)',
-                                data: result.data.host_cpu_usage,
+                                data: chartData.host_cpu_usage,
                                 borderColor: 'rgb(255, 159, 64)',
                                 backgroundColor: 'rgba(255, 159, 64, 0.2)',
                                 fill: true,
@@ -165,7 +178,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                             },
                             {
                                 label: 'Container CPU Usage (%)',
-                                data: result.data.container_cpu_usage,
+                                data: chartData.container_cpu_usage,
                                 borderColor: 'rgb(75, 192, 192)',
                                 backgroundColor: 'rgba(75, 192, 192, 0.2)',
                                 fill: true,
@@ -176,7 +189,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                             }, 
                             {
                                 label: 'Memory Usage (%)',
-                                data: result.data.memory_usage,
+                                data: chartData.memory_usage,
                                 borderColor: 'rgb(255, 99, 132)',
                                 backgroundColor: 'rgba(255, 99, 132, 0.2)',
                                 fill: true,
@@ -224,26 +237,17 @@ require_once __DIR__ . '/../includes/host_nav.php';
             }
         })
         .catch(error => {
-            console.error('Error fetching chart data:', error);
+            console.error('Error fetching host dashboard data:', error);
+            // Show error on chart
+            const ctx = document.getElementById('resourceUsageChart').getContext('2d');
             ctx.font = "16px Arial";
-            ctx.fillText("An error occurred while loading chart data.", 10, 50);
+            ctx.fillText("An error occurred while loading dashboard data.", 10, 50);
+            // Show error on widgets
+            ['total-containers-widget', 'running-containers-widget', 'stopped-containers-widget', 'total-stacks-widget', 'total-networks-widget', 'total-images-widget'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = 'Error';
+            });
         });
-
-    // Fetch and render the summary widgets
-    fetch(`${basePath}/api/hosts/${hostId}/stats`)
-        .then(response => response.json())
-        .then(result => {
-            if (result.status === 'success') {
-                const data = result.data;
-                document.getElementById('total-containers-widget').textContent = data.total_containers;
-                document.getElementById('running-containers-widget').textContent = data.running_containers;
-                document.getElementById('stopped-containers-widget').textContent = data.stopped_containers;
-                document.getElementById('total-stacks-widget').textContent = data.total_stacks;
-                document.getElementById('total-networks-widget').textContent = data.total_networks;
-                document.getElementById('total-images-widget').textContent = data.total_images;
-            }
-        })
-        .catch(error => console.error('Error fetching host dashboard stats:', error));
 })();
 </script>
 
