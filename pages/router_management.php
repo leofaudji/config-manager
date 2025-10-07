@@ -14,7 +14,16 @@ require_once __DIR__ . '/../includes/header.php';
     <h1 class="h2"><i class="bi bi-sign-turn-right"></i> Routers</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <?php if ($_SESSION['role'] === 'admin'): ?>
-        <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="preview-config-btn"><i class="bi bi-eye"></i> Preview Config</button>
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="preview-config-btn"><i class="bi bi-eye"></i> Preview Config</button>
+            <button type="button" class="btn btn-sm btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-diagram-3"></i> Workflows
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="<?= base_url('/traefik-workflow') ?>" target="_blank">Manajemen Traefik</a></li>
+                <li><a class="dropdown-item" href="<?= base_url('/traffic-flow-workflow') ?>" target="_blank">Alur Lalu Lintas Aplikasi</a></li>
+            </ul>
+        </div>
         <a href="<?= base_url('/routers/new') ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-circle"></i> Add New Router</a>
         <?php endif; ?>
     </div>

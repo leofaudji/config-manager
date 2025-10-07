@@ -316,7 +316,10 @@ require_once __DIR__ . '/../includes/header.php';
 
             <div class="mt-4">
                 <a href="<?= base_url('/') ?>" class="btn btn-secondary">Cancel</a>
-                <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#deploymentInfoModal"><i class="bi bi-info-circle"></i> Cara Kerja</button>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#deploymentInfoModal"><i class="bi bi-info-circle"></i> Cara Kerja</button>
+                    <a href="<?= base_url('/app-launcher-workflow') ?>" class="btn btn-outline-info" target="_blank" title="Lihat Alur Kerja Visual"><i class="bi bi-diagram-3"></i></a>
+                </div>
                 <button type="button" class="btn btn-info" id="view-compose-yaml-btn" disabled>View Generated YAML</button>
                 <button type="submit" class="btn btn-primary" id="launch-app-btn" disabled>Launch Application</button>
             </div>

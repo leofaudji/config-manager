@@ -443,6 +443,36 @@ function checkGitSyncStatus() {
 }
 
 /**
+ * Injects dynamic action buttons into a rendered table.
+ * @param {string} type The type of data, e.g., 'routers'.
+ */
+function injectDynamicButtons(type) {
+    if (type === 'routers') {
+        const routerRows = document.querySelectorAll('#routers-container tr');
+        routerRows.forEach(row => {
+            const serviceCell = row.querySelector('td:nth-child(6) a'); // The 'Service' link
+            const actionsCell = row.querySelector('td.table-actions .btn-group');
+            if (!serviceCell || !actionsCell) return;
+
+            const serviceId = serviceCell.href.split('/').pop();
+            const serviceName = serviceCell.textContent;
+            const routerRule = row.querySelector('td:nth-child(3) code')?.textContent || 'N/A';
+
+            const workflowButton = document.createElement('button');
+            workflowButton.className = 'btn btn-sm btn-outline-info view-traffic-flow-btn';
+            workflowButton.innerHTML = '<i class="bi bi-diagram-3"></i>';
+            workflowButton.title = 'View Traffic Flow';
+            workflowButton.dataset.serviceId = serviceId;
+            workflowButton.dataset.serviceName = serviceName;
+            workflowButton.dataset.routerRule = routerRule;
+
+            // Insert it as the first button in the action group
+            actionsCell.insertBefore(workflowButton, actionsCell.firstChild);
+        });
+    }
+}
+
+/**
  * Fetches paginated data and updates the corresponding UI section.
  * @param {string} type - The type of data to fetch ('routers' or 'services').
  * @param {number} page - The page number to fetch.
@@ -557,6 +587,9 @@ function loadPaginatedData(type, page = 1, limit = 10, preserveScroll = false, e
                     }
                 });
             }
+
+            // Inject any client-side dynamic buttons after rendering
+            injectDynamicButtons(type);
 
             if (preserveScroll) {
                 window.scrollTo(0, scrollY);

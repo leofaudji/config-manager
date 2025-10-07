@@ -57,6 +57,10 @@ try {
     if (!$stmt_update_host->execute()) {
         throw new Exception("Failed to update host last_report_at timestamp for host_id {$host_id}: " . $stmt_update_host->error);
     }
+    // --- FINAL DEFENSIVE CHECK ---
+    if ($stmt_update_host->affected_rows === 0) {
+        throw new Exception("Command to update last_report_at for host_id {$host_id} executed successfully, but no rows were updated. The host might have been deleted during the request, or there is a database state issue.");
+    }
     $stmt_update_host->close();
 
     // Log the successful reception of the report
@@ -119,6 +123,10 @@ try {
     }
     $stmt_fetch->close();
     $stmt_update->close();
+
+    // --- CRITICAL FIX: Explicitly commit the transaction ---
+    // This ensures that all updates (including last_report_at) are saved permanently.
+    $conn->commit();
 
     echo json_encode(['status' => 'success', 'message' => 'Report received and processed.']);
 

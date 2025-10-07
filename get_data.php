@@ -79,11 +79,12 @@ if ($type === 'routers') {
     $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
 
     // Get data
-    $sql = "SELECT r.*, g.name as group_name, GROUP_CONCAT(m.name ORDER BY rm.priority) as middleware_names,
+    $sql = "SELECT r.*, s.id as service_id, g.name as group_name, GROUP_CONCAT(m.name ORDER BY rm.priority) as middleware_names,
                    GROUP_CONCAT(m.config_json SEPARATOR '|||') as middleware_configs
             FROM routers r 
             LEFT JOIN `groups` g ON r.group_id = g.id
             LEFT JOIN router_middleware rm ON r.id = rm.router_id
+            LEFT JOIN services s ON r.service_name = s.name
             LEFT JOIN middlewares m ON rm.middleware_id = m.id"
             . $where_clause .
             " GROUP BY r.id ORDER BY r.updated_at DESC LIMIT ? OFFSET ?";
@@ -127,10 +128,15 @@ if ($type === 'routers') {
         $html .= '<td><span class="badge text-bg-secondary">' . htmlspecialchars($row['group_name'] ?? 'N/A') . '</span></td>';
         $html .= '<td><small class="text-muted">' . htmlspecialchars($row['updated_at'] ?? 'N/A') . '</small></td>';
         if ($is_admin) {
-            $html .= '<td class="table-actions">';
-            $html .= '<a href="' . base_url('/routers/' . $row['id'] . '/clone') . '" class="btn btn-info btn-sm" data-bs-toggle="tooltip" title="Clone Router"><i class="bi bi-copy"></i></a> ';
-            $html .= '<a href="' . base_url('/routers/' . $row['id'] . '/edit') . '" class="btn btn-warning btn-sm" data-bs-toggle="tooltip" title="Edit Router"><i class="bi bi-pencil-square"></i></a> ';
+            $html .= '<td class="table-actions text-end">';
+            $html .= '<div class="btn-group" role="group">';
+            $html .= '<a href="' . base_url('/traffic-flow?service_id=' . $row['service_id']) . '" class="btn btn-sm btn-outline-info" target="_blank" title="View Traffic Flow">
+                        <i class="bi bi-diagram-3"></i>
+                      </a>';
+            $html .= '<a href="' . base_url('/routers/' . $row['id'] . '/clone') . '" class="btn btn-info btn-sm" data-bs-toggle="tooltip" title="Clone Router"><i class="bi bi-copy"></i></a>';
+            $html .= '<a href="' . base_url('/routers/' . $row['id'] . '/edit') . '" class="btn btn-warning btn-sm" data-bs-toggle="tooltip" title="Edit Router"><i class="bi bi-pencil-square"></i></a>';
             $html .= '<button class="btn btn-danger btn-sm delete-btn" data-id="' . $row['id'] . '" data-url="' . base_url('/routers/' . $row['id'] . '/delete') . '" data-type="routers" data-confirm-message="Yakin ingin menghapus router ini?"><i class="bi bi-trash"></i></button>';
+            $html .= '</div>';
             $html .= '</td>';
         }
         $html .= '</tr>';

@@ -131,28 +131,18 @@ try {
                 // 1. Create a crontab entry to run the agent script every minute.
                 // 2. Add the crontab entry to the system's cron directory.
                 // 3. Start the cron daemon in the foreground so the container stays alive.
-                $wrapper_script_path = '/usr/local/bin/run-agent.sh';
-                $crontab_entry = "* * * * * {$wrapper_script_path} > /proc/1/fd/1 2>/proc/1/fd/2";
-                // --- NEW: More robust cron execution ---
-                // We create a command that cron will run. This command first sources the environment file,
-                // then executes the PHP script. This ensures the script has access to all needed variables.
+                // --- RELIABLE CRON EXECUTION ---
+                // We save all environment variables to a file, then tell cron to source
+                // that file before running the PHP script. This ensures the script has the correct environment.
                 $cron_command = ". /etc/environment && php /usr/src/app/agent.php";
                 $crontab_entry = "* * * * * {$cron_command} > /proc/1/fd/1 2>/proc/1/fd/2";
 
                 $command = [
                     "/bin/sh", "-c",
-                    // 1. Create a wrapper script that loads env vars and runs the agent.
-                    //    'printenv' dumps all current environment variables.
-                    //    'grep -v' removes variables we don't need (like PWD, SHLVL).
-                    //    The result is saved to a file that the wrapper script can source.
-                    // 1. Save all environment variables to a file that cron's shell can read.
+                    // 1. Save all current environment variables to a file.
+                    //    The `grep` command filters out some shell-specific variables we don't need.
                     "printenv | grep -v -E '^(PWD|SHLVL|HOME|PATH)=' > /etc/environment && " .
-                    "echo '#!/bin/sh' > {$wrapper_script_path} && " .
-                    "echo '. /etc/environment' >> {$wrapper_script_path} && " .
-                    "echo 'php /usr/src/app/agent.php' >> {$wrapper_script_path} && " .
-                    "chmod +x {$wrapper_script_path} && " .
-                    // 2. Create the crontab entry to call the wrapper script.
-                    // 2. Create the crontab entry.
+                    // 2. Create the crontab entry that sources the environment file.
                     "echo '{$crontab_entry}' > /etc/crontabs/root && " .
                     // 3. Start crond in foreground.
                     "crond -f -d 8"

@@ -50,7 +50,6 @@ $router->get('/cpu-reader-workflow', 'pages/cpu_reader_workflow.php', ['auth', '
 $router->get('/traefik-workflow', 'pages/traefik_workflow.php', ['auth', 'admin']);
 $router->get('/container-management-workflow', 'pages/container_management_workflow.php', ['auth', 'admin']);
 $router->get('/traffic-flow-workflow', 'pages/traffic_flow_workflow.php', ['auth', 'admin']);
-$router->get('/app-launcher-workflow', 'pages/app_launcher_workflow.php', ['auth', 'admin']);
 $router->get('/cron-jobs', 'pages/cron_management.php', ['auth', 'admin']);
 $router->get('/templates', 'pages/template_management.php', ['auth', 'admin']);
 $router->get('/traefik-hosts', 'pages/traefik_host_management.php', ['auth', 'admin']);
@@ -137,7 +136,6 @@ $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin
 $router->post('/api/routers/bulk-move', 'api/router_bulk_handler.php', ['auth', 'admin']);
 $router->post('/api/routers/bulk-delete', 'api/router_bulk_handler.php', ['auth', 'admin']);
 $router->get('/api/services/status', 'actions/get_service_status.php', ['auth']);
-$router->get('/api/services/{id}/details', 'api/service_detail_handler.php', ['auth', 'admin']);
 
 $router->post('/users/new', 'api/user_handler.php', ['auth', 'admin']);
 $router->post('/users/{id}/edit', 'api/user_handler.php', ['auth', 'admin']);

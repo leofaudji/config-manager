@@ -58,6 +58,9 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                 </div>
                                 <div class="btn-group btn-group-sm ms-2" role="group">
                                     <button class="btn btn-outline-secondary view-container-logs-btn" data-container-name="cm-health-agent" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
+                                    <a href="<?= base_url('/health-agent-workflow') ?>" class="btn btn-sm btn-outline-info" target="_blank" title="View Deployment Workflow">
+                                        <i class="bi bi-diagram-3"></i>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
@@ -78,6 +81,9 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                 </div>
                                 <div class="btn-group btn-group-sm ms-2" role="group">
                                     <button class="btn btn-outline-secondary view-container-logs-btn" data-container-name="host-cpu-reader" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
+                                    <a href="<?= base_url('/cpu-reader-workflow') ?>" class="btn btn-sm btn-outline-info" target="_blank" title="View Deployment Workflow">
+                                        <i class="bi bi-diagram-3"></i>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
@@ -101,6 +107,9 @@ require_once __DIR__ . '/../includes/host_nav.php';
 
                     <dt class="col-sm-3">Description</dt>
                     <dd class="col-sm-9"><?= htmlspecialchars($host['description'] ?: 'N/A') ?></dd>
+
+                    <dt class="col-sm-3">Workflow</dt>
+                    <dd class="col-sm-9"><a href="<?= base_url('/container-management-workflow') ?>" target="_blank">Lihat Alur Kerja Manajemen Kontainer</a></dd>
                 </dl>
             </div>
         </div>
