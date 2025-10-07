@@ -216,6 +216,10 @@ require_once __DIR__ . '/../includes/header.php';
                             <input class="form-check-input" type="radio" name="health_check_type" id="health_check_type_docker" value="docker" <?= ($service['health_check_type'] ?? '') === 'docker' ? 'checked' : '' ?>>
                             <label class="form-check-label" for="health_check_type_docker">Docker Internal Health</label>
                         </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="radio" name="health_check_type" id="health_check_type_tcp" value="tcp">
+                            <label class="form-check-label" for="health_check_type_tcp">TCP Port Connection</label>
+                        </div>
 
                         <div id="http-options-section" class="mb-3">
                             <label for="health_check_endpoint" class="form-label">Health Check Endpoint</label>
@@ -281,6 +285,7 @@ require_once __DIR__ . '/../includes/header.php';
     const healthCheckOptions = document.getElementById('health-check-options');
     const httpTypeRadio = document.getElementById('health_check_type_http');
     const dockerTypeRadio = document.getElementById('health_check_type_docker');
+    const tcpTypeRadio = document.getElementById('health_check_type_tcp');
     const httpOptionsSection = document.getElementById('http-options-section');
     const dockerOptionsSection = document.getElementById('docker-options-section');
     const httpEndpointInput = document.getElementById('health_check_endpoint');
@@ -339,21 +344,27 @@ require_once __DIR__ . '/../includes/header.php';
     });
 
     function toggleHealthCheckType() {
+        // Hide all sections first
+        httpOptionsSection.style.display = 'none';
+        dockerOptionsSection.style.display = 'none';
+        // Make inputs not required
+        httpEndpointInput.required = false;
+        dockerStackSelect.required = false;
+
         if (dockerTypeRadio.checked) {
-            httpOptionsSection.style.display = 'none';
-            httpEndpointInput.required = false;
             dockerOptionsSection.style.display = 'block';
             dockerStackSelect.required = true;
-        } else { // HTTP is checked
+        } else if (httpTypeRadio.checked) {
             httpOptionsSection.style.display = 'block';
             httpEndpointInput.required = true;
-            dockerOptionsSection.style.display = 'none';
-            dockerStackSelect.required = false;
+        } else { // TCP is checked
+            // No extra options needed for TCP check
         }
     }
 
     httpTypeRadio.addEventListener('change', toggleHealthCheckType);
     dockerTypeRadio.addEventListener('change', toggleHealthCheckType);
+    tcpTypeRadio.addEventListener('change', toggleHealthCheckType);
 
     toggleServerInputMethod(); // Initial check
     toggleHealthCheckType(); // Initial check for health check type

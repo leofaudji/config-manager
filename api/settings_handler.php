@@ -33,6 +33,12 @@ try {
         'log_cleanup_days' => (int)($_POST['log_cleanup_days'] ?? 7), // Already handled by form
         'health_check_global_enable' => isset($_POST['health_check_global_enable']) ? 1 : 0, // Handles unchecked case
         'git_integration_enabled' => isset($_POST['git_integration_enabled']) ? 1 : 0, // Handles unchecked case
+        'health_check_default_healthy_threshold' => (int)($_POST['health_check_default_healthy_threshold'] ?? 2),
+        'health_check_default_unhealthy_threshold' => (int)($_POST['health_check_default_unhealthy_threshold'] ?? 3),
+        'health_agent_api_token' => trim($_POST['health_agent_api_token'] ?? ''),
+        'app_base_url' => trim($_POST['app_base_url'] ?? ''),
+        'auto_healing_enabled' => isset($_POST['auto_healing_enabled']) ? 1 : 0,
+        'health_agent_image' => trim($_POST['health_agent_image'] ?? ''),
     ];
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE for a safe upsert

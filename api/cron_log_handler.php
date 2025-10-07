@@ -44,8 +44,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // --- GET Request Logic (existing) ---
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $script_name = $_GET['script'] ?? '';
-
-    if (empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler', 'health_monitor'])) {
+    // Sanitize the script name to prevent directory traversal attacks
+    if (empty($script_name) || str_contains($script_name, '..') || str_contains($script_name, '/')) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Invalid script name provided.']);
         exit;
@@ -53,7 +53,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     try {
         $log_path = get_setting('cron_log_path', '/var/log');
-        $log_file_path = rtrim($log_path, '/') . "/{$script_name}.log";
+        
+        // If the script name doesn't already end with .log, add it.
+        // This makes the handler compatible with both the cron page (sends 'health_monitor')
+        // and the host details page (sends 'host-1-health-agent.log').
+        $log_filename = str_ends_with($script_name, '.log') ? $script_name : "{$script_name}.log";
+        $log_file_path = rtrim($log_path, '/') . "/{$log_filename}";
 
         if (!file_exists($log_file_path) || !is_readable($log_file_path)) {
             echo json_encode(['status' => 'success', 'log_content' => "Log file not found or is not readable at the configured path:\n{$log_file_path}"]);

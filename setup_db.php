@@ -99,11 +99,14 @@ CREATE TABLE `docker_hosts` (
   `client_cert_path` varchar(255) DEFAULT NULL,
   `client_key_path` varchar(255) DEFAULT NULL,
   `default_volume_path` varchar(255) DEFAULT NULL COMMENT 'Base path for application volumes on this host',
+  `default_health_check_command` varchar(255) DEFAULT NULL COMMENT 'Fallback command to run inside containers for health checks',
   `registry_url` varchar(255) DEFAULT NULL,
   `registry_username` varchar(255) DEFAULT NULL,
   `registry_password` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `last_cpu_report_at` timestamp NULL DEFAULT NULL,
+  `last_report_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -162,7 +165,7 @@ CREATE TABLE `services` (
   `load_balancer_method` varchar(50) NOT NULL DEFAULT 'roundRobin',
   `description` text DEFAULT NULL,
   `health_check_enabled` tinyint(1) NOT NULL DEFAULT 0,
-  `health_check_type` enum('http','docker') NOT NULL DEFAULT 'http',
+  `health_check_type` enum('http','docker','command','tcp') NOT NULL DEFAULT 'http',
   `target_stack_id` int(11) DEFAULT NULL,
   `health_check_endpoint` varchar(255) DEFAULT NULL,
   `health_check_interval` int(11) NOT NULL DEFAULT 30 COMMENT 'in seconds',

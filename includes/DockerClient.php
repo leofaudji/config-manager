@@ -90,6 +90,20 @@ class DockerClient
     }
 
     /**
+     * Removes a container.
+     * @param string $containerIdOrName The ID or name of the container.
+     * @param bool $force If true, the container will be stopped before removal.
+     * @return bool True on success.
+     * @throws Exception
+     */
+    public function removeContainer(string $containerIdOrName, bool $force = false): bool
+    {
+        $params = $force ? '?force=true' : '';
+        $this->request("/containers/{$containerIdOrName}{$params}", 'DELETE');
+        return true; // Exception is thrown on failure
+    }
+
+    /**
      * Prunes unused containers.
      * @return array The response from the API, including containers deleted and space reclaimed.
      * @throws Exception
@@ -174,44 +188,39 @@ class DockerClient
      * @return string The output from the pull command.
      * @throws Exception
      */
-    public function pullImage(string $imageName): string
-    {
-        $env_vars = "DOCKER_HOST=" . escapeshellarg($this->host['docker_api_url']);
-        $docker_config_dir = null;
-        $cert_dir = null;
-
-        if ($this->tlsEnabled) {
-            $cert_dir = rtrim(sys_get_temp_dir(), '/') . '/docker_certs_' . uniqid();
-            if (!mkdir($cert_dir, 0700, true)) throw new Exception("Could not create temporary cert directory.");
-            
-            copy($this->caCertPath, $cert_dir . '/ca.pem');
-            copy($this->clientCertPath, $cert_dir . '/cert.pem');
-            copy($this->clientKeyPath, $cert_dir . '/key.pem');
-
-            $env_vars .= " DOCKER_TLS_VERIFY=1 DOCKER_CERT_PATH=" . escapeshellarg($cert_dir);
+    public function pullImage(string $imageName): string {
+        // If the image name doesn't contain a registry (no '.' or ':port' in the first part),
+        // and no custom registry is configured for the host, explicitly prefix it with the Docker Hub registry.
+        // This forces the daemon to ignore local mirrors that might be misconfigured.
+        if (strpos($imageName, '/') === false && empty($this->host['registry_url'])) {
+            $imageName = 'docker.io/library/' . $imageName;
         }
 
-        $login_command = '';
+        $path = "/images/create?fromImage=" . urlencode($imageName);
+        $headers = [];
+
+        // IMPORTANT: Only add the auth header if BOTH username and password are provided and not empty.
         if (!empty($this->host['registry_username']) && !empty($this->host['registry_password'])) {
-            $docker_config_dir = rtrim(sys_get_temp_dir(), '/') . '/docker_config_' . uniqid();
-            if (!mkdir($docker_config_dir, 0700, true)) throw new Exception("Could not create temporary docker config directory.");
-            $env_vars .= " DOCKER_CONFIG=" . escapeshellarg($docker_config_dir);
-            $registry_url = !empty($this->host['registry_url']) ? escapeshellarg($this->host['registry_url']) : '';
-            $login_command = "echo " . escapeshellarg($this->host['registry_password']) . " | docker login {$registry_url} -u " . escapeshellarg($this->host['registry_username']) . " --password-stdin 2>&1 && ";
+            $auth_details = [
+                'username' => $this->host['registry_username'],
+                'password' => $this->host['registry_password'],
+                'serveraddress' => $this->host['registry_url'] ?: 'https://index.docker.io/v1/' // Default to Docker Hub
+            ];
+            $auth_header_value = base64_encode(json_encode($auth_details));
+            $headers[] = 'X-Registry-Auth: ' . $auth_header_value;
         }
 
-        $pull_command = "docker image pull " . escapeshellarg($imageName) . " 2>&1";
-        $script_to_run = $login_command . $pull_command;
-        $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($script_to_run);
+        // This is a streaming request, so we handle it differently.
+        // We're using the rawRequest method but with POST and headers.
+        $response_stream = $this->request($path, 'POST', null, 'application/json', $headers, 300);
 
-        set_time_limit(300);
-        exec($full_command, $output, $return_var);
-
-        if (isset($cert_dir) && is_dir($cert_dir)) shell_exec("rm -rf " . escapeshellarg($cert_dir));
-        if (isset($docker_config_dir) && is_dir($docker_config_dir)) shell_exec("rm -rf " . escapeshellarg($docker_config_dir));
-
-        if ($return_var !== 0) throw new Exception("Failed to pull image. Output: " . implode("\n", $output));
-
+        // Process the streaming response to make it readable
+        $lines = explode("\n", trim($response_stream));
+        $output = [];
+        foreach ($lines as $line) {
+            $data = json_decode($line, true);
+            $output[] = $data['status'] . (isset($data['progress']) ? ' ' . $data['progress'] : '');
+        }
         return implode("\n", $output);
     }
 
@@ -530,7 +539,30 @@ class DockerClient
         if ($http_code >= 400) throw new RuntimeException("Docker API Error (HTTP {$http_code}): " . $response);
 
         // Clean non-printable characters from the raw log stream header, but keep line breaks.
-        return preg_replace('/[^\x20-\x7E\n\r\t]/', '', $response);
+        // The Docker log stream is multiplexed and includes an 8-byte header on each line.
+        // We need to parse this header to correctly extract the log content.
+        $result = '';
+        $offset = 0;
+        $response_len = strlen($response);
+
+        while ($offset < $response_len) {
+            // The header is 8 bytes: 1 byte for stream type, 3 reserved, 4 for size.
+            if ($offset + 8 > $response_len) {
+                break; // Not enough data for a full header
+            }
+            
+            // Unpack the 4-byte size from the header (bytes 5-8). It's a big-endian unsigned long.
+            $size_data = substr($response, $offset + 4, 4);
+            $size = unpack('N', $size_data)[1];
+
+            // The actual log message follows the header.
+            $log_line = substr($response, $offset + 8, $size);
+            $result .= $log_line;
+
+            // Move the offset to the beginning of the next header.
+            $offset += 8 + $size;
+        }
+        return $result;
     }
 
     /**
@@ -539,25 +571,31 @@ class DockerClient
      * @param string $method The HTTP method (GET, POST, etc.).
      * @param mixed|null $data The data to send with POST requests (can be an array for JSON or a string for raw content).
      * @param string $contentType The Content-Type header for the request.
+     * @param array $extraHeaders Additional headers to send.
+     * @param int $timeout The cURL timeout in seconds.
      * @return mixed The response from the API.
      * @throws Exception
      */
-    private function request(string $path, string $method = 'GET', $data = null, string $contentType = 'application/json')
+    private function request(string $path, string $method = 'GET', $data = null, string $contentType = 'application/json', array $extraHeaders = [], int $timeout = 15)
     {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->apiUrl . $path);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15); // 15 second timeout for actions
+        curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
 
         if ($method === 'POST') {
             curl_setopt($ch, CURLOPT_POST, true);
             if ($data !== null) {
                 $body = ($contentType === 'application/json') ? json_encode($data) : $data;
                 curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: ' . $contentType]);
+                $headers = array_merge(['Content-Type: ' . $contentType], $extraHeaders);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
             } else {
                 // Docker API often uses empty POST bodies for actions
                 curl_setopt($ch, CURLOPT_POSTFIELDS, '');
+                if (!empty($extraHeaders)) {
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, $extraHeaders);
+                }
             }
         } elseif ($method === 'DELETE') {
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
@@ -590,7 +628,12 @@ class DockerClient
             throw new RuntimeException("Docker API Error (HTTP {$http_code}): " . $errorMessage);
         }
 
-        return json_decode($response, true);
+        // For streaming responses (like pull), the body is not JSON. Return it raw.
+        $decoded = json_decode($response, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded;
+        }
+        return $response; // Return raw string if not valid JSON
     }
 
     /**
@@ -662,13 +705,14 @@ class DockerClient
      * Creates and starts a lightweight helper container for reading host stats.
      * This container needs access to the host's PID namespace.
      * @param string $containerName The name for the helper container.
+     * @param string $helperImage The Docker image to use (e.g., 'alpine:latest').
      * @return void
      * @throws Exception
      */
-    public function createAndStartHelperContainer(string $containerName): void
+    public function createAndStartHelperContainer(string $containerName, string $helperImage = 'alpine:latest'): void
     {
         $config = [
-            'Image' => 'alpine:latest',
+            'Image' => $helperImage,
             'Cmd' => ['sleep', 'infinity'],
             'HostConfig' => [
                 'PidMode' => 'host', // IMPORTANT: Allows the container to see host processes (like `top`)
@@ -686,6 +730,114 @@ class DockerClient
 
         // Start the newly created container
         $this->startContainer($containerId);
+    }
+
+    /**
+     * Creates and starts a health agent container on the host.
+     * This container reports health statuses back to the main application.
+     * @param string $containerName The name for the agent container.
+     * @param string $agentImage The Docker image to use for the agent.
+     * @param array $envVars An array of environment variables for the container.
+     * @return string The ID of the created container.
+     * @throws Exception
+     */
+    public function createAndStartHealthAgentContainer(string $containerName, string $image, array $env, array $command = null)
+    {
+        $config = [
+            'Image' => $image,
+            'Env' => $env,
+            'HostConfig' => [
+                'Binds' => [
+                    '/var/run/docker.sock:/var/run/docker.sock'
+                ],
+                'RestartPolicy' => ['Name' => 'always']
+            ] 
+        ];
+
+        // Jika command diberikan, tambahkan ke konfigurasi
+        if ($command !== null) {
+            $config['Cmd'] = $command;
+        }
+
+        $response = $this->request('/containers/create?name=' . $containerName, 'POST', $config);
+        if (!isset($response['Id'])) {
+            throw new Exception('Failed to create container: ' . ($response['message'] ?? 'Unknown error'));
+        }
+        $containerId = $response['Id'];
+        $this->request('/containers/' . $containerId . '/start', 'POST');
+        return $containerId;
+    }
+
+    /**
+     * Copies a local file into a container.
+     *
+     * @param string $containerId The ID of the container.
+     * @param string $localPath The absolute path to the local file.
+     * @param string $containerPath The absolute path inside the container.
+     * @return void
+     * @throws Exception
+     */
+    public function copyToContainer(string $containerId, string $localPath, string $containerPath): void
+    {
+        // Docker API requires the file to be sent as a tar archive.
+        $tar_path = sys_get_temp_dir() . '/' . uniqid('cm_agent_') . '.tar';
+        try {
+            $phar = new PharData($tar_path);
+            $phar->addFile($localPath, basename($containerPath)); // Store with the final basename
+        } catch (Exception $e) {
+            throw new Exception("Failed to create tar archive for agent script: " . $e->getMessage());
+        }
+
+        $tar_content = file_get_contents($tar_path);
+        $containerDir = dirname($containerPath);
+
+        $this->request(
+            "/containers/{$containerId}/archive?path=" . urlencode($containerDir),
+            'PUT',
+            $tar_content,
+            'application/x-tar'
+        );
+
+        unlink($tar_path);
+    }
+
+    /**
+     * Executes a command in a running container in the background (detached).
+     *
+     * @param string $containerId The ID of the container.
+     * @param array $command The command and its arguments as an array.
+     * @return void
+     * @throws RuntimeException
+     */
+    public function execInContainer(string $containerId, array $command, bool $wait = false): void
+    {
+        // 1. Create the exec instance
+        $create_config = [
+            'AttachStdout' => true,
+            'AttachStderr' => true,
+            'Cmd' => $command,
+            'Detach' => !$wait, // Run in background unless we need to wait
+            'Tty' => false,
+        ];
+        $exec_create_response = $this->request("/containers/{$containerId}/exec", 'POST', $create_config);
+        $exec_id = $exec_create_response['Id'] ?? null;
+        if (!$exec_id) throw new Exception("Failed to create exec instance.");
+
+        // 2. Start the exec instance and optionally wait for it
+        $start_response = $this->request("/exec/{$exec_id}/start", 'POST', ['Detach' => !$wait, 'Tty' => false]);
+
+        if ($wait) {
+            // If we are waiting, the response is the raw output stream.
+            // We need to inspect the result to see if it was successful.
+            $inspect_response = $this->request("/exec/{$exec_id}/json");
+            $exit_code = $inspect_response['ExitCode'] ?? -1;
+
+            if ($exit_code !== 0) {
+                // The raw output is in $start_response. Clean it up for the error message.
+                $output = preg_replace('/[^\x20-\x7E\n\r\t]/', '', $start_response);
+                throw new RuntimeException("Exec command failed with exit code {$exit_code}. Output: " . $output);
+            }
+        }
     }
 
     /**

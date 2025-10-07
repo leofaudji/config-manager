@@ -172,6 +172,11 @@ try {
             if ($running_container_count > 0 && $host_total_memory > 0) {
                 $stmt_insert->bind_param("idddd", $host['id'], $container_cpu_usage_percent, $host_cpu_usage, $total_mem_usage_bytes, $host_total_memory);
                 $stmt_insert->execute();
+                // NEW: Update the last_cpu_report_at timestamp for this host
+                $stmt_update_timestamp = $conn->prepare("UPDATE docker_hosts SET last_cpu_report_at = NOW() WHERE id = ?");
+                $stmt_update_timestamp->bind_param("i", $host['id']);
+                $stmt_update_timestamp->execute();
+                $stmt_update_timestamp->close();
                 echo "  -> Stats saved for host {$host['name']}. Container CPU: {$container_cpu_usage_percent}%, Host CPU: {$host_cpu_usage}%, Mem: {$total_mem_usage_bytes}\n";
             }
         } catch (Exception $e) {

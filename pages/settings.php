@@ -154,6 +154,55 @@ require_once __DIR__ . '/../includes/header.php';
                         <label class="form-check-label" for="health_check_global_enable">Enable Health Check for ALL Services</label>
                         <small class="form-text text-muted d-block"><strong>Warning:</strong> When enabled, the system will attempt to monitor every service, ignoring individual health check settings. This is useful for ensuring all services are monitored by default. A service must still have a valid health check endpoint (HTTP or Docker) to be monitored.</small>
                     </div>
+                    <div class="form-check form-switch mb-3">
+                        <input type="hidden" name="auto_healing_enabled" value="0">
+                        <input class="form-check-input" type="checkbox" role="switch" id="auto_healing_enabled" name="auto_healing_enabled" value="1" <?= ((int)($settings['auto_healing_enabled'] ?? 0)) === 1 ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="auto_healing_enabled">Enable Auto-Healing by Health Agent</label>
+                        <small class="form-text text-muted d-block">
+                            <strong>Penting:</strong> Jika diaktifkan, `health-agent` di setiap host akan secara otomatis me-restart kontainer yang terdeteksi `unhealthy`.
+                        </small>
+                    </div>
+                </div>
+                <div class="col-md-12">
+                    <p class="text-muted small">Pengaturan ambang batas berikut berlaku untuk kontainer yang dipantau oleh "Global Container Health Monitoring" (yang tidak memiliki pengaturan per-service).</p>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="health_check_default_healthy_threshold" class="form-label">Default Healthy Threshold</label>
+                        <input type="number" class="form-control" id="health_check_default_healthy_threshold" name="health_check_default_healthy_threshold" value="<?= htmlspecialchars($settings['health_check_default_healthy_threshold'] ?? 2) ?>" min="1">
+                        <small class="form-text text-muted">Jumlah keberhasilan berturut-turut agar kontainer dianggap `healthy`.</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="health_check_default_unhealthy_threshold" class="form-label">Default Unhealthy Threshold</label>
+                        <input type="number" class="form-control" id="health_check_default_unhealthy_threshold" name="health_check_default_unhealthy_threshold" value="<?= htmlspecialchars($settings['health_check_default_unhealthy_threshold'] ?? 3) ?>" min="1">
+                        <small class="form-text text-muted">Jumlah kegagalan berturut-turut agar kontainer dianggap `unhealthy` dan memicu auto-healing.</small>
+                    </div>
+                </div>
+                <div class="col-md-12">
+                    <div class="mb-3">
+                        <label for="health_agent_api_token" class="form-label">Health Agent API Token</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="health_agent_api_token" name="health_agent_api_token" value="<?= htmlspecialchars($settings['health_agent_api_token'] ?? '') ?>" placeholder="A strong, secret token">
+                             <button class="btn btn-outline-secondary" type="button" id="regenerate-agent-token-btn"><i class="bi bi-arrow-repeat"></i> Regenerate</button>
+                        </div>
+                        <small class="form-text text-muted">Token rahasia yang digunakan oleh `health-agent` untuk mengirim laporan. Harus sama di semua agen.</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="app_base_url" class="form-label">Application Base URL</label>
+                        <input type="text" class="form-control" id="app_base_url" name="app_base_url" value="<?= htmlspecialchars($settings['app_base_url'] ?? base_url()) ?>" placeholder="e.g., http://config-manager.internal">
+                        <small class="form-text text-muted">URL yang dapat diakses oleh agen remote untuk mengirim laporan.</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="health_agent_image" class="form-label">Health Agent Image Name</label>
+                        <input type="text" class="form-control" id="health_agent_image" name="health_agent_image" value="<?= htmlspecialchars($settings['health_agent_image'] ?? 'your-registry/cm-health-agent:latest') ?>" placeholder="e.g., my-repo/cm-health-agent:latest">
+                        <small class="form-text text-muted">Nama image Docker yang akan digunakan untuk men-deploy health agent.</small>
+                    </div>
                 </div>
             </div>
 
@@ -314,6 +363,33 @@ $conn->close();
                 });
         });
     }
+
+    const regenerateAgentTokenBtn = document.getElementById('regenerate-agent-token-btn');
+    if (regenerateAgentTokenBtn) {
+        regenerateAgentTokenBtn.addEventListener('click', function() {
+            // Generate a secure random token (32 bytes -> 64 hex characters)
+            const array = new Uint32Array(8);
+            window.crypto.getRandomValues(array);
+            let token = '';
+            for (let i = 0; i < array.length; i++) {
+                token += array[i].toString(16).padStart(8, '0');
+            }
+            
+            const tokenInput = document.getElementById('health_agent_api_token');
+            tokenInput.value = token;
+            tokenInput.type = 'text'; // Show the new token
+            showToast('New token generated. Remember to save settings and update your agents.', true);
+        });
+    }
+
+    // Revert token input to password type on focus out if it's not empty
+    const agentTokenInput = document.getElementById('health_agent_api_token');
+    if (agentTokenInput) {
+        agentTokenInput.addEventListener('blur', function() {
+            if (this.value) this.type = 'password';
+        });
+    }
+    
 })();
 </script>
 <?php

@@ -22,7 +22,7 @@ try {
     $stmt->execute();
     $result = $stmt->get_result();
     if (!($host = $result->fetch_assoc())) {
-        throw new Exception("Host not found.");
+        throw new RuntimeException("Host not found.");
     }
     $stmt->close();
 
@@ -32,7 +32,7 @@ try {
     echo json_encode(['status' => 'success', 'logs' => $logs]);
 
 } catch (Exception $e) {
-    http_response_code(500);
+    http_response_code($e instanceof RuntimeException ? 404 : 500);
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
 }
 

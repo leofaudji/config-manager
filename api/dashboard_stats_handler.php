@@ -38,6 +38,33 @@ function runConfigurationLinter(mysqli $conn): array
     return ['errors' => $errors, 'warnings' => $warnings];
 }
 
+/**
+ * Parses a size string (e.g., "10.5 GB", "500MB") and returns the value in bytes.
+ * @param string $sizeStr The size string to parse.
+ * @return float The size in bytes.
+ */
+function parseSizeStringToBytes(string $sizeStr): float {
+    $sizeStr = trim($sizeStr);
+    if (empty($sizeStr)) {
+        return 0;
+    }
+    preg_match('/([0-9\.]+)\s*([a-zA-Z]+)?/', $sizeStr, $matches);
+    if (count($matches) < 2) {
+        return 0;
+    }
+    $value = (float)$matches[1];
+    $unit = strtoupper($matches[2] ?? '');
+
+    switch ($unit) {
+        case 'TB': case 'T': return $value * pow(1024, 4);
+        case 'GB': case 'G': return $value * pow(1024, 3);
+        case 'MB': case 'M': return $value * pow(1024, 2);
+        case 'KB': case 'K': return $value * 1024;
+        default: return $value;
+    }
+}
+
+
 try {
     $stats = [];
 
@@ -112,12 +139,18 @@ try {
             if (isset($dockerInfo['DriverStatus'])) {
                 $driver_status = array_column($dockerInfo['DriverStatus'], 1, 0);
                 $data_used_str = $driver_status['Data Space Used'] ?? '0';
+                $metadata_used_str = $driver_status['Metadata Space Used'] ?? '0';
                 $data_total_str = $driver_status['Data Space Total'] ?? '0';
-                preg_match('/[0-9\.]+/', $data_used_str, $used_matches);
-                preg_match('/[0-9\.]+/', $data_total_str, $total_matches);
-                $data_used = (float)($used_matches[0] ?? 0);
-                $data_total = (float)($total_matches[0] ?? 0);
-                if ($data_total > 0) $disk_usage_percent = round(($data_used / $data_total) * 100, 2);
+
+                $total_used_bytes = parseSizeStringToBytes($data_used_str);
+                $total_space_bytes = parseSizeStringToBytes($data_total_str);
+
+                // For overlay2 driver, total usage is data + metadata
+                if (strtolower($dockerInfo['Driver'] ?? '') === 'overlay2') {
+                    $total_used_bytes += parseSizeStringToBytes($metadata_used_str);
+                }
+
+                if ($total_space_bytes > 0) $disk_usage_percent = round(($total_used_bytes / $total_space_bytes) * 100, 2);
             }
 
             // Get uptime from oldest running container (if any)
@@ -148,7 +181,7 @@ try {
             $agg_stats['reachable_hosts']++;
             $agg_stats['total_cpus'] += $dockerInfo['NCPU'] ?? 0;
             $agg_stats['total_memory'] += $dockerInfo['MemTotal'] ?? 0;
-            $agg_stats['total_images'] += $dockerInfo['Images'] ?? 0; // Aggregate total images
+            $agg_stats['total_images'] += $dockerInfo['Images'] ?? 0;
             $agg_stats['total_volumes'] += count($volumes['Volumes'] ?? []);
 
             $per_host_stats[] = [

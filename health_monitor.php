@@ -232,6 +232,12 @@ try {
 
     // --- PART 2: Check ALL containers on ALL hosts if global setting is enabled ---
     if ($global_health_check_enabled) {
+        // --- Ambil pengaturan untuk Health Agent ---
+        $agent_image = get_setting('health_agent_image');
+        $agent_api_token = get_setting('health_agent_api_token');
+        $app_base_url = get_setting('app_base_url');
+        $agent_container_name = 'cm-health-agent';
+
         echo "\n--- Global Container Health Check ---\n";
         $hosts_result = $conn->query("SELECT * FROM docker_hosts");
         $all_hosts = $hosts_result->fetch_all(MYSQLI_ASSOC);
@@ -240,6 +246,33 @@ try {
             echo "Mengevaluasi host: '{$host['name']}'\n";
             try {
                 $dockerClient = new DockerClient($host);
+
+                // --- Auto-deploy Health Agent ---
+                if (!empty($agent_image) && !empty($agent_api_token) && !empty($app_base_url)) {
+                    try {
+                        $agent_details = $dockerClient->inspectContainer($agent_container_name);
+                        if (($agent_details['State']['Running'] ?? false) !== true) {
+                            $dockerClient->startContainer($agent_container_name);
+                            echo "  -> INFO: Memulai ulang health agent '{$agent_container_name}' yang berhenti.\n";
+                        }
+                    } catch (Exception $e) {
+                        if (strpos($e->getMessage(), '404') !== false) {
+                            echo "  -> INFO: Health agent '{$agent_container_name}' tidak ditemukan. Men-deploy sekarang...\n";
+                            try {
+                                $dockerClient->pullImage($agent_image); // Coba pull image terlebih dahulu
+                                $dockerClient->createAndStartHealthAgentContainer($agent_container_name, $agent_image, $app_base_url, $agent_api_token, $host['id']);
+                                echo "  -> SUKSES: Health agent '{$agent_container_name}' berhasil di-deploy.\n";
+                            } catch (Exception $deploy_e) {
+                                echo "  -> ERROR: Gagal men-deploy health agent: " . $deploy_e->getMessage() . "\n";
+                            }
+                        } else {
+                            echo "  -> WARN: Tidak dapat memeriksa health agent: " . $e->getMessage() . "\n";
+                        }
+                    }
+                } else {
+                    echo "  -> WARN: Pengaturan Health Agent (image, token, atau URL) tidak lengkap. Melewati auto-deployment.\n";
+                }
+
                 $containers = $dockerClient->listContainers();
 
                 foreach ($containers as $container) {
