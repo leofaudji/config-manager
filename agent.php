@@ -99,6 +99,20 @@ class DockerClient
         $this->sendRequest('/containers/' . $id . '/restart', 'POST');
         return true;
     }
+
+    public function connectToNetwork(string $networkId, string $containerId): bool
+    {
+        $config = ['Container' => $containerId];
+        $this->sendRequest("/networks/{$networkId}/connect", 'POST', $config);
+        return true;
+    }
+
+    public function disconnectFromNetwork(string $networkId, string $containerId): bool
+    {
+        $config = ['Container' => $containerId, 'Force' => true];
+        $this->sendRequest("/networks/{$networkId}/disconnect", 'POST', $config);
+        return true;
+    }
 }
 
 function postHealthData(string $url, string $apiKey, array $data)
@@ -141,15 +155,30 @@ function run_check_cycle() {
     $containers = $dockerClient->listContainers();
     $health_reports = [];
 
+    // Inisialisasi penghitung untuk ringkasan
+    $healthy_count = 0;
+    $unhealthy_count = 0;
+    $unknown_count = 0;
+    $running_container_count = 0;
+    $unhealthy_container_names = [];
+    $unknown_container_names = [];
+
     log_message("  -> Menemukan " . count($containers) . " kontainer.");
 
     foreach ($containers as $container) {
         if ($container['State'] !== 'running') {
             continue;
         }
+        $running_container_count++;
 
         $container_id = $container['Id'];
         $container_name = ltrim($container['Names'][0] ?? $container_id, '/');
+
+        // --- Pengecualian Khusus ---
+        // Abaikan kontainer utilitas yang tidak perlu dicek kesehatannya.
+        if ($container_name === 'host-cpu-reader') {
+            continue;
+        }
 
         // Jangan laporkan diri sendiri
         if ($container_name === 'cm-health-agent') {
@@ -167,75 +196,124 @@ function run_check_cycle() {
             $is_healthy = ($docker_health_status === 'healthy');
             $log_message = "Container health status from Docker: {$docker_health_status}";
         } else {
-            // --- Alur 2: Fallback ke Pengecekan Port TCP ---
-            $target_ip = null;
-            $target_port = null;
+            // --- Alur 2: Fallback ke Pengecekan Port TCP (Struktur Baru yang Disederhanakan dan Diperbaiki) ---
 
-            // Cari IP internal pertama
-            if (!empty($details['NetworkSettings']['Networks'])) {
-                foreach ($details['NetworkSettings']['Networks'] as $net) {
-                    if (!empty($net['IPAddress'])) {
-                        $target_ip = $net['IPAddress'];
+            // Prioritas 2a: Coba cek Published Port terlebih dahulu
+            $published_port_to_check = null;
+            if (!empty($details['NetworkSettings']['Ports'])) {
+                foreach ($details['NetworkSettings']['Ports'] as $port_bindings) {
+                    if (is_array($port_bindings) && !empty($port_bindings[0]['HostPort']) && $port_bindings[0]['HostPort'] != '0') {
+                        $published_port_to_check = (int)$port_bindings[0]['HostPort'];
                         break;
                     }
                 }
             }
 
-            // Cari port internal pertama
-            if (!empty($details['NetworkSettings']['Ports'])) {
-                foreach ($details['NetworkSettings']['Ports'] as $port_info) {
-                    if (is_array($port_info)) { // Port yang dipublikasikan
-                        $port_key = key($port_info);
-                        $parts = explode('/', $port_key);
-                        // Ensure the port key is in the expected "port/protocol" format
-                        if (count($parts) === 2) {
-                            list($private_port, $protocol) = $parts;
-                            if (strtolower($protocol) === 'tcp') {
-                                $target_port = (int)$private_port;
-                                break;
-                            }
+            if ($published_port_to_check && $is_healthy === null) {
+                $connection = @fsockopen('127.0.0.1', $published_port_to_check, $errno, $errstr, 2);
+                if (is_resource($connection)) {
+                    $is_healthy = true;
+                    $log_message = "TCP check on published port 127.0.0.1:{$published_port_to_check}: OK";
+                    fclose($connection);
+                } else {
+                    // Jika port publik ada tapi tidak bisa dijangkau, jangan langsung gagal.
+                    // Biarkan $is_healthy tetap null agar fallback ke pengecekan internal.
+                    log_message("    -> Pengecekan port publik 127.0.0.1:{$published_port_to_check} gagal. Melanjutkan ke pengecekan internal...");
+                }
+            }
+
+            // Prioritas 2b: Jika status masih belum ditentukan, coba port internal.
+            // Ini akan berjalan jika tidak ada HEALTHCHECK, dan (tidak ada port publik ATAU port publik gagal dicek).
+            if ($is_healthy === null) {
+                $internal_ip = null;
+                $internal_port = null;
+
+                // 1. Dapatkan IP internal
+                if (!empty($details['NetworkSettings']['Networks'])) {
+                    // Ambil IP dari network pertama yang valid
+                    foreach ($details['NetworkSettings']['Networks'] as $net) {
+                        if (!empty($net['IPAddress'])) {
+                            $internal_ip = $net['IPAddress'];
+                            break;
                         }
                     }
                 }
-            }
 
-            // Jika port tidak ditemukan, coba tebak dari nama image
-            if (!$target_port) {
-                $image_name = strtolower($container['Image']);
-                $common_ports = [
-                    'mysql' => 3306, 'mariadb' => 3306, 'postgres' => 5432,
-                    'redis' => 6379, 'mongo' => 27017, 'rabbitmq' => 5672,
-                    'nginx' => 80, 'httpd' => 80, 'apache' => 80,
-                    'elasticsearch' => 9200, 'kibana' => 5601,
-                    'grafana' => 3000, 'prometheus' => 9090
-                ];
-                foreach ($common_ports as $keyword => $port) {
-                    if (strpos($image_name, $keyword) !== false) {
-                        $target_port = $port;
-                        break;
+                // 2. Dapatkan port internal (prioritaskan 80/443, lalu port pertama, lalu tebakan)
+                $exposed_ports = array_keys($details['NetworkSettings']['Ports']);
+                $tcp_ports = array_map(fn($p) => (int)$p, array_filter($exposed_ports, fn($p) => str_ends_with($p, '/tcp')));
+
+                if (in_array(80, $tcp_ports)) {
+                    $internal_port = 80;
+                } elseif (in_array(443, $tcp_ports)) {
+                    $internal_port = 443;
+                } elseif (!empty($tcp_ports)) {
+                    $internal_port = $tcp_ports[0];
+                } else {
+                    // Tebak port jika tidak ada yang diekspos
+                    $image_name = strtolower($container['Image']);
+                    $common_ports = ['nginx' => 80, 'httpd' => 80, 'apache' => 80, 'mysql' => 3306, 'postgres' => 5432, 'redis' => 6379];
+                    foreach ($common_ports as $keyword => $port) {
+                        if (strpos($image_name, $keyword) !== false) {
+                            $internal_port = $port;
+                            break;
+                        }
+                    }
+                }
+
+                // 3. Lakukan pengecekan jika IP dan Port internal ditemukan
+                if ($internal_ip && $internal_port) {
+                    // --- NEW: Dynamic Network Attachment Logic ---
+                    $network_id_to_join = key($details['NetworkSettings']['Networks']);
+                    $agent_container_id = getenv('HOSTNAME'); // Inside a container, HOSTNAME is its ID
+
+                    try {
+                        // Connect the agent to the target's network
+                        $dockerClient->connectToNetwork($network_id_to_join, $agent_container_id);
+                        log_message("    -> Temporarily joined network '{$network_id_to_join}' for check.");
+
+                        // Now perform the check
+                        $connection = @fsockopen($internal_ip, $internal_port, $errno, $errstr, 2);
+                        if (is_resource($connection)) {
+                            $is_healthy = true;
+                            $log_message = "TCP check on internal port {$internal_port}: OK";
+                            fclose($connection);
+                        } else {
+                            $is_healthy = false; // Eksplisit: Jika pengecekan internal gagal, kontainer tidak sehat.
+                            $log_message = "TCP check on internal port {$internal_port}: FAILED ({$errstr})";
+                        }
+
+                    } catch (Exception $e) {
+                        $is_healthy = false;
+                        $log_message = "Failed to join network or perform check: " . $e->getMessage();
+                    } finally {
+                        // Always disconnect from the network after the check
+                        $dockerClient->disconnectFromNetwork($network_id_to_join, $agent_container_id);
+                        log_message("    -> Left network '{$network_id_to_join}'.");
                     }
                 }
             }
 
-            if ($target_ip && $target_port) {
-                $timeout = 2; // 2 detik timeout
-                $connection = @fsockopen($target_ip, $target_port, $errno, $errstr, $timeout);
-
-                if (is_resource($connection)) {
-                    $is_healthy = true;
-                    $log_message = "TCP check on internal port {$target_port}: OK";
-                    fclose($connection);
-                } else {
-                    $is_healthy = false;
-                    $log_message = "TCP check on internal port {$target_port}: FAILED ({$errstr})";
-                }
-            } else {
-                $log_message = "Container does not have a HEALTHCHECK instruction and no TCP port could be detected.";
+            // Jika setelah semua usaha, status masih belum ditentukan, biarkan null (unknown).
+            if ($is_healthy === null) {
+                $is_healthy = null; // Tetap null untuk status 'unknown'
+                $log_message = "Container does not have a HEALTHCHECK instruction and no TCP port could be reliably checked.";
             }
         }
 
         $status_text = $is_healthy === true ? 'Sehat' : ($is_healthy === false ? 'Tidak Sehat' : 'Tidak Diketahui');
         log_message("    - Mengevaluasi '{$container_name}': {$status_text}");
+
+        // Tambahkan ke penghitung ringkasan
+        if ($is_healthy === true) {
+            $healthy_count++;
+        } elseif ($is_healthy === false) {
+            $unhealthy_count++;
+            $unhealthy_container_names[] = $container_name;
+        } else {
+            $unknown_count++;
+            $unknown_container_names[] = $container_name;
+        }
 
         // --- Auto-Healing Logic ---
         if ($is_healthy === false && $autoHealingEnabled) {
@@ -258,10 +336,30 @@ function run_check_cycle() {
         ];
     }
 
+    // Tambahkan ringkasan ke log
+    log_message("---");
+    $summary_message = "Check Summary: {$healthy_count} Healthy, {$unhealthy_count} Unhealthy, {$unknown_count} Unknown (from {$running_container_count} running containers).";
+    if ($unhealthy_count > 0) {
+        $summary_message .= "\n    -> Unhealthy containers: " . implode(', ', $unhealthy_container_names);
+    }
+    if ($unknown_count > 0) {
+        $summary_message .= "\n    -> Unknown containers: " . implode(', ', $unknown_container_names);
+    }
+    log_message($summary_message);
+    log_message("---");
+
     $report_payload = [
         'host_id' => (int)$hostId,
         'reports' => $health_reports
     ];
+
+    log_message("  -> Preparing to send report with the following configuration:");
+    log_message("    -> Target URL: {$configManagerUrl}");
+    // Mask the API key for security, showing only the first and last 4 characters.
+    log_message("    -> API Key: " . substr($apiKey, 0, 4) . "..." . substr($apiKey, -4));
+    log_message("    -> Auto-Healing: " . ($autoHealingEnabled ? 'AKTIF' : 'NONAKTIF'));
+
+    log_message("  -> Sending report payload: " . json_encode($report_payload));
     postHealthData($configManagerUrl . '/api/health/report', $apiKey, $report_payload);
 }
 

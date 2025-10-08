@@ -18,23 +18,109 @@ if (isset($_GET['error'])) {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link rel="stylesheet" href="<?= base_url('assets/css/style.css') ?>">
     <style>
+        /* macOS-inspired Theme Variables */
+        :root {
+            --bs-primary: #007aff;
+            --bs-primary-rgb: 0, 122, 255;
+            --bs-body-bg: #f0f2f5;
+            --bs-body-color: #1d1d1f;
+            --bs-border-color: #dcdcdc;
+            --bs-card-bg: #ffffff;
+            --bs-border-radius-lg: 0.65rem;
+        }
+
+        .dark-mode {
+            --bs-primary: #0a84ff;
+            --bs-primary-rgb: 10, 132, 255;
+            --bs-body-bg: #1c1c1e;
+            --bs-body-color: #f5f5f7;
+            --bs-border-color: #424245;
+            --bs-card-bg: #2c2c2e;
+        }
+
+        /* Apply variables to form elements */
+        .form-control {
+            background-color: var(--bs-body-bg); /* Match the page background for a subtle look */
+            border-color: var(--bs-border-color);
+            color: var(--bs-body-color);
+        }
+        .form-control:focus {
+            background-color: var(--bs-body-bg);
+            border-color: var(--bs-primary);
+            color: var(--bs-body-color);
+            box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), .25);
+        }
+        .btn-primary {
+            --bs-btn-bg: var(--bs-primary);
+            --bs-btn-border-color: var(--bs-primary);
+            --bs-btn-hover-bg: #0b5ed7; /* Standard hover for primary */
+            --bs-btn-hover-border-color: #0a58ca;
+        }
+
         html, body {
             height: 100%;
         }
         body {
+            /* Clean background */
+            background-color: #f0f2f5;
             display: flex;
             align-items: center;
-            padding-top: 40px;
-            padding-bottom: 40px;
+            justify-content: center;
+        }
+        .dark-mode body {
+            background-color: #1c1c1e;
+        }
+        .login-container {
+            display: flex;
+            width: 100%;
+            max-width: 900px;
+            min-height: 500px;
+            background-color: var(--bs-card-bg);
+            border-radius: var(--bs-border-radius-lg);
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        .jargon-section {
+            background-color: var(--bs-primary);
+            color: white;
+            padding: 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            width: 45%;
         }
         .form-signin {
-            width: 100%;
-            max-width: 500px; /* Increased width by ~50% from original */
-            padding: 15px;
-            margin: auto;
+            width: 55%;
+            padding: 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .form-signin .form-floating, .form-signin button, .form-signin h1, .form-signin h2 {
+            animation: slideInUp 0.6s ease-out forwards;
+            opacity: 0;
+        }
+        /* Stagger the animation */
+        .form-signin h2 { animation-delay: 0.1s; }
+        .form-signin .form-floating:nth-of-type(1) { animation-delay: 0.2s; }
+        .form-signin .form-floating:nth-of-type(2) { animation-delay: 0.3s; }
+        .form-signin button { animation-delay: 0.4s; }
+
+        @keyframes slideInUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
         #login-progress {
             height: 10px;
+        }
+        @media (max-width: 768px) {
+            .jargon-section {
+                display: none;
+            }
+            .form-signin {
+                width: 100%;
+                max-width: 420px;
+            }
         }
     </style>
 </head>
@@ -48,12 +134,16 @@ if (isset($_GET['error'])) {
         }
     })();
 </script>
-    <main class="form-signin">
-            <div class="card shadow-lg">
-                <div class="card-body p-5">
-                <form action="<?= base_url('/login') ?>" method="POST" id="login-form">
+    <main class="login-container">
+        <div class="jargon-section d-none d-md-flex">
+            <h1 class="fw-bold display-6">Deploy Faster, Manage Smarter.</h1>
+            <p class="lead mt-3">Accelerate your development workflow by turning complex configurations into simple, repeatable actions.</p>
+        </div>
+        <div class="form-signin">
+                <form action="<?= base_url('/login') ?>" method="POST" id="login-form" class="text-start">
+                    <center><img class="mb-4" src="<?= base_url('/assets/img/logo-assistindo.png') ?>" alt="Assistindo Logo" width="72">
                     <h1 class="h3 mb-3 fw-normal"><i class="bi bi-gear-wide-connected"></i> Config Manager</h1>
-                    <h2 class="h5 mb-3 fw-normal">Please sign in</h2>
+                    <h2 class="h5 mb-4 fw-light text-muted">Please sign in</h2></center>
                     <div id="error-container">
                         <?php if ($error_message): ?>
                             <div class="alert alert-danger"><?= $error_message ?></div>
@@ -65,9 +155,8 @@ if (isset($_GET['error'])) {
                     <div class="progress mt-3" id="login-progress" style="display: none;">
                         <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
-                    <p class="mt-5 mb-3 text-muted">&copy; <?= date('Y') ?></p>
+                    <p class="mt-5 mb-3 text-muted text-center">&copy; <?= date('Y') ?> Assistindo</p>
                 </form>
-            </div>
         </div>
     </main>
 <script>

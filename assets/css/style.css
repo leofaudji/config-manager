@@ -77,11 +77,13 @@ body.dark-mode .sidebar .navbar-brand {
 .sidebar-nav .nav-link {
     display: block;
     width: 100%;
+    width: calc(100% - 1.5rem); /* Adjust width for margin */
+    margin: 0.2rem 0.75rem; /* Add margin to create the "pill" effect */
     text-align: left;
     padding: 0.65rem 1.5rem;
     color: var(--sidebar-link-color);
     font-weight: 500;
-    border-left: 3px solid transparent;
+    border-radius: 0.375rem; /* Add rounded corners */
     transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
     white-space: nowrap;
     overflow: hidden;
@@ -95,14 +97,11 @@ body.dark-mode .sidebar .navbar-brand {
 .sidebar-nav .nav-link:hover {
     color: var(--sidebar-link-hover-color);
     background-color: var(--cf-table-striped-bg); /* Use a subtle grey for hover on light bg */
-    /* Add a subtle border color on hover for better feedback */
-    border-left-color: var(--sidebar-link-active-bg);
 }
 
 .sidebar-nav .nav-link.active {
     color: var(--sidebar-link-active-color);
     background-color: var(--sidebar-link-active-bg);
-    border-left-color: var(--sidebar-link-active-bg); /* Match the active background */
     font-weight: bold; /* Make the active link's text bold */
 }
 

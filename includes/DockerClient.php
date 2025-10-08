@@ -136,6 +136,28 @@ class DockerClient
     }
 
     /**
+     * Ensures a specific network exists on the Docker host, creating it if necessary.
+     * @param string $networkName The name of the network to ensure.
+     * @return void
+     * @throws Exception
+     */
+    public function ensureNetworkExists(string $networkName): void
+    {
+        try {
+            // Try to inspect the network. If it fails with a 404, it doesn't exist.
+            $this->request("/networks/{$networkName}");
+        } catch (RuntimeException $e) {
+            if (strpos($e->getMessage(), '404') !== false) {
+                // Network not found, so create it.
+                $this->createNetwork(['Name' => $networkName, 'Driver' => 'bridge']);
+            } else {
+                throw $e; // Re-throw other errors
+            }
+        }
+    }
+
+
+    /**
      * Removes a network.
      * @param string $networkIdOrName The ID or name of the network.
      * @return bool True on success.
@@ -709,7 +731,7 @@ class DockerClient
      * @return void
      * @throws Exception
      */
-    public function createAndStartHelperContainer(string $containerName, string $helperImage = 'alpine:latest'): void
+    public function createAndStartCpuReaderContainer(string $containerName, string $helperImage = 'alpine:latest'): void
     {
         $config = [
             'Image' => $helperImage,
@@ -721,15 +743,7 @@ class DockerClient
         ];
 
         // Create the container with a specific name
-        $create_response = $this->request("/containers/create?name={$containerName}", 'POST', $config);
-        $containerId = $create_response['Id'] ?? null;
-
-        if (!$containerId) {
-            throw new Exception("Failed to create helper container. Response: " . json_encode($create_response));
-        }
-
-        // Start the newly created container
-        $this->startContainer($containerId);
+        $this->createAndStartContainer($containerName, $config);
     }
 
     /**
@@ -737,11 +751,10 @@ class DockerClient
      * This container reports health statuses back to the main application.
      * @param string $containerName The name for the agent container.
      * @param string $agentImage The Docker image to use for the agent.
-     * @param array $envVars An array of environment variables for the container.
      * @return string The ID of the created container.
      * @throws Exception
      */
-    public function createAndStartHealthAgentContainer(string $containerName, string $image, array $env, array $command = null)
+    public function createAndStartHealthAgentContainer(string $containerName, string $image, array $env, array $command = null, ?string $networkToAttach = null)
     {
         $config = [
             'Image' => $image,
@@ -749,6 +762,10 @@ class DockerClient
             'HostConfig' => [
                 'Binds' => [
                     '/var/run/docker.sock:/var/run/docker.sock'
+                ],
+                // Add host.docker.internal to allow the agent to check published ports on the host
+                'ExtraHosts' => [
+                    'host.docker.internal:host-gateway'
                 ],
                 'RestartPolicy' => ['Name' => 'always']
             ] 
@@ -759,12 +776,39 @@ class DockerClient
             $config['Cmd'] = $command;
         }
 
+        return $this->createAndStartContainer($containerName, $config, $networkToAttach);
+    }
+
+    /**
+     * Private helper to create and start a container with a unified networking configuration.
+     * @param string $containerName The name for the container.
+     * @param array $config The base configuration for the container.
+     * @param string|null $networkToAttach The specific network to attach to.
+     * @return string The ID of the created container.
+     * @throws Exception
+     */
+    private function createAndStartContainer(string $containerName, array $config, ?string $networkToAttach = null): string
+    {
+        // Docker API expects the EndpointsConfig to be an object, not an array.
+        // We ensure this structure is always correct.
+        $endpointsConfig = new stdClass();
+        if ($networkToAttach) {
+            // If a specific network is provided, set it.
+            $endpointsConfig->{$networkToAttach} = new stdClass();
+        }
+        // If no network is provided, $endpointsConfig remains an empty object {}.
+        // Docker will then correctly attach the container to the default 'bridge' network.
+
+        $config['NetworkingConfig'] = [
+            'EndpointsConfig' => $endpointsConfig
+        ];
+
         $response = $this->request('/containers/create?name=' . $containerName, 'POST', $config);
         if (!isset($response['Id'])) {
             throw new Exception('Failed to create container: ' . ($response['message'] ?? 'Unknown error'));
         }
         $containerId = $response['Id'];
-        $this->request('/containers/' . $containerId . '/start', 'POST');
+        $this->startContainer($containerId);
         return $containerId;
     }
 

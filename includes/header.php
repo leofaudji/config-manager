@@ -16,7 +16,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
     <style>
         /* macOS-inspired Theme */
         :root {
-            /* More rounded corners for a softer, macOS-like feel */
+            /* Sudut yang lebih bulat untuk nuansa yang lebih lembut seperti macOS */
             --bs-border-radius: 0.5rem;
             --bs-border-radius-lg: 0.65rem;
             --bs-border-radius-sm: 0.4rem;
@@ -36,7 +36,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             --bs-dark: #343a40;
             --bs-dark-rgb: 52, 58, 64;
 
-            /* Custom variables for the app */
+            /* Variabel kustom untuk aplikasi */
             --cf-sidebar-bg: #e9ecef;
             --cf-sidebar-link-color: #495057;
             --cf-sidebar-link-hover-bg: #d4dae0;
@@ -46,7 +46,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             --cf-border-color: var(--bs-border-color);
             --cf-text-color: var(--bs-body-color);
             --cf-text-muted-color: #6c757d;
-            --cf-table-striped-bg: var(--bs-card-bg); /* Make striped rows match the card background */
+            --cf-table-striped-bg: var(--bs-card-bg); /* Membuat baris belang cocok dengan latar belakang kartu */
         }
 
         .dark-mode {
@@ -61,7 +61,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             --bs-card-bg: #2c2c2e;
             --bs-card-border-color: var(--bs-border-color);
 
-            /* Custom variables for dark mode */
+            /* Variabel kustom untuk mode gelap */
             --cf-sidebar-bg: #343a40;
             --cf-sidebar-link-color: #adb5bd;
             --cf-sidebar-link-hover-bg: #495057;
@@ -71,15 +71,15 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             --cf-border-color: var(--bs-border-color);
             --cf-text-color: var(--bs-body-color);
             --cf-text-muted-color: #8d8d92;
-            --cf-table-striped-bg: var(--bs-card-bg); /* Make striped rows match the card background */
+            --cf-table-striped-bg: var(--bs-card-bg); /* Membuat baris belang cocok dengan latar belakang kartu */
         }
 
         body {
-            /* Use the macOS system font stack */
+            /* Menggunakan tumpukan font sistem macOS */
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
 
-        /* Add subtle shadows to cards to mimic macOS windows */
+        /* Menambahkan bayangan halus ke kartu untuk meniru jendela macOS */
         .card {
             box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.08);
             transition: box-shadow 0.2s ease-in-out;

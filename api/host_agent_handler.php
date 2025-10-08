@@ -93,7 +93,7 @@ try {
         exit;
     }
 
-    switch ($action) {
+    switch ($action) { 
         case 'deploy':
             stream_message("Deployment process initiated for '{$container_name}' on host '{$host['name']}'...");
             // Remove existing container first to ensure a clean deploy
@@ -123,34 +123,56 @@ try {
                 $dockerClient->pullImage($agent_image);
                 stream_message("Image pull completed.");
 
-                // Add the new auto-healing setting to the environment variables
-                $env_vars = ['CONFIG_MANAGER_URL=' . $app_base_url, 'API_KEY=' . $agent_api_token, 'HOST_ID=' . $host['id'], 'AUTO_HEALING_ENABLED=' . $auto_healing_enabled];
+                // --- NEW: Smarter URL and Network for Agent ---
+                // Jika agen di-deploy di host yang sama dengan Config Manager, gunakan nama service Docker.
+                // Jika di host yang berbeda, gunakan URL publik dari settings.
+                $is_local_host = ($host['docker_api_url'] === 'unix:///var/run/docker.sock');
+                $agent_target_url = $is_local_host ? 'http://traefik-manager:8080' : $app_base_url;
+                
+                // --- NEW: Ensure a stable "home" network for the agent ---
+                // Always attach the agent to a dedicated network to ensure it has stable outbound connectivity.
+                // If it's a local host, attach to the main app network. If remote, create/use a dedicated agent network.
+                $agent_target_network = $is_local_host ? 'config-manager_traefik-manager-net' : 'cm-agent-net';
 
-                // --- NEW: Explicitly define the command to run cron ---
-                // This overrides the default CMD in the Dockerfile to ensure cron runs correctly.
-                // 1. Create a crontab entry to run the agent script every minute.
-                // 2. Add the crontab entry to the system's cron directory.
-                // 3. Start the cron daemon in the foreground so the container stays alive.
-                // --- RELIABLE CRON EXECUTION ---
-                // We save all environment variables to a file, then tell cron to source
-                // that file before running the PHP script. This ensures the script has the correct environment.
-                $cron_command = ". /etc/environment && php /usr/src/app/agent.php";
-                $crontab_entry = "* * * * * {$cron_command} > /proc/1/fd/1 2>/proc/1/fd/2";
+                stream_message("Agent target URL set to: {$agent_target_url}");
+                stream_message("Agent will be attached to network: {$agent_target_network}");
+                
+                // If deploying to a remote host, make sure its dedicated network exists.
+                if (!$is_local_host) {
+                    $dockerClient->ensureNetworkExists($agent_target_network);
+                    stream_message("Ensured network '{$agent_target_network}' exists on remote host.");
+                }
+
+                // Add the new auto-healing setting to the environment variables
+                $env_vars = ['CONFIG_MANAGER_URL=' . $agent_target_url, 'API_KEY=' . $agent_api_token, 'HOST_ID=' . $host['id'], 'AUTO_HEALING_ENABLED=' . $auto_healing_enabled, 'HOSTNAME=cm-health-agent'];
+
+                // --- BULLETPROOF CRON EXECUTION (Definitive) --- (Final Version)
+                // We create a wrapper script that explicitly exports the necessary environment variables.
+                // Cron calls this wrapper, ensuring the PHP script runs in the correct environment.
+                $wrapper_path = "/usr/local/bin/run-agent.sh";
+                $crontab_entry = "* * * * * {$wrapper_path} > /proc/1/fd/1 2>/proc/1/fd/2";
 
                 $command = [
                     "/bin/sh", "-c",
-                    // 1. Save all current environment variables to a file.
-                    //    The `grep` command filters out some shell-specific variables we don't need.
-                    "printenv | grep -v -E '^(PWD|SHLVL|HOME|PATH)=' > /etc/environment && " .
-                    // 2. Create the crontab entry that sources the environment file.
+                    // 1. Create the wrapper script. It explicitly exports the necessary variables.
+                    "echo '#!/bin/sh' > {$wrapper_path} && " . 
+                    "echo \"export CONFIG_MANAGER_URL='{$agent_target_url}'\" >> {$wrapper_path} && " .
+                    "echo \"export API_KEY='{$agent_api_token}'\" >> {$wrapper_path} && " .
+                    "echo \"export HOST_ID='{$host['id']}'\" >> {$wrapper_path} && " .
+                    "echo \"export AUTO_HEALING_ENABLED='{$auto_healing_enabled}'\" >> {$wrapper_path} && " .
+                    // The final line of the wrapper script executes the PHP agent.
+                    "echo 'php /usr/src/app/agent.php' >> {$wrapper_path} && " .
+                    "chmod +x {$wrapper_path} && " .
+                    // 2. Create the crontab entry to call the wrapper script.
                     "echo '{$crontab_entry}' > /etc/crontabs/root && " .
-                    // 3. Start crond in foreground.
+                    // 3. Start crond in the foreground to keep the container running.
                     "crond -f -d 8"
                 ];
 
                 // 2. Create and start the agent container. It will use the CMD from the Dockerfile.
                 stream_message("Creating and starting new agent container from image '{$agent_image}'...");
-                $containerId = $dockerClient->createAndStartHealthAgentContainer($container_name, $agent_image, $env_vars, $command);
+                $containerId = $dockerClient->createAndStartHealthAgentContainer($container_name, $agent_image, $env_vars, $command, $agent_target_network);
+
                 stream_message("Container '{$container_name}' (ID: " . substr($containerId, 0, 12) . ") started successfully.");
 
                 // --- NEW: Copy the agent script into the running container ---
@@ -178,8 +200,8 @@ try {
                 $pull_output = $dockerClient->pullImage($helper_image);
                 stream_message("Image pull process finished.");
 
-                stream_message("Creating and starting new helper container...");
-                $dockerClient->createAndStartHelperContainer($container_name, $helper_image);
+                stream_message("Creating and starting new CPU reader container...");
+                $dockerClient->createAndStartCpuReaderContainer($container_name, $helper_image);
                 stream_message("Container '{$container_name}' started successfully.");
                 $log_message = "Host CPU Reader deployed to host '{$host['name']}'.";
             } else {

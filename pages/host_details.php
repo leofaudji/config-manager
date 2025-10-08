@@ -27,8 +27,11 @@ require_once __DIR__ . '/../includes/host_nav.php';
 <div class="row mb-4">
     <div class="col-lg-8 mb-4 mb-lg-0">
         <div class="card h-100">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-motherboard-fill"></i> Helper Agents</h5>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#healthCheckInfoModal">
+                    <i class="bi bi-info-circle"></i> Alur Cek Container
+                </button>
             </div>
             <div class="card-body p-0">
                 <table class="table table-hover mb-0 align-middle">
@@ -114,6 +117,49 @@ require_once __DIR__ . '/../includes/host_nav.php';
             </div>
         </div>
     </div>
+</div>
+
+<!-- Health Check Logic Info Modal -->
+<div class="modal fade" id="healthCheckInfoModal" tabindex="-1" aria-labelledby="healthCheckInfoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="healthCheckInfoModalLabel"><i class="bi bi-heart-pulse-fill"></i> Alur Pengecekan Kesehatan Kontainer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><code>Health Agent</code> menggunakan pendekatan berlapis untuk menentukan status kesehatan setiap kontainer yang berjalan di host. Berikut adalah urutan prioritas pengecekannya:</p>
+        
+        <hr>
+
+        <h5><span class="badge bg-primary">Prioritas 1</span> Healthcheck Bawaan Docker</h5>
+        <p>Metode ini adalah yang paling akurat dan diandalkan. Jika sebuah kontainer memiliki instruksi <code>HEALTHCHECK</code> di dalam <code>Dockerfile</code>-nya, agen akan langsung membaca status yang dilaporkan oleh Docker.</p>
+        <ul>
+            <li><strong class="text-success">Healthy</strong>: Jika perintah <code>HEALTHCHECK</code> berhasil.</li>
+            <li><strong class="text-danger">Unhealthy</strong>: Jika perintah <code>HEALTHCHECK</code> gagal beberapa kali berturut-turut.</li>
+        </ul>
+
+        <hr>
+
+        <h5><span class="badge bg-info">Prioritas 2</span> Pengecekan Port Internal dengan Penempelan Jaringan Dinamis (Fallback)</h5>
+        <p>Jika tidak ada healthcheck bawaan, agen akan melakukan pengecekan koneksi TCP ke port internal kontainer. Untuk mengatasi isolasi jaringan Docker, agen akan melakukan langkah-langkah berikut:</p>
+        <ol>
+            <li><strong>Penempelan Jaringan</strong>: Agen akan secara dinamis <strong>menghubungkan dirinya sendiri</strong> ke jaringan internal dari kontainer target.</li>
+            <li><strong>Deteksi Port</strong>: Setelah berada di jaringan yang sama, agen akan mencari port internal yang diekspos atau menebak port standar (misal: `nginx` -> 80, `mysql` -> 3306).</li>
+            <li><strong>Pengecekan Koneksi</strong>:
+                <ul>
+                    <li><strong class="text-success">Healthy</strong>: Jika koneksi TCP ke IP internal kontainer pada port yang ditemukan berhasil.</li>
+                    <li><strong class="text-danger">Unhealthy</strong>: Jika koneksi gagal.</li>
+                </ul>
+            </li>
+            <li><strong>Pembersihan</strong>: Setelah pengecekan selesai, agen akan otomatis melepaskan diri dari jaringan target untuk menjaga kebersihan konfigurasi.</li>
+        </ol>
+        <div class="alert alert-info mt-3">
+            <strong>Mengapa metode ini?</strong> Pendekatan ini adalah yang paling andal karena memungkinkan agen untuk memeriksa kontainer di jaringan mana pun, mengatasi masalah isolasi jaringan Docker secara tuntas.
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Summary Widgets -->
