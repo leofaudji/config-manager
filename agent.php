@@ -74,16 +74,31 @@ class DockerClient
 
     private function sendRequest(string $endpoint, string $method = 'GET', $data = null)
     {
-        $url = "http://localhost/v1.41" . $endpoint;
+        // --- CRITICAL FIX: URL-encode the dynamic parts of the endpoint ---
+        // This prevents "Malformed URL" errors if container/network IDs contain special characters.
+        // We split the path and encode each part individually, then rejoin them.
+        // Example: /containers/abc/json -> ['containers', 'abc', 'json'] -> ['containers', 'abc', 'json'] -> /containers/abc/json
+        // Example with special chars: /networks/net@work/connect -> ['networks', 'net@work', 'connect'] -> ['networks', 'net%40work', 'connect'] -> /networks/net%40work/connect
+        $path_parts = explode('/', ltrim($endpoint, '/'));
+        $query_string = '';
+        // Separate path from query string if it exists
+        $last_part_index = count($path_parts) - 1;
+        if (strpos($path_parts[$last_part_index], '?') !== false) {
+            list($last_path_part, $query_string) = explode('?', $path_parts[$last_part_index], 2);
+            $path_parts[$last_part_index] = $last_path_part;
+            $query_string = '?' . $query_string; // Keep the '?'
+        }
+
+        $encoded_parts = array_map('urlencode', $path_parts);
+        $encoded_endpoint = implode('/', $encoded_parts);
+
+        $url = "http://localhost/v1.41/" . $encoded_endpoint . $query_string;
+
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_UNIX_SOCKET_PATH, '/var/run/docker.sock');
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-        if ($data) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        }
         $response = curl_exec($ch);
         if (curl_errno($ch)) {
             throw new Exception('cURL error: ' . curl_error($ch));
@@ -94,18 +109,24 @@ class DockerClient
 
     public function listContainers(): array
     {
-        return $this->sendRequest('/containers/json?all=1');
+        // The query string is now handled correctly by sendRequest
+        $result = $this->sendRequest('/containers/json?all=1');
+        return is_array($result) ? $result : [];
     }
 
     public function inspectContainer(string $id): array
     {
-        return $this->sendRequest('/containers/' . $id . '/json');
+        $result = $this->sendRequest('/containers/' . $id . '/json');
+        return is_array($result) ? $result : [];
     }
 
     public function restartContainer(string $id): bool
     {
-        $this->sendRequest('/containers/' . $id . '/restart', 'POST');
-        return true;
+        // A successful restart returns a 204 No Content, which json_decode turns into null.
+        // We check if an exception was thrown. If not, it's a success.
+        $response = $this->sendRequest('/containers/' . $id . '/restart', 'POST');
+        // A null response on a POST is often a success (e.g., 204 No Content).
+        return $response === null || $response === true;
     }
 
     public function connectToNetwork(string $networkId, string $containerId): bool
@@ -383,15 +404,15 @@ function run_check_cycle() {
     $report_payload = [
         'host_id' => (int)$hostId,
         'reports' => $health_reports
-    ];
+    ]; 
 
-    log_message("  -> Preparing to send report with the following configuration:");
-    log_message("    -> Target URL: {$configManagerUrl}");
+    //log_message("  -> Preparing to send report with the following configuration:");
+    //log_message("    -> Target URL: {$configManagerUrl}");
     // Mask the API key for security, showing only the first and last 4 characters.
-    log_message("    -> API Key: " . substr($apiKey, 0, 4) . "..." . substr($apiKey, -4));
-    log_message("    -> Auto-Healing: " . ($autoHealingEnabled ? 'AKTIF' : 'NONAKTIF'));
+    //log_message("    -> API Key: " . substr($apiKey, 0, 4) . "..." . substr($apiKey, -4));
+    //log_message("    -> Auto-Healing: " . ($autoHealingEnabled ? 'AKTIF' : 'NONAKTIF'));
 
-    log_message("  -> Sending report payload: " . json_encode($report_payload));
+    //log_message("  -> Sending report payload: " . json_encode($report_payload));
     postHealthData($configManagerUrl . '/api/health/report', $apiKey, $report_payload);
 }
 

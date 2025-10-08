@@ -141,21 +141,35 @@ require_once __DIR__ . '/../includes/host_nav.php';
 
         <hr>
 
-        <h5><span class="badge bg-info">Prioritas 2</span> Pengecekan Port Internal dengan Penempelan Jaringan Dinamis (Fallback)</h5>
-        <p>Jika tidak ada healthcheck bawaan, agen akan melakukan pengecekan koneksi TCP ke port internal kontainer. Untuk mengatasi isolasi jaringan Docker, agen akan melakukan langkah-langkah berikut:</p>
+        <h5><span class="badge bg-info">Prioritas 2</span> Pengecekan Konektivitas (Fallback)</h5>
+        <p>Jika tidak ada healthcheck bawaan, agen akan mencoba serangkaian pengecekan konektivitas secara berurutan:</p>
         <ol>
-            <li><strong>Penempelan Jaringan</strong>: Agen akan secara dinamis <strong>menghubungkan dirinya sendiri</strong> ke jaringan internal dari kontainer target.</li>
-            <li><strong>Deteksi Port</strong>: Setelah berada di jaringan yang sama, agen akan mencari port internal yang diekspos atau menebak port standar (misal: `nginx` -> 80, `mysql` -> 3306).</li>
-            <li><strong>Pengecekan Koneksi</strong>:
+            <li><strong>Pengecekan Port Publik (Published Port)</strong>:
                 <ul>
-                    <li><strong class="text-success">Healthy</strong>: Jika koneksi TCP ke IP internal kontainer pada port yang ditemukan berhasil.</li>
-                    <li><strong class="text-danger">Unhealthy</strong>: Jika koneksi gagal.</li>
+                    <li>Agen pertama-tama akan mencari port yang dipublikasikan oleh kontainer ke host.</li>
+                    <li>Jika ditemukan, agen akan mencoba membuat koneksi TCP ke `127.0.0.1` pada port tersebut.</li>
+                    <li><strong class="text-success">Healthy</strong> jika koneksi berhasil. Jika gagal, pengecekan akan dilanjutkan ke metode berikutnya.</li>
                 </ul>
             </li>
-            <li><strong>Pembersihan</strong>: Setelah pengecekan selesai, agen akan otomatis melepaskan diri dari jaringan target untuk menjaga kebersihan konfigurasi.</li>
+            <li><strong>Pengecekan Port Internal (dengan Penempelan Jaringan Dinamis)</strong>:
+                <ul>
+                    <li>Jika metode sebelumnya gagal atau tidak ada port publik, agen akan <strong>menghubungkan dirinya sendiri</strong> ke jaringan internal dari kontainer target.</li>
+                    <li>Agen akan mendeteksi port internal yang diekspos (misal: 80, 443) atau menebak port umum berdasarkan nama image (misal: `nginx` -> 80, `mysql` -> 3306).</li>
+                    <li><strong class="text-success">Healthy</strong> jika koneksi TCP ke IP internal kontainer pada port yang ditemukan berhasil.</li>
+                    <li><strong class="text-danger">Unhealthy</strong> jika koneksi gagal.</li>
+                    <li>Setelah selesai, agen akan otomatis melepaskan diri dari jaringan target.</li>
+                </ul>
+            </li>
+            <li><strong>Pengecekan ICMP (Ping)</strong>:
+                <ul>
+                    <li>Jika tidak ada port TCP yang dapat diidentifikasi, agen akan melakukan pengecekan `ping` ke alamat IP internal kontainer sebagai upaya terakhir.</li>
+                    <li><strong class="text-success">Healthy</strong> jika ping berhasil.</li>
+                    <li><strong class="text-danger">Unhealthy</strong> jika ping gagal.</li>
+                </ul>
+            </li>
         </ol>
         <div class="alert alert-info mt-3">
-            <strong>Mengapa metode ini?</strong> Pendekatan ini adalah yang paling andal karena memungkinkan agen untuk memeriksa kontainer di jaringan mana pun, mengatasi masalah isolasi jaringan Docker secara tuntas.
+            <strong>Mengapa metode ini?</strong> Pendekatan berlapis ini memastikan bahwa agen dapat memeriksa kesehatan kontainer secara andal, bahkan tanpa konfigurasi `HEALTHCHECK` eksplisit, dengan mengatasi berbagai skenario isolasi jaringan Docker.
         </div>
       </div>
     </div>
