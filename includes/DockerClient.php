@@ -776,7 +776,9 @@ class DockerClient
             $config['Cmd'] = $command;
         }
 
-        return $this->createAndStartContainer($containerName, $config, $networkToAttach);
+        $containerId = $this->createAndStartContainer($containerName, $config, $networkToAttach);
+
+        return $containerId;
     }
 
     /**

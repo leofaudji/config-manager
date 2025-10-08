@@ -11,6 +11,8 @@ try {
     $search = $_GET['search'] ?? '';
     $sort = $_GET['sort'] ?? 'status';
     $order = $_GET['order'] ?? 'asc';
+    $group_filter = $_GET['group_filter'] ?? ''; // New group/host filter
+    $status_filter = $_GET['status_filter'] ?? ''; // New filter parameter
     $offset = ($page - 1) * $limit;
 
     // Validate sort and order
@@ -38,6 +40,16 @@ try {
         $service_params[] = "%{$search}%";
         $service_types .= 's';
     }
+    if (!empty($group_filter)) {
+        $service_where .= " AND g.name = ?";
+        $service_params[] = $group_filter;
+        $service_types .= 's';
+    }
+    if (!empty($status_filter)) {
+        $service_where .= " AND shs.status = ?";
+        $service_params[] = $status_filter;
+        $service_types .= 's';
+    }
 
     $services_sql = "
         SELECT 
@@ -60,6 +72,16 @@ try {
         if (!empty($search)) {
             // Note: We can't easily search container name here without another join,
             // so we'll filter in PHP for simplicity.
+        }
+        if (!empty($group_filter)) {
+            $container_where .= " AND h.name = ?";
+            $container_params[] = $group_filter;
+            $container_types .= 's';
+        }
+        if (!empty($status_filter)) {
+            $container_where .= " AND chs.status = ?";
+            $container_params[] = $status_filter;
+            $container_types .= 's';
         }
         $containers_sql = "
             SELECT 

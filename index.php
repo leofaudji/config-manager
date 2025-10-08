@@ -43,7 +43,7 @@ $router->get('/middlewares', 'pages/middleware_management.php', ['auth', 'admin'
 $router->get('/services', 'pages/service_management.php', ['auth', 'admin']);
 $router->get('/settings', 'pages/settings.php', ['auth', 'admin']);
 $router->get('/health-check', 'pages/health_check.php', ['auth', 'admin']);
-$router->get('/health-status', 'pages/health_status_dashboard.php', ['auth']);
+$router->get('/health-status', 'pages/health_status.php', ['auth']);
 $router->get('/changelog', 'pages/changelog.php', ['auth']);
 $router->get('/health-agent-workflow', 'pages/health_agent_workflow.php', ['auth', 'admin']); // Rute baru untuk diagram
 $router->get('/cpu-reader-workflow', 'pages/cpu_reader_workflow.php', ['auth', 'admin']); // Rute baru untuk diagram CPU Reader
