@@ -38,6 +38,7 @@ try {
         'health_agent_api_token' => trim($_POST['health_agent_api_token'] ?? ''),
         'app_base_url' => trim($_POST['app_base_url'] ?? ''),
         'auto_healing_enabled' => isset($_POST['auto_healing_enabled']) ? 1 : 0,
+        'agent_log_levels' => implode(',', $_POST['agent_log_levels'] ?? []),
         'health_agent_image' => trim($_POST['health_agent_image'] ?? ''),
     ];
     $settings_to_update['notification_enabled'] = isset($_POST['notification_enabled']) ? 1 : 0;

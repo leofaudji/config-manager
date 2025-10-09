@@ -11,6 +11,22 @@ set_time_limit(280); // Sedikit di bawah 5 menit
 require_once __DIR__ . '/includes/bootstrap.php';
 require_once __DIR__ . '/includes/DockerClient.php';
 
+function colorize_log($message, $color = "default") {
+    $colors = [
+        "success" => "32", // green
+        "error"   => "31", // red
+        "warning" => "33", // yellow
+        "info"    => "36", // cyan
+        "default" => "0"   // default
+    ];
+    $color_code = $colors[$color] ?? $colors['default'];
+    // Check if running in a TTY (like a terminal) to avoid printing color codes in files
+    if (function_exists('posix_isatty') && posix_isatty(STDOUT)) {
+        return "\033[{$color_code}m{$message}\033[0m";
+    }
+    return $message;
+}
+
 echo "Memulai pengecekan autoscaler pada " . date('Y-m-d H:i:s') . "\n";
 
 $conn = Database::getInstance()->getConnection();
@@ -96,11 +112,10 @@ try {
 
                 $new_cpu_limit = $current_cpu_limit;
                 $scaling_step = 0.25; // How much to increase/decrease CPU by at a time
-
                 if ($avg_cpu > $stack['autoscaling_cpu_threshold_up'] && $current_cpu_limit < $stack['autoscaling_max_replicas']) {
                     // For vertical scaling, we use max_replicas as max_cpu_cores
                     $new_cpu_limit = min($current_cpu_limit + $scaling_step, $stack['autoscaling_max_replicas']);
-                    echo "    -> KEPUTUSAN: SCALING NAIK (Vertical). CPU Host ({$avg_cpu}%) > Threshold ({$stack['autoscaling_cpu_threshold_up']}%). Mengubah batas CPU menjadi {$new_cpu_limit} vCPU.\n";
+                    echo colorize_log("    -> KEPUTUSAN: SCALING NAIK (Vertical). CPU Host ({$avg_cpu}%) > Threshold ({$stack['autoscaling_cpu_threshold_up']}%). Mengubah batas CPU menjadi {$new_cpu_limit} vCPU.\n", "success");
                 } elseif ($avg_cpu < $stack['autoscaling_cpu_threshold_down'] && $current_cpu_limit > $stack['autoscaling_min_replicas']) {
                     // For vertical scaling, we use min_replicas as min_cpu_cores
                     $new_cpu_limit = max($current_cpu_limit - $scaling_step, $stack['autoscaling_min_replicas']);
@@ -111,10 +126,10 @@ try {
                 if ($new_cpu_limit != $current_cpu_limit) {
                     try {
                         $dockerClient->updateContainerResources($container_id, $new_cpu_limit);
-                        echo "    -> SUKSES: Batas CPU kontainer berhasil di-update ke {$new_cpu_limit} vCPU.\n";
+                        echo colorize_log("    -> SUKSES: Batas CPU kontainer berhasil di-update ke {$new_cpu_limit} vCPU.\n", "success");
                         log_activity('SYSTEM', 'Container Scaled (Vertical)', "Batas CPU untuk kontainer '{$target_container['Names'][0]}' diubah menjadi {$new_cpu_limit} vCPU karena utilisasi CPU host.");
                     } catch (Exception $update_e) {
-                        echo "    -> ERROR: Gagal meng-update resource kontainer: " . $update_e->getMessage() . "\n";
+                        echo colorize_log("    -> ERROR: Gagal meng-update resource kontainer: " . $update_e->getMessage() . "\n", "error");
                     }
                 }
 
@@ -144,10 +159,10 @@ try {
                 $new_replicas = $current_replicas;
                 if ($avg_cpu > $stack['autoscaling_cpu_threshold_up'] && $current_replicas < $stack['autoscaling_max_replicas']) {
                     $new_replicas = $current_replicas + 1;
-                    echo "    -> KEPUTUSAN: SCALING NAIK. CPU ({$avg_cpu}%) > Threshold ({$stack['autoscaling_cpu_threshold_up']}%). Mengubah replika menjadi {$new_replicas}\n";
+                    echo colorize_log("    -> KEPUTUSAN: SCALING NAIK. CPU ({$avg_cpu}%) > Threshold ({$stack['autoscaling_cpu_threshold_up']}%). Mengubah replika menjadi {$new_replicas}\n", "success");
                 } elseif ($avg_cpu < $stack['autoscaling_cpu_threshold_down'] && $current_replicas > $stack['autoscaling_min_replicas']) {
                     $new_replicas = $current_replicas - 1;
-                    echo "    -> KEPUTUSAN: SCALING TURUN. CPU ({$avg_cpu}%) < Threshold ({$stack['autoscaling_cpu_threshold_down']}%). Mengubah replika menjadi {$new_replicas}\n";
+                    echo colorize_log("    -> KEPUTUSAN: SCALING TURUN. CPU ({$avg_cpu}%) < Threshold ({$stack['autoscaling_cpu_threshold_down']}%). Mengubah replika menjadi {$new_replicas}\n", "warning");
                 }
 
                 if ($new_replicas !== $current_replicas) {
@@ -162,17 +177,17 @@ try {
 
                     // Call the generic service update method with the modified spec
                     $dockerClient->updateServiceSpec($service_id, $service_version, $service_spec);
-                    echo "    -> SUKSES: Service '{$target_service['Spec']['Name']}' di-update ke {$new_replicas} replika dengan label autoscaled.\n";
+                    echo colorize_log("    -> SUKSES: Service '{$target_service['Spec']['Name']}' di-update ke {$new_replicas} replika dengan label autoscaled.\n", "success");
                     log_activity('SYSTEM', 'Service Scaled', "Service '{$target_service['Spec']['Name']}' di-scale ke {$new_replicas} replika karena utilisasi CPU host.");
                 }
             }
         } catch (Exception $e) {
-            echo "  -> ERROR memproses stack '{$stack['stack_name']}': " . $e->getMessage() . "\n";
+            echo colorize_log("  -> ERROR memproses stack '{$stack['stack_name']}': " . $e->getMessage() . "\n", "error");
             log_activity('SYSTEM', 'Autoscaler Error', "Gagal memproses stack '{$stack['stack_name']}': " . $e->getMessage());
         }
     }
 } catch (Exception $e) {
-    echo "Terjadi error kritis pada skrip autoscaler: " . $e->getMessage() . "\n";
+    echo colorize_log("Terjadi error kritis pada skrip autoscaler: " . $e->getMessage() . "\n", "error");
     log_activity('SYSTEM', 'Autoscaler Error', "Error kritis: " . $e->getMessage());
 }
 

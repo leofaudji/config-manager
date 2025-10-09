@@ -82,6 +82,32 @@ require_once __DIR__ . '/../includes/header.php';
     </table>
 </div>
 
+<!-- Health Check Flow Modal -->
+<div class="modal fade" id="healthCheckFlowModal" tabindex="-1" aria-labelledby="healthCheckFlowModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="healthCheckFlowModalLabel"><i class="bi bi-heart-pulse"></i> Service Health Check Flow</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>This is how the system determined the health status for service <strong id="health-flow-service-name"></strong>.</p>
+        <ul class="list-group" id="health-flow-steps">
+          <!-- Steps will be dynamically inserted here -->
+        </ul>
+        <div class="mt-3">
+            <h6><i class="bi bi-file-earmark-text"></i> Raw Log Message:</h6>
+            <pre class="bg-light p-2 rounded small" id="health-flow-raw-log" style="white-space: pre-wrap; word-break: break-all;"></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <div class="d-flex justify-content-between align-items-center mt-3">
     <div id="table-info">
         <!-- Info paginasi akan dimuat di sini -->
@@ -117,6 +143,11 @@ window.pageInit = function() {
     let currentSort = 'status';
     let currentOrder = 'asc';
     let searchTimeout;
+
+    const escapeHtml = (unsafe) => {
+        if (typeof unsafe !== 'string') return '';
+        return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    };
 
     function fetchHealthStatus() {
         const search = searchInput.value.trim();
@@ -171,6 +202,11 @@ window.pageInit = function() {
                 default: statusBadge = 'bg-secondary';
             }
 
+            const infoIcon = `
+                <i class="bi bi-info-circle-fill text-primary ms-2 health-flow-btn" style="cursor: pointer;" 
+                   title="Show Health Check Flow" data-bs-toggle="modal" data-bs-target="#healthCheckFlowModal" 
+                   data-service-name="${escapeHtml(item.name)}" data-log-message="${escapeHtml(item.last_log || 'No log available.')}"></i>`;
+
             // Determine if the row should be clickable and where it should link
             let rowClass = '';
             let dataHref = '';
@@ -181,7 +217,7 @@ window.pageInit = function() {
 
             return `
                 <tr class="${rowClass}" ${dataHref} title="${item.host_id ? 'Click to view containers on this host' : ''}">
-                    <td><span class="badge ${statusBadge}">${item.status || 'unknown'}</span></td>
+                    <td><span class="badge ${statusBadge}">${item.status || 'unknown'}</span>${infoIcon}</td>
                     <td><strong>${item.name}</strong></td>
                     <td>${item.group_name}</td>
                     <td><span class="badge bg-secondary">${item.health_check_type}</span></td>
@@ -287,6 +323,53 @@ window.pageInit = function() {
             }
         }
     });
+
+    // --- Health Check Flow Modal Logic ---
+    const healthFlowModalEl = document.getElementById('healthCheckFlowModal');
+    if (healthFlowModalEl) {
+        healthFlowModalEl.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const serviceName = button.dataset.serviceName;
+            const logMessage = button.dataset.logMessage;
+
+            document.getElementById('health-flow-service-name').textContent = serviceName;
+            document.getElementById('healthCheckFlowModalLabel').innerHTML = `<i class="bi bi-heart-pulse"></i> Health Check Flow: ${serviceName}`;
+            document.getElementById('health-flow-raw-log').textContent = logMessage;
+
+            const stepsContainer = document.getElementById('health-flow-steps');
+            stepsContainer.innerHTML = ''; // Clear previous steps
+
+            const steps = [
+                { key: 'HTTP', name: 'HTTP Endpoint Check', check: (log) => log.includes('HTTP') },
+                { key: 'Docker', name: 'Docker Internal Health Check', check: (log) => log.includes('Docker') }
+            ];
+
+            let checkUsed = null;
+            let resultIsSuccess = false;
+
+            steps.forEach(step => {
+                if (checkUsed === null && step.check(logMessage)) {
+                    checkUsed = step.key;
+                    resultIsSuccess = logMessage.includes(': OK') || logMessage.includes('status: healthy');
+                }
+            });
+
+            steps.forEach(step => {
+                let icon = '<i class="bi bi-dash-circle text-secondary"></i>';
+                let textClass = 'text-muted';
+                let statusText = 'Not Used';
+
+                if (checkUsed === step.key) {
+                    icon = resultIsSuccess ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>';
+                    textClass = resultIsSuccess ? 'fw-bold text-success' : 'fw-bold text-danger';
+                    statusText = resultIsSuccess ? 'Used & Succeeded' : 'Used & Failed';
+                }
+
+                const stepHtml = `<li class="list-group-item d-flex justify-content-between align-items-center"><span class="${textClass}">${step.name}</span><span class="badge bg-light text-dark d-flex align-items-center">${icon}<span class="ms-2">${statusText}</span></span></li>`;
+                stepsContainer.insertAdjacentHTML('beforeend', stepHtml);
+            });
+        });
+    }
 
     // Initial load
     limitSelector.value = currentLimit; // Set dropdown to stored value

@@ -227,29 +227,31 @@ function run_check_cycle() {
                 $log_message = "Container health status from Docker: {$docker_health_status}";
             } else {
                 // --- Alur 2: Fallback ke Pengecekan Port TCP (Struktur Baru yang Disederhanakan dan Diperbaiki) ---
-
-                // Prioritas 2a: Coba cek Published Port terlebih dahulu
-                $published_port_to_check = null;
+                
+                // Prioritas 2a: Coba cek SEMUA Published Port terlebih dahulu
+                $all_published_ports = [];
                 if (!empty($details['NetworkSettings']['Ports'])) {
                     foreach ($details['NetworkSettings']['Ports'] as $port_bindings) {
                         if (is_array($port_bindings) && !empty($port_bindings[0]['HostPort']) && $port_bindings[0]['HostPort'] != '0') {
-                            $published_port_to_check = (int)$port_bindings[0]['HostPort'];
-                            break;
+                            $all_published_ports[] = (int)$port_bindings[0]['HostPort'];
                         }
                     }
                 }
+                $all_published_ports = array_unique($all_published_ports);
 
-                if ($published_port_to_check && $is_healthy === null) {
-                    $connection = @fsockopen('127.0.0.1', $published_port_to_check, $errno, $errstr, 2);
-                    if (is_resource($connection)) {
-                        $is_healthy = true;
-                        $log_message = "TCP check on published port 127.0.0.1:{$published_port_to_check}: OK";
-                        fclose($connection);
-                    } else {
-                        // Jika port publik ada tapi tidak bisa dijangkau, jangan langsung gagal.
-                        // Biarkan $is_healthy tetap null agar fallback ke pengecekan internal.
-                        log_message("    -> Pengecekan port publik 127.0.0.1:{$published_port_to_check} gagal. Melanjutkan ke pengecekan internal...");
+                if (!empty($all_published_ports)) {
+                    foreach ($all_published_ports as $port) {
+                        $connection = @fsockopen('host.docker.internal', $port, $errno, $errstr, 2);
+                        if (is_resource($connection)) {
+                            $is_healthy = true;
+                            $log_message = "TCP check on published port host.docker.internal:{$port}: OK";
+                            fclose($connection);
+                            break; // Ditemukan port yang sehat, hentikan pengecekan port publik lainnya.
+                        }
                     }
+                }
+                if ($is_healthy === null && !empty($all_published_ports)) {
+                    log_message("    -> Pengecekan pada semua port publik di host.docker.internal (" . implode(', ', $all_published_ports) . ") gagal. Melanjutkan ke pengecekan internal...");
                 }
 
                 // Prioritas 2b: Jika status masih belum ditentukan, coba port internal.
@@ -294,14 +296,17 @@ function run_check_cycle() {
                         try {
                             $dockerClient->connectToNetwork($network_id_to_join, $agent_container_id);
                             log_message("    -> Joined network '{$network_id_to_join}' to check internal IP {$internal_ip}:{$internal_port}.");
-                            $connection = @fsockopen($internal_ip, $internal_port, $errno, $errstr, 2);
-                            if (is_resource($connection)) {
+                            
+                            // Gunakan netcat (nc) untuk pengecekan TCP yang lebih andal dari dalam container.
+                            // -z: zero-I/O mode (scanning). -w 2: timeout 2 detik.
+                            exec("nc -z -w 2 " . escapeshellarg($internal_ip) . " " . escapeshellarg($internal_port), $output, $return_var);
+
+                            if ($return_var === 0) {
                                 $is_healthy = true;
-                                $log_message = "TCP check on internal port {$internal_port}: OK";
-                                fclose($connection);
+                                $log_message = "Internal TCP check on {$internal_ip}:{$internal_port}: OK";
                             } else {
                                 $is_healthy = false;
-                                $log_message = "TCP check on internal port {$internal_port}: FAILED ({$errstr})";
+                                $log_message = "Internal TCP check on {$internal_ip}:{$internal_port}: FAILED";
                             }
                         } catch (Exception $e) {
                             $is_healthy = false;

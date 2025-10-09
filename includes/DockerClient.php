@@ -205,6 +205,16 @@ class DockerClient
     }
 
     /**
+     * Lists all images.
+     * @return array The list of images.
+     * @throws Exception
+     */
+    public function listImages(): array
+    {
+        return $this->request('/images/json');
+    }
+
+    /**
      * Pulls an image from a registry.
      * @param string $imageName The name of the image to pull (e.g., nginx:latest).
      * @return string The output from the pull command.

@@ -266,7 +266,16 @@ try {
                             echo "  -> INFO: Health agent '{$agent_container_name}' tidak ditemukan. Men-deploy sekarang...\n";
                             try {
                                 $dockerClient->pullImage($agent_image); // Coba pull image terlebih dahulu
-                                $dockerClient->createAndStartHealthAgentContainer($agent_container_name, $agent_image, $app_base_url, $agent_api_token, $host['id']);
+                                $log_levels_to_send = get_setting('agent_log_levels', 'ERROR,FATAL,UNHEALTHY');
+                                $env_vars = [
+                                    'CONFIG_MANAGER_URL=' . $app_base_url,
+                                    'API_KEY=' . $agent_api_token,
+                                    'HOST_ID=' . $host['id'],
+                                    'AUTO_HEALING_ENABLED=' . get_setting('auto_healing_enabled', '0'),
+                                    'LOG_LEVELS_TO_SEND=' . $log_levels_to_send,
+                                    'HOSTNAME=cm-health-agent'
+                                ];
+                                $dockerClient->createAndStartHealthAgentContainer($agent_container_name, $agent_image, $env_vars);
                                 echo "  -> SUKSES: Health agent '{$agent_container_name}' berhasil di-deploy.\n";
                             } catch (Exception $deploy_e) {
                                 echo "  -> ERROR: Gagal men-deploy health agent: " . $deploy_e->getMessage() . "\n";

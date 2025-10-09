@@ -15,36 +15,45 @@ try {
     $search = $_GET['search'] ?? '';
     $offset = ($page - 1) * $limit;
 
-    $where_clause = '';
+    // --- Filtering Logic ---
+    // Start by always excluding 'health-agent' logs.
+    $where_clauses = ["username != ?"];
     $params = [];
     $types = '';
+    $params[] = 'health-agent';
+    $types .= 's';
 
     if (!empty($search)) {
-        $where_clause = " WHERE username LIKE ? OR action LIKE ?";
+        // Add search conditions. Note the parentheses for correct logical grouping.
+        $where_clauses[] = "(username LIKE ? OR action LIKE ? OR details LIKE ?)";
         $search_param = "%{$search}%";
         $params[] = $search_param;
         $params[] = $search_param;
-        $types .= 'ss';
+        $params[] = $search_param;
+        $types .= 'sss';
     }
 
+    $where_sql = ' WHERE ' . implode(' AND ', $where_clauses);
+
     // Get total count
-    $stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM activity_log" . $where_clause);
-    if (!empty($search)) {
-        $stmt_count->bind_param($types, ...$params);
-    }
+    $stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM activity_log" . $where_sql);
+    if (!empty($params)) $stmt_count->bind_param($types, ...$params);
     $stmt_count->execute();
     $total_items = $stmt_count->get_result()->fetch_assoc()['count'];
     $stmt_count->close();
 
     $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
 
-    // Get data
-    $stmt = $conn->prepare("SELECT * FROM activity_log" . $where_clause . " ORDER BY created_at DESC LIMIT ? OFFSET ?");
-    // Use string for limit/offset to avoid integer overflow
-    $params[] = (string)$limit;
-    $params[] = (string)$offset;
-    $types .= 'ss';
-    $stmt->bind_param($types, ...$params);
+    // Get paginated data
+    // We rebuild the params and types for this specific query to include limit and offset.
+    $data_params = $params;
+    $data_types = $types;
+    $data_params[] = $limit;
+    $data_params[] = $offset;
+    $data_types .= 'ii'; // Use 'i' for integer for limit/offset
+
+    $stmt = $conn->prepare("SELECT * FROM activity_log" . $where_sql . " ORDER BY created_at DESC LIMIT ? OFFSET ?");
+    $stmt->bind_param($data_types, ...$data_params);
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -70,4 +79,4 @@ try {
         $conn->close();
     }
 }
-
+?>
