@@ -282,6 +282,37 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
 
             <hr>
+            <h5 class="mb-3">Notification Server Integration</h5>
+            <div class="form-check form-switch mb-3">
+                <input type="hidden" name="notification_enabled" value="0">
+                <input class="form-check-input" type="checkbox" role="switch" id="notification_enabled" name="notification_enabled" value="1" <?= ((int)($settings['notification_enabled'] ?? 0)) === 1 ? 'checked' : '' ?>>
+                <label class="form-check-label" for="notification_enabled">Enable Notifications</label>
+                <small class="form-text text-muted d-block">Send a notification to an external server when a service or container becomes unhealthy.</small>
+            </div>
+
+            <div id="notification-settings-container" style="<?= ((int)($settings['notification_enabled'] ?? 0)) === 1 ? '' : 'display: none;' ?>">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="mb-3">
+                            <label for="notification_server_url" class="form-label">Notification Server URL</label>
+                            <div class="input-group">
+                                <input type="url" class="form-control" id="notification_server_url" name="notification_server_url" value="<?= htmlspecialchars($settings['notification_server_url'] ?? '') ?>" placeholder="https://your-notification-server.com/webhook">
+                                <button class="btn btn-outline-secondary" type="button" id="test-notification-btn">Test</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="mb-3">
+                            <label for="notification_secret_token" class="form-label">Secret Token</label>
+                            <input type="password" class="form-control" id="notification_secret_token" name="notification_secret_token" value="<?= htmlspecialchars($settings['notification_secret_token'] ?? '') ?>" placeholder="A secret token to authenticate requests">
+                            <small class="form-text text-muted">This token will be sent in the `X-Secret-Token` header with each notification.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <hr>
             <button type="submit" class="btn btn-primary">Save Settings</button>
         </form>
     </div>
@@ -294,6 +325,8 @@ $conn->close();
 (function() { // IIFE to ensure script runs on AJAX load
     const gitToggle = document.getElementById('git_integration_enabled');
     const gitContainer = document.getElementById('git-settings-container');
+    const notificationToggle = document.getElementById('notification_enabled');
+    const notificationContainer = document.getElementById('notification-settings-container');
 
     gitToggle.addEventListener('change', function() {
         gitContainer.style.display = this.checked ? 'block' : 'none';
@@ -389,7 +422,35 @@ $conn->close();
             if (this.value) this.type = 'password';
         });
     }
+
+    notificationToggle.addEventListener('change', function() {
+        notificationContainer.style.display = this.checked ? 'block' : 'none';
+    });
     
+    const testNotificationBtn = document.getElementById('test-notification-btn');
+    if (testNotificationBtn) {
+        testNotificationBtn.addEventListener('click', function() {
+            const originalBtnText = this.innerHTML;
+            this.disabled = true;
+            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...`;
+
+            // We don't need to send any data, just trigger the endpoint
+            fetch('<?= base_url('/api/notifications/test') ?>', {
+                method: 'POST'
+            })
+            .then(response => response.json().then(data => ({ ok: response.ok, data })))
+            .then(({ ok, data }) => {
+                showToast(data.message, ok);
+            })
+            .catch(error => {
+                showToast('An unknown error occurred while sending the test notification.', false);
+            })
+            .finally(() => {
+                this.disabled = false;
+                this.innerHTML = 'Test';
+            });
+        });
+    }
 })();
 </script>
 <?php

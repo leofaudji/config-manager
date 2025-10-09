@@ -64,24 +64,68 @@ function expandCidrToIpRange(string $cidr): array
     return $range;
 }
 
-function log_activity(string $username, string $action, string $details = ''): void {
+function log_activity(string $username, string $action, string $details = '', ?int $host_id = null): void {
     try {
         $conn = Database::getInstance()->getConnection();
         $ip_address = 'UNKNOWN';
         if (php_sapi_name() === 'cli') {
-            // For command-line scripts, use the server's loopback address.
             $ip_address = '127.0.0.1';
         } elseif (isset($_SERVER['REMOTE_ADDR'])) {
             $ip_address = $_SERVER['REMOTE_ADDR'];
         }
-        $stmt = $conn->prepare("INSERT INTO activity_log (username, action, details, ip_address) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("ssss", $username, $action, $details, $ip_address);
+        $stmt = $conn->prepare("INSERT INTO activity_log (username, action, details, ip_address, host_id) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssssi", $username, $action, $details, $ip_address, $host_id);
         $stmt->execute();
         $stmt->close();
     } catch (Exception $e) {
         // Log error to a file, don't kill the script
         error_log("Failed to log activity: " . $e->getMessage());
     }
+}
+
+/**
+ * Sends a notification to the configured external notification server.
+ *
+ * @param string $title The title of the notification.
+ * @param string $message The main content of the notification.
+ * @param string $level The severity level (e.g., 'error', 'warning', 'info').
+ * @param array $context Additional context data to include in the payload.
+ * @return void
+ */
+function send_notification(string $title, string $message, string $level = 'error', array $context = []): void {
+    $is_enabled = (int)get_setting('notification_enabled', 0);
+    $url = get_setting('notification_server_url');
+    $token = get_setting('notification_secret_token');
+
+    if (!$is_enabled || empty($url)) {
+        return; // Do nothing if not enabled or URL is not set
+    }
+
+    $payload = array_merge([
+        'title' => $title,
+        'message' => $message,
+        'level' => $level,
+        'timestamp' => date('c'), // ISO 8601 timestamp
+        'source_app' => 'Config Manager'
+    ], $context);
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    
+    $headers = ['Content-Type: application/json'];
+    if (!empty($token)) {
+        $headers[] = 'X-Secret-Token: ' . $token;
+    }
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+    // Use a short timeout to avoid blocking the main process for too long
+    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+
+    curl_exec($ch);
+    curl_close($ch);
 }
 
 /**

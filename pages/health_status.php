@@ -163,17 +163,26 @@ window.pageInit = function() {
             tableBody.innerHTML = `<tr><td colspan="6" class="text-center">No items found.</td></tr>`;
             return;
         }
-        tableBody.innerHTML = data.map(item => {
+        tableBody.innerHTML = data.map(item => { // The API now returns host_id
             let statusBadge;
             switch (item.status) {
                 case 'healthy': statusBadge = 'bg-success'; break;
                 case 'unhealthy': statusBadge = 'bg-danger'; break;
                 default: statusBadge = 'bg-secondary';
             }
+
+            // Determine if the row should be clickable and where it should link
+            let rowClass = '';
+            let dataHref = '';
+            if (item.host_id) {
+                rowClass = 'clickable-row';
+                dataHref = `data-href="<?= base_url('/hosts/') ?>${item.host_id}/containers"`;
+            }
+
             return `
-                <tr>
+                <tr class="${rowClass}" ${dataHref} title="${item.host_id ? 'Click to view containers on this host' : ''}">
                     <td><span class="badge ${statusBadge}">${item.status || 'unknown'}</span></td>
-                    <td>${item.name}</td>
+                    <td><strong>${item.name}</strong></td>
                     <td>${item.group_name}</td>
                     <td><span class="badge bg-secondary">${item.health_check_type}</span></td>
                     <td class="small text-muted" style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${item.last_log}">${item.last_log}</td>
@@ -261,6 +270,23 @@ window.pageInit = function() {
     });
 
     refreshBtn.addEventListener('click', fetchHealthStatus);
+
+    // --- Event Delegation for Clickable Rows ---
+    // This is more robust than attaching listeners to each row individually,
+    // as it works even after the table content is refreshed via AJAX.
+    tableBody.addEventListener('click', function(e) {
+        // Find the closest parent `<tr>` that has the .clickable-row class
+        const row = e.target.closest('.clickable-row');
+        if (row && row.dataset.href) {
+            // Use the SPA navigation function for a smoother experience.
+            if (typeof loadPage === 'function') {
+                loadPage(row.dataset.href);
+            } else {
+                // Fallback for safety
+                window.location.href = row.dataset.href;
+            }
+        }
+    });
 
     // Initial load
     limitSelector.value = currentLimit; // Set dropdown to stored value

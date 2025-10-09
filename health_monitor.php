@@ -183,7 +183,13 @@ try {
         // 7. Trigger auto-healing if status changed to 'unhealthy'
         if ($new_status === 'unhealthy' && $service['status'] !== 'unhealthy') {
             echo "  -> STATUS TIDAK SEHAT TERDETEKSI! Memicu auto-healing untuk service '{$service['name']}'.\n";
-            log_activity('SYSTEM', 'Auto-Healing Triggered', "Service '{$service['name']}' marked as unhealthy. Restarting tasks.");
+            log_activity('SYSTEM', 'Auto-Healing Triggered', "Service '{$service['name']}' marked as unhealthy. Restarting tasks.", $service['host_id']);
+            send_notification(
+                "Service Unhealthy: " . $service['name'],
+                "The service '{$service['name']}' has been marked as unhealthy. Last log: {$log_message}",
+                'error',
+                ['service_name' => $service['name'], 'host_name' => $service['host_name']]
+            );
 
             try {
                 if (empty($service['host_id'])) {
@@ -221,11 +227,11 @@ try {
                     if (!$action_message) throw new Exception("Container untuk stack '{$service['stack_name']}' tidak ditemukan.");
                 }
                 echo "  -> SUKSES: {$action_message}\n";
-                log_activity('SYSTEM', 'Auto-Healing Action', $action_message);
+                log_activity('SYSTEM', 'Auto-Healing Action', $action_message, $service['host_id']);
 
             } catch (Exception $e) {
                 echo "  -> ERROR saat auto-healing: " . $e->getMessage() . "\n";
-                log_activity('SYSTEM', 'Auto-Healing Error', "Failed to restart service '{$service['name']}': " . $e->getMessage());
+                log_activity('SYSTEM', 'Auto-Healing Error', "Failed to restart service '{$service['name']}': " . $e->getMessage(), $service['host_id']);
             }
         }
     }
@@ -421,7 +427,13 @@ try {
                     // Trigger auto-healing
                     if ($new_status === 'unhealthy' && ($current_status_rec['status'] ?? '') !== 'unhealthy') {
                         echo "    -> STATUS TIDAK SEHAT TERDETEKSI! Memicu auto-healing untuk kontainer '{$container_name}'.\n";
-                        log_activity('SYSTEM', 'Auto-Healing Triggered', "Container '{$container_name}' on host '{$host['name']}' marked as unhealthy. Restarting.");
+                        log_activity('SYSTEM', 'Auto-Healing Triggered', "Container '{$container_name}' on host '{$host['name']}' marked as unhealthy. Restarting.", $host['id']);
+                        send_notification(
+                            "Container Unhealthy: " . $container_name,
+                            "The container '{$container_name}' on host '{$host['name']}' has been marked as unhealthy. Last log: {$log_message}",
+                            'error',
+                            ['container_name' => $container_name, 'host_name' => $host['name']]
+                        );
 
                         // --- NEW: Smarter auto-healing logic ---
                         $stack_name = $details['Config']['Labels']['com.docker.compose.project'] ?? $details['Config']['Labels']['com.docker.stack.namespace'] ?? null;
@@ -437,17 +449,17 @@ try {
                         if ($stack_name && $compose_service_name) {
                             // Prefer to recreate the service from its stack definition
                             $dockerClient->recreateContainerFromStack($stack_name, $compose_service_name);
-                            log_activity('SYSTEM', 'Auto-Healing Action', "Recreate command sent for service '{$compose_service_name}' in stack '{$stack_name}'.");
+                            log_activity('SYSTEM', 'Auto-Healing Action', "Recreate command sent for service '{$compose_service_name}' in stack '{$stack_name}'.", $host['id']);
                         } else {
                             // Fallback to simple restart for standalone containers
                             $dockerClient->restartContainer($container_id);
-                            log_activity('SYSTEM', 'Auto-Healing Action', "Fallback: Restart command sent for container '{$container_name}'.");
+                            log_activity('SYSTEM', 'Auto-Healing Action', "Fallback: Restart command sent for container '{$container_name}'.", $host['id']);
                         }
                     }
                 }
             } catch (Exception $e) {
                 echo "  -> ERROR memproses host '{$host['name']}': " . $e->getMessage() . "\n";
-                log_activity('SYSTEM', 'Health Monitor Error', "Gagal memproses host '{$host['name']}' untuk pengecekan kontainer: " . $e->getMessage());
+                log_activity('SYSTEM', 'Health Monitor Error', "Gagal memproses host '{$host['name']}' untuk pengecekan kontainer: " . $e->getMessage(), $host['id']);
             }
         }
     }

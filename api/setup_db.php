@@ -281,8 +281,11 @@ CREATE TABLE `activity_log` (
   `action` varchar(255) NOT NULL,
   `details` text DEFAULT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
+  `host_id` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `host_id` (`host_id`),
+  CONSTRAINT `activity_log_ibfk_1` FOREIGN KEY (`host_id`) REFERENCES `docker_hosts` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Default settings

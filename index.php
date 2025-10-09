@@ -52,6 +52,7 @@ $router->get('/container-management-workflow', 'pages/container_management_workf
 $router->get('/traffic-flow-workflow', 'pages/traffic_flow_workflow.php', ['auth', 'admin']);
 $router->get('/app-launcher-workflow', 'pages/app_launcher_workflow.php', ['auth', 'admin']);
 $router->get('/cron-jobs', 'pages/cron_management.php', ['auth', 'admin']);
+$router->get('/agent-logs', 'pages/agent_logs.php', ['auth', 'admin']);
 $router->get('/templates', 'pages/template_management.php', ['auth', 'admin']);
 $router->get('/traefik-hosts', 'pages/traefik_host_management.php', ['auth', 'admin']);
 $router->get('/app-launcher', 'pages/app_launcher.php', ['auth', 'admin']);
@@ -87,6 +88,8 @@ $router->get('/hosts/{id}/volumes', 'pages/host_volumes.php', ['auth', 'admin'])
 $router->get('/api/data', 'get_data.php', ['auth']);
 $router->get('/api/logs', 'api/activity_log_handler.php', ['auth', 'admin']);
 $router->get('/api/stats', 'api/stats_handler.php', ['auth', 'admin']);
+$router->get('/api/agent-logs', 'api/agent_logs.php', ['auth', 'admin']);
+$router->post('/api/notifications/test', 'api/notification_test_handler.php', ['auth', 'admin']);
 $router->get('/api/dashboard-stats', 'api/dashboard_stats_handler.php', ['auth']);
 $router->get('/api/configurations/preview', 'api/preview_handler.php', ['auth', 'admin']);
 $router->get('/api/health-check', 'api/health_check_handler.php', ['auth', 'admin']);

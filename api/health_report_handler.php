@@ -64,7 +64,7 @@ try {
     $stmt_update_host->close();
 
     // Log the successful reception of the report
-    log_activity('Health Agent', 'Report Received', "Successfully received health report from host ID: {$host_id}.");
+    //log_activity('Health Agent', 'Report Received', "Successfully received health report from host ID: {$host_id}.");
 
     // 4. Process and save each container health report
     // Get default thresholds from settings
@@ -112,6 +112,14 @@ try {
             $successes = 0;
             if ($failures >= $unhealthy_threshold) {
                 $new_status = 'unhealthy';
+                // Send notification only when the status *changes* to unhealthy
+                if (($current_status_rec['status'] ?? '') !== 'unhealthy') {
+                    send_notification(
+                        "Container Unhealthy: " . $container_name,
+                        "The container '{$container_name}' on host ID {$host_id} has been marked as unhealthy by its agent. Last log: {$log_message}",
+                        'error',
+                        ['container_name' => $container_name, 'host_id' => $host_id]);
+                }
             }
         } else { // is_healthy is null (unknown)
             // Don't change counters for unknown status, just update the log and timestamp

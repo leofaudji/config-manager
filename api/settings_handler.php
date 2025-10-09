@@ -40,6 +40,9 @@ try {
         'auto_healing_enabled' => isset($_POST['auto_healing_enabled']) ? 1 : 0,
         'health_agent_image' => trim($_POST['health_agent_image'] ?? ''),
     ];
+    $settings_to_update['notification_enabled'] = isset($_POST['notification_enabled']) ? 1 : 0;
+    $settings_to_update['notification_server_url'] = trim($_POST['notification_server_url'] ?? '');
+    $settings_to_update['notification_secret_token'] = trim($_POST['notification_secret_token'] ?? '');
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE for a safe upsert
     $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
