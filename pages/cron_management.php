@@ -97,6 +97,34 @@ $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
         </div>
     </div>
 
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5><i class="bi bi-trash3"></i> System Cleanup</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Skrip ini secara otomatis membersihkan data lama dari database untuk menjaga performa, seperti riwayat konfigurasi yang diarsipkan, log aktivitas, dan riwayat statistik host.</p>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="system_cleanup_enabled" name="system_cleanup[enabled]" value="1">
+                <label class="form-check-label" for="system_cleanup_enabled">
+                    Enable System Cleanup
+                    <span id="system_cleanup_status_badge" class="badge rounded-pill ms-2"></span>
+                </label>
+            </div>
+            <div class="mb-3">
+                <label for="system_cleanup_schedule" class="form-label">Schedule (Format Cron)</label>
+                <input type="text" class="form-control" id="system_cleanup_schedule" name="system_cleanup[schedule]" placeholder="0 3 * * *">
+                <small class="form-text text-muted">Direkomendasikan untuk berjalan sekali sehari, misalnya pada jam 3 pagi (<code>0 3 * * *</code>).</small>
+            </div>
+            <div class="bg-light p-2 rounded">
+                <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars(PROJECT_ROOT . '/system_cleanup.php') ?></code></small>
+            </div>
+            <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="system_cleanup"><i class="bi bi-card-text"></i> View Log</button>
+                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="system_cleanup"><i class="bi bi-eraser-fill"></i> Clear Log</button>
+            </div>
+        </div>
+    </div>
+
     <div class="mt-4">
         <button type="submit" class="btn btn-primary" id="save-cron-btn">Save Crontab</button>
     </div>
@@ -110,12 +138,13 @@ window.pageInit = function() {
         const collectStatsBadge = document.getElementById('collect_stats_status_badge');
         const autoscalerBadge = document.getElementById('autoscaler_status_badge');
         const healthMonitorBadge = document.getElementById('health_monitor_status_badge');
+        const systemCleanupBadge = document.getElementById('system_cleanup_status_badge');
 
         fetch('<?= base_url('/api/cron') ?>')
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    const { collect_stats, autoscaler, health_monitor } = data.jobs;
+                    const { collect_stats, autoscaler, health_monitor, system_cleanup } = data.jobs;
                     if (collect_stats) {
                         document.getElementById('collect_stats_enabled').checked = collect_stats.enabled;
                         document.getElementById('collect_stats_schedule').value = collect_stats.schedule;
@@ -147,6 +176,17 @@ window.pageInit = function() {
                         } else {
                             healthMonitorBadge.textContent = 'Not Set';
                             healthMonitorBadge.className = 'badge rounded-pill ms-2 text-bg-light';
+                        }
+                    }
+                    if (system_cleanup) {
+                        document.getElementById('system_cleanup_enabled').checked = system_cleanup.enabled;
+                        document.getElementById('system_cleanup_schedule').value = system_cleanup.schedule;
+                        if (system_cleanup.schedule) {
+                            systemCleanupBadge.textContent = system_cleanup.enabled ? 'Scheduled' : 'Disabled';
+                            systemCleanupBadge.className = `badge rounded-pill ms-2 text-bg-${system_cleanup.enabled ? 'success' : 'secondary'}`;
+                        } else {
+                            systemCleanupBadge.textContent = 'Not Set';
+                            systemCleanupBadge.className = 'badge rounded-pill ms-2 text-bg-light';
                         }
                     }
                 } else {
@@ -206,7 +246,7 @@ window.pageInit = function() {
     });
 
     // Add event listeners to the enable/disable switches
-    ['collect_stats', 'autoscaler', 'health_monitor'].forEach(scriptKey => {
+    ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup'].forEach(scriptKey => {
         const enableSwitch = document.getElementById(`${scriptKey}_enabled`);
         const scheduleInput = document.getElementById(`${scriptKey}_schedule`);
         if (enableSwitch && scheduleInput) {

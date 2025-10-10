@@ -18,12 +18,13 @@ require_once __DIR__ . '/../includes/header.php';
             <table class="table table-striped table-sm table-hover">
                 <thead>
                     <tr>
-                        <th>Name</th>
+                        <th class="sortable asc" data-sort="name">Name</th>
+                        <th class="sortable" data-sort="status">Status</th>
+                        <th class="sortable" data-sort="uptime">Host Uptime</th>
                         <th>Docker API URL</th>
-                        <th>Status</th>
-                        <th>Uptime</th>
                         <th>TLS</th>
-                        <th>Description</th>
+                        <th class="sortable" data-sort="agent_status">Agent Status</th>
+                        <th class="sortable" data-sort="cpu_reader_status">CPU Reader</th>
                         <th>Last Updated</th>
                         <th class="text-end">Actions</th>
                     </tr>

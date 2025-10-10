@@ -172,7 +172,7 @@ try {
                     $mapping_parts[] = htmlspecialchars($port['PrivatePort']) . '/' . htmlspecialchars($port['Type'] ?? 'tcp');
 
                     $port_parts[] = '<code>' . implode(':', $mapping_parts) . '</code>';
-                }
+                } 
                 $portsHtml = implode('<br>', $port_parts);
             }
             if (empty($portsHtml)) $portsHtml = '<span class="text-muted small">None</span>';

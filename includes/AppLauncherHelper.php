@@ -139,34 +139,6 @@ class AppLauncherHelper
                     $compose_data['services'][$service_key]['deploy']['replicas'] = $replicas;
                 }
 
-            // --- Volume Mapping ---
-            if (!empty($volume_paths) && is_array($volume_paths)) {
-                foreach ($volume_paths as $volume_map) {
-                    $container_path = $volume_map['container'] ?? null;
-                    $host_path = $volume_map['host'] ?? null;
-
-                    if ($container_path && $host_path) {
-                        if (!str_starts_with($container_path, '/')) {
-                            $container_path = '/' . $container_path;
-                        }
-                        // Generate volume name based on container path only. Docker-compose will prefix it with the project name.
-                        $volume_name = preg_replace('/[^\w.-]+/', '_', trim($container_path, '/')) ?: 'data';
-
-                        if (!isset($compose_data['services'][$service_key]['volumes'])) $compose_data['services'][$service_key]['volumes'] = [];
-                        $compose_data['services'][$service_key]['volumes'][] = $volume_name . ':' . $container_path;
-
-                        if (!isset($compose_data['volumes'])) $compose_data['volumes'] = [];
-                        $compose_data['volumes'][$volume_name] = [
-                            'driver' => 'local',
-                            'driver_opts' => [
-                                'type' => 'none',
-                                'o' => 'bind',
-                                'device' => $host_path,
-                            ],
-                        ];
-                    }
-                    }
-                }
                 // Handle port mapping. If a container port is provided in the form, it overrides any existing ports.
                 if ($container_port) {
                     // Overwrite any existing ports for the first service.
@@ -181,6 +153,39 @@ class AppLauncherHelper
                     }
                     $compose_data['services'][$service_key]['ports'][] = $port_mapping;
                 }
+                if ($container_port) {
+                    $compose_data['services'][$service_key]['expose'] = [(string)$container_port];
+                }
+
+                // --- Volume Mapping ---
+                if (!empty($volume_paths) && is_array($volume_paths)) {
+                    foreach ($volume_paths as $volume_map) {
+                        $container_path = $volume_map['container'] ?? null;
+                        $host_path = $volume_map['host'] ?? null;
+
+                        if ($container_path && $host_path) {
+                            if (!str_starts_with($container_path, '/')) {
+                                $container_path = '/' . $container_path;
+                            }
+                            // Generate volume name based on container path only. Docker-compose will prefix it with the project name.
+                            $volume_name = preg_replace('/[^\w.-]+/', '_', trim($container_path, '/')) ?: 'data';
+
+                            if (!isset($compose_data['services'][$service_key]['volumes'])) $compose_data['services'][$service_key]['volumes'] = [];
+                            $compose_data['services'][$service_key]['volumes'][] = $volume_name . ':' . $container_path;
+
+                            if (!isset($compose_data['volumes'])) $compose_data['volumes'] = [];
+                            $compose_data['volumes'][$volume_name] = [
+                                'driver' => 'local',
+                                'driver_opts' => [
+                                    'type' => 'none',
+                                    'o' => 'bind',
+                                    'device' => $host_path,
+                                ],
+                            ];
+                        }
+                    }
+                }
+
                 $is_first_service = false;
             }
         }

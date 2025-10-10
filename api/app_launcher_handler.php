@@ -261,74 +261,37 @@ try {
         }
         stream_message("Processing YAML from editor...");
 
-        // For standalone hosts, we need to ensure a restart policy exists for reliability.
-        // Instead of parsing and re-dumping (which can break formatting), we'll inject it via string manipulation.
-        $lines = explode("\n", $compose_content_from_editor);
-        $num_lines = count($lines);
-        $processed_lines = [];
-        $i = 0;
-        while ($i < $num_lines) {
-            $line = $lines[$i];
-            
-            // Find the start of the services block
-            if (preg_match('/^services:/', ltrim($line))) {
-                $processed_lines[] = $line;
-                $i++;
-                $service_indent = strlen($line) - strlen(ltrim($line));
-                
-                // Now process all services until we leave the block
-                while ($i < $num_lines) {
-                    $service_line = $lines[$i];
-                    $service_line_indent = strlen($service_line) - strlen(ltrim($service_line));
-                    
-                    // If we are out of the services block, break this inner loop
-                    if ($service_line_indent <= $service_indent && trim($service_line) !== '') {
-                        break;
-                    }
-                    
-                    // Is this a service definition?
-                    if ($service_line_indent > $service_indent && preg_match('/^\s*([a-zA-Z0-9_-]+):/', $service_line)) {
-                        // Yes. Scan its block to see if a restart policy exists.
-                        $service_block = [$service_line];
-                        $has_restart = false;
-                        $j = $i + 1;
-                        while ($j < $num_lines) {
-                            $lookahead_line = $lines[$j];
-                            $lookahead_indent = strlen($lookahead_line) - strlen(ltrim($lookahead_line));
-                            
-                            if ($lookahead_indent <= $service_line_indent && trim($lookahead_line) !== '') break;
-                            if (preg_match('/^\s+restart:/', $lookahead_line)) $has_restart = true;
-                            
-                            $service_block[] = $lookahead_line;
-                            $j++;
-                        }
-                        
-                        // Add the service name line
-                        $processed_lines[] = $service_block[0];
-                        // Inject restart policy if it wasn't found and host is standalone
-                        if (!$has_restart && !$is_swarm_manager) {
-                            $processed_lines[] = str_repeat(' ', $service_line_indent + 2) . 'restart: unless-stopped';
-                        }
-                        // Add the rest of the original block
-                        for ($k = 1; $k < count($service_block); $k++) {
-                            $processed_lines[] = $service_block[$k];
-                        }
-                        
-                        // Advance the main counter past this block
-                        $i = $j;
-                    } else {
-                        // Not a service definition, just a line inside the services block (e.g., a comment)
-                        $processed_lines[] = $service_line;
-                        $i++;
-                    }
+        // Parse the YAML from the editor to apply necessary modifications.
+        $compose_data = DockerComposeParser::YAMLLoad($compose_content_from_editor);
+        if (!isset($compose_data['services']) || !is_array($compose_data['services'])) {
+            throw new Exception("Invalid YAML from editor: 'services' key is missing or not an array.");
+        }
+
+        foreach (array_keys($compose_data['services']) as $service_key) {
+            if ($is_swarm_manager) {
+                // For Swarm, remove standalone-specific keys and ensure deploy key exists.
+                unset($compose_data['services'][$service_key]['container_name']);
+                unset($compose_data['services'][$service_key]['cpus']);
+                unset($compose_data['services'][$service_key]['mem_limit']);
+                unset($compose_data['services'][$service_key]['restart']);
+
+                // Ensure deploy.restart_policy exists for Swarm.
+                if (!isset($compose_data['services'][$service_key]['deploy']['restart_policy'])) {
+                    $compose_data['services'][$service_key]['deploy']['restart_policy'] = [
+                        'condition' => 'any'
+                    ];
                 }
             } else {
-                // Not in services block yet, just copy the line
-                $processed_lines[] = $line;
-                $i++;
+                // For standalone, ensure a restart policy exists for reliability.
+                if (!isset($compose_data['services'][$service_key]['restart'])) {
+                    $compose_data['services'][$service_key]['restart'] = 'unless-stopped';
+                }
             }
         }
-        $compose_content = implode("\n", $processed_lines);
+
+        // Re-dump the modified YAML to be used for deployment.
+        $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
+
     } else {
         throw new Exception("Invalid source type specified.");
     }
@@ -628,7 +591,6 @@ try {
     if ($replicas) $details_parts[] = "Replicas: {$replicas}";
     if ($cpu) $details_parts[] = "CPU: {$cpu}";
     if ($memory) $details_parts[] = "Memory: {$memory}";
-    if ($network) $details_parts[] = "Network: {$network}";
     if ($host_port && $container_port) $details_parts[] = "Port: {$host_port}:{$container_port}";
 
     if (!empty($volume_paths)) {

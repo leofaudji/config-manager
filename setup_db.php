@@ -107,6 +107,8 @@ CREATE TABLE `docker_hosts` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `last_cpu_report_at` timestamp NULL DEFAULT NULL,
   `last_report_at` timestamp NULL DEFAULT NULL,
+  `agent_status` varchar(20) DEFAULT 'Unknown',
+  `cpu_reader_status` varchar(20) DEFAULT 'Unknown',
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -290,12 +292,15 @@ CREATE TABLE `activity_log` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `host_id` (`host_id`),
+  KEY `username` (`username`),
   CONSTRAINT `activity_log_ibfk_1` FOREIGN KEY (`host_id`) REFERENCES `docker_hosts` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Default settings
 INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES ('default_group_id', '1'),
 ('history_cleanup_days', '30'),
+('cron_log_retention_days', '7'),
+('host_stats_history_cleanup_days', '7'),
 ('default_compose_path', '/var/www/html/compose-files'),
 ('yaml_output_path', '/var/www/html/config-manager/traefik-configs'),
 ('default_git_compose_path', 'docker-compose.yml'),
@@ -401,6 +406,8 @@ ALTER TABLE `application_stacks`
 ADD COLUMN `deploy_placement_constraint` VARCHAR(50) NULL DEFAULT NULL COMMENT 'Placement constraint for swarm deployment (e.g., node.role==worker)' AFTER `autoscaling_cpu_threshold_down`;
 
 ALTER TABLE `docker_hosts` ADD `swarm_status` VARCHAR(20) NULL DEFAULT 'unreachable' AFTER `description`;
+
+ALTER TABLE `docker_hosts` ADD `host_uptime_seconds` BIGINT NULL DEFAULT NULL COMMENT 'Host uptime in seconds, reported by the agent.' AFTER `swarm_status`;
 
 
 ";

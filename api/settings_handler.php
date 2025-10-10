@@ -30,6 +30,8 @@ try {
         'temp_directory_path' => rtrim(trim($_POST['temp_directory_path'] ?? sys_get_temp_dir()), '/'), // Already handled by form
         'git_persistent_repo_path' => rtrim(trim($_POST['git_persistent_repo_path'] ?? ''), '/'), // Already handled by form
         'cron_log_path' => rtrim(trim($_POST['cron_log_path'] ?? '/var/log'), '/'), // Already handled by form
+        'host_stats_history_cleanup_days' => (int)($_POST['host_stats_history_cleanup_days'] ?? 7),
+        'cron_log_retention_days' => (int)($_POST['cron_log_retention_days'] ?? 7),
         'log_cleanup_days' => (int)($_POST['log_cleanup_days'] ?? 7), // Already handled by form
         'health_check_global_enable' => isset($_POST['health_check_global_enable']) ? 1 : 0, // Handles unchecked case
         'git_integration_enabled' => isset($_POST['git_integration_enabled']) ? 1 : 0, // Handles unchecked case

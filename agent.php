@@ -192,6 +192,7 @@ function run_check_cycle() {
     $unhealthy_container_names = [];
     $unknown_container_names = [];
 
+    $all_running_container_ids = []; // NEW: To track all running container IDs
     log_message("  -> Menemukan " . count($containers) . " kontainer.");
 
     foreach ($containers as $container) {
@@ -200,6 +201,7 @@ function run_check_cycle() {
                 continue;
             }
             $running_container_count++;
+            $all_running_container_ids[] = $container['Id']; // NEW: Add ID to the list
 
             $container_id = $container['Id'];
             $container_name = ltrim($container['Names'][0] ?? $container_id, '/');
@@ -226,9 +228,10 @@ function run_check_cycle() {
                 $is_healthy = ($docker_health_status === 'healthy');
                 $log_message = "Container health status from Docker: {$docker_health_status}";
             } else {
-                // --- Alur 2: Fallback ke Pengecekan Port TCP (Struktur Baru yang Disederhanakan dan Diperbaiki) ---
-                
-                // Prioritas 2a: Coba cek SEMUA Published Port terlebih dahulu
+                // --- Alur 2: Fallback ke Pengecekan Port TCP ---
+
+                // Prioritas 2a: Coba cek SEMUA Published Port terlebih dahulu via host.docker.internal
+                // Ini adalah cara paling andal jika port dipublikasikan ke host.
                 $all_published_ports = [];
                 if (!empty($details['NetworkSettings']['Ports'])) {
                     foreach ($details['NetworkSettings']['Ports'] as $port_bindings) {
@@ -240,18 +243,21 @@ function run_check_cycle() {
                 $all_published_ports = array_unique($all_published_ports);
 
                 if (!empty($all_published_ports)) {
+                    log_message("    -> No HEALTHCHECK found. Trying published ports on host.docker.internal: " . implode(', ', $all_published_ports));
                     foreach ($all_published_ports as $port) {
+                        // host.docker.internal adalah DNS name khusus yang menunjuk ke host dari dalam container
                         $connection = @fsockopen('host.docker.internal', $port, $errno, $errstr, 2);
                         if (is_resource($connection)) {
                             $is_healthy = true;
                             $log_message = "TCP check on published port host.docker.internal:{$port}: OK";
                             fclose($connection);
-                            break; // Ditemukan port yang sehat, hentikan pengecekan port publik lainnya.
+                            break; // Ditemukan port yang sehat, hentikan pengecekan.
                         }
                     }
-                }
-                if ($is_healthy === null && !empty($all_published_ports)) {
-                    log_message("    -> Pengecekan pada semua port publik di host.docker.internal (" . implode(', ', $all_published_ports) . ") gagal. Melanjutkan ke pengecekan internal...");
+                    if ($is_healthy === null) {
+                        // Jika semua port publik sudah dicoba dan gagal, catat pesannya.
+                        $log_message = "TCP check on all published ports failed. Trying internal check...";
+                    }
                 }
 
                 // Prioritas 2b: Jika status masih belum ditentukan, coba port internal.
@@ -271,8 +277,23 @@ function run_check_cycle() {
                     }
 
                     // 2. Dapatkan port internal (prioritaskan 80/443, lalu port pertama, lalu tebakan)
-                    $exposed_ports = array_keys($details['NetworkSettings']['Ports']);
-                    $tcp_ports = array_map(fn($p) => (int)$p, array_filter($exposed_ports, fn($p) => str_ends_with($p, '/tcp')));
+                    $tcp_ports = [];
+                    if (isset($details['NetworkSettings']['Ports']) && is_array($details['NetworkSettings']['Ports'])) {
+                        $exposed_ports = array_keys($details['NetworkSettings']['Ports']);
+                        $tcp_ports = array_map(fn($p) => (int)$p, array_filter($exposed_ports, fn($p) => str_ends_with($p, '/tcp')));
+                    }
+
+                    // --- NEW: Also consider the private port from the first port binding ---
+                    // Ini penting untuk kontainer dari App Launcher yang tidak menggunakan 'expose'.
+                    if (empty($tcp_ports) && !empty($details['NetworkSettings']['Ports'])) {
+                        $first_binding_key = array_key_first($details['NetworkSettings']['Ports']);
+                        if ($first_binding_key && str_ends_with($first_binding_key, '/tcp')) {
+                            $private_port_from_binding = (int)$first_binding_key;
+                            if ($private_port_from_binding > 0) {
+                                $tcp_ports[] = $private_port_from_binding;
+                            }
+                        }
+                    }
 
                     if (in_array(80, $tcp_ports)) $internal_port = 80;
                     elseif (in_array(443, $tcp_ports)) $internal_port = 443;
@@ -291,7 +312,7 @@ function run_check_cycle() {
 
                     // 3. Lakukan pengecekan jika IP dan Port internal ditemukan
                     if ($internal_ip && $internal_port) {
-                        $network_id_to_join = key($details['NetworkSettings']['Networks']);
+                        $network_id_to_join = isset($details['NetworkSettings']['Networks']) ? key($details['NetworkSettings']['Networks']) : null;
                         $agent_container_id = getenv('HOSTNAME');
                         try {
                             $dockerClient->connectToNetwork($network_id_to_join, $agent_container_id);
@@ -320,7 +341,7 @@ function run_check_cycle() {
                     // 4. Jika tidak ada port yang terdeteksi tapi IP ada, lakukan ping check sebagai fallback
                     if ($is_healthy === null && $internal_ip) {
                         log_message("    -> No TCP port found. Attempting ICMP (ping) check on internal IP {$internal_ip}.");
-                        $network_id_to_join = key($details['NetworkSettings']['Networks']);
+                        $network_id_to_join = isset($details['NetworkSettings']['Networks']) ? key($details['NetworkSettings']['Networks']) : null;
                         $agent_container_id = getenv('HOSTNAME');
                         try {
                             $dockerClient->connectToNetwork($network_id_to_join, $agent_container_id);
@@ -406,9 +427,23 @@ function run_check_cycle() {
     log_message($summary_message);
     log_message("---");
 
+    // --- Get Host Uptime ---
+    $host_uptime_seconds = null;
+    // This reads the system uptime from the host, which is more reliable.
+    // The agent container needs read-only access to /proc on the host for this to work.
+    $proc_uptime_path = '/proc/uptime';
+    if (is_readable($proc_uptime_path)) {
+        $uptime_str = file_get_contents($proc_uptime_path);
+        $host_uptime_seconds = (int)explode(' ', $uptime_str)[0];
+    } else {
+        log_message("  -> WARN: Could not read {$proc_uptime_path}. Host uptime will not be reported. Ensure /proc is mounted read-only into the agent.");
+    }
+
     $report_payload = [
         'host_id' => (int)$hostId,
-        'reports' => $health_reports
+        'host_uptime_seconds' => $host_uptime_seconds,
+        'reports' => $health_reports,
+        'running_container_ids' => $all_running_container_ids // NEW: Send the complete list
     ]; 
 
     //log_message("  -> Preparing to send report with the following configuration:");
@@ -418,7 +453,7 @@ function run_check_cycle() {
     //log_message("    -> Auto-Healing: " . ($autoHealingEnabled ? 'AKTIF' : 'NONAKTIF'));
 
     //log_message("  -> Sending report payload: " . json_encode($report_payload));
-    postHealthData($configManagerUrl . '/api/health/report', $apiKey, $report_payload);
+    postHealthData($configManagerUrl . '/api/health-report', $apiKey, $report_payload);
 }
 
 // --- Logika Utama Eksekusi ---

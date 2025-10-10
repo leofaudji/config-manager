@@ -35,8 +35,7 @@ $router->get('/configurations/new', 'pages/router_form.php', ['auth', 'admin']);
 $router->get('/routers', 'pages/router_management.php', ['auth', 'admin']);
 $router->get('/history', 'pages/config_history.php', ['auth', 'admin']);
 $router->get('/history/compare', 'pages/compare_history.php', ['auth', 'admin']);
-$router->get('/history/cleanup', 'pages/cleanup_history.php', ['auth', 'admin']);
-$router->get('/logs', 'pages/activity_log.php', ['auth', 'admin']);
+$router->get('/logs', 'pages/log_viewer.php', ['auth', 'admin']);
 $router->get('/stats', 'pages/stats.php', ['auth', 'admin']);
 $router->get('/groups', 'pages/group_management.php', ['auth', 'admin']);
 $router->get('/middlewares', 'pages/middleware_management.php', ['auth', 'admin']);
@@ -52,7 +51,6 @@ $router->get('/container-management-workflow', 'pages/container_management_workf
 $router->get('/traffic-flow-workflow', 'pages/traffic_flow_workflow.php', ['auth', 'admin']);
 $router->get('/app-launcher-workflow', 'pages/app_launcher_workflow.php', ['auth', 'admin']);
 $router->get('/cron-jobs', 'pages/cron_management.php', ['auth', 'admin']);
-$router->get('/agent-logs', 'pages/agent_logs.php', ['auth', 'admin']);
 $router->get('/templates', 'pages/template_management.php', ['auth', 'admin']);
 $router->get('/traefik-hosts', 'pages/traefik_host_management.php', ['auth', 'admin']);
 $router->get('/app-launcher', 'pages/app_launcher.php', ['auth', 'admin']);
@@ -86,7 +84,7 @@ $router->get('/hosts/{id}/volumes', 'pages/host_volumes.php', ['auth', 'admin'])
 // --- API & Action Routes (untuk form submissions dan AJAX) ---
 
 $router->get('/api/data', 'get_data.php', ['auth']);
-$router->get('/api/logs', 'api/activity_log_handler.php', ['auth', 'admin']);
+$router->get('/api/logs/view', 'api/log_viewer_handler.php', ['auth', 'admin']);
 $router->get('/api/stats', 'api/stats_handler.php', ['auth', 'admin']);
 $router->get('/api/agent-logs', 'api/agent_logs.php', ['auth', 'admin']);
 $router->post('/api/notifications/test', 'api/notification_test_handler.php', ['auth', 'admin']);
@@ -134,7 +132,7 @@ $router->post('/api/hosts/{id}/containers/{container_id}/check-update', 'api/con
 $router->post('/api/webhook/deploy', 'api/webhook_handler.php'); // No auth middleware, security is via token
 $router->post('/api/webhook/regenerate-token', 'api/webhook_token_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/logs', 'api/container_log_handler.php', ['auth', 'admin']);
-$router->post('/api/health/report', 'api/health_report_handler.php'); // For health agent callbacks
+$router->post('/api/health-report', 'api/health_report_handler.php'); // For health agent callbacks
 $router->post('/api/log/ingest', 'api/log_ingest_handler.php'); // For receiving logs from agents
 $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin']);
 $router->post('/api/routers/bulk-move', 'api/router_bulk_handler.php', ['auth', 'admin']);

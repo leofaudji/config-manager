@@ -31,6 +31,25 @@ $response = [
 
 $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 
+function format_uptime(int $seconds): string {
+    if ($seconds <= 0) {
+        return 'N/A';
+    }
+
+    $days = floor($seconds / 86400);
+    $seconds %= 86400;
+    $hours = floor($seconds / 3600);
+    $seconds %= 3600;
+    $minutes = floor($seconds / 60);
+
+    $parts = [];
+    if ($days > 0) $parts[] = "{$days}d";
+    if ($hours > 0) $parts[] = "{$hours}h";
+    if ($minutes > 0) $parts[] = "{$minutes}m";
+
+    return empty($parts) ? '< 1m' : implode(' ', $parts);
+}
+
 function getHostSwarmStatus(array $host): string {
     try {
         $dockerClient = new DockerClient($host);
@@ -562,6 +581,7 @@ elseif ($type === 'hosts') {
     $html = '';
     while ($host = $result->fetch_assoc()) {
         $uptime_status = 'N/A';
+        $uptime_timestamp = $host['host_uptime_seconds'] ?? 0;
         $manager_status_text = '';
         $swarm_status_for_db = 'unreachable'; // Default value
 
@@ -570,6 +590,11 @@ elseif ($type === 'hosts') {
 
 
         $connection_status_badge = '<span class="badge bg-secondary">Unknown</span>';
+
+        // Use the accurate uptime from the database if available
+        if ($uptime_timestamp > 0) {
+            $uptime_status = format_uptime($uptime_timestamp);
+        }
 
         try {
             $dockerClient = new DockerClient($host);
@@ -611,43 +636,59 @@ elseif ($type === 'hosts') {
                 $swarm_status_for_db = 'standalone';
             }
 
-            // Get uptime from oldest running container
-            $containers = $dockerClient->listContainers();
-            $oldest_container_creation = PHP_INT_MAX;
-            $oldest_container = null;
-            $running_containers_list = array_filter($containers, fn($c) => $c['State'] === 'running');
-
-            if (!empty($running_containers_list)) {
-                foreach ($running_containers_list as $container) {
-                    if ($container['Created'] < $oldest_container_creation) {
-                        $oldest_container_creation = $container['Created'];
-                        $oldest_container = $container;
-                    }
-                }
-                if ($oldest_container) {
-                    $uptime_status = $oldest_container['Status'];
-                }
-            }
         } catch (Exception $e) {
-            $uptime_status = 'Error';
+            // Don't overwrite uptime status if we already have it from the DB
+            if ($uptime_timestamp <= 0) $uptime_status = 'Error';
             $connection_status_badge = '<span class="badge bg-danger" title="' . htmlspecialchars($e->getMessage()) . '">Unreachable</span>';
             $swarm_status_for_db = 'unreachable';
         }
         $stmt_update_status->bind_param("si", $swarm_status_for_db, $host['id']);
         $stmt_update_status->execute();
 
-        $html .= '<tr>';
+        // --- Agent Status Badge ---
+        $agent_status = $host['agent_status'] ?? 'Unknown';
+        $agent_badge_class = 'secondary';
+        $agent_badge_title = 'Status of the health agent is unknown.';
+        if ($agent_status === 'Running') {
+            $agent_badge_class = 'success';
+            $agent_badge_title = 'Health agent is running.';
+        } elseif ($agent_status === 'Not Deployed') {
+            $agent_badge_class = 'danger';
+            $agent_badge_title = 'Health agent is not deployed.';
+        } elseif ($agent_status === 'Stopped') {
+            $agent_badge_class = 'warning';
+            $agent_badge_title = 'Health agent container is stopped.';
+        }
+
+        // --- CPU Reader Status Badge ---
+        $cpu_reader_status = $host['cpu_reader_status'] ?? 'Unknown';
+        $cpu_reader_badge_class = 'secondary';
+        $cpu_reader_badge_title = 'Status of the CPU reader agent is unknown.';
+        if ($cpu_reader_status === 'Running') {
+            $cpu_reader_badge_class = 'success';
+            $cpu_reader_badge_title = 'CPU reader agent is running.';
+        } elseif ($cpu_reader_status === 'Not Deployed') {
+            $cpu_reader_badge_class = 'danger';
+            $cpu_reader_badge_title = 'CPU reader agent is not deployed.';
+        } elseif ($cpu_reader_status === 'Stopped') {
+            $cpu_reader_badge_class = 'warning';
+            $cpu_reader_badge_title = 'CPU reader agent container is stopped.';
+        }
+
+        $html .= '<tr data-sort-name="' . htmlspecialchars(strtolower($host['name'])) . '" data-sort-status="' . $swarm_status_for_db . '" data-sort-uptime="' . $uptime_timestamp . '">';
         $html .= '<td><a href="' . base_url('/hosts/' . $host['id'] . '/details') . '">' . htmlspecialchars($host['name']) . '</a><br><small class="text-muted">' . $manager_status_text . '</small></td>';
-        $html .= '<td><code>' . htmlspecialchars($host['docker_api_url']) . '</code></td>';
         $html .= '<td>' . $connection_status_badge . '</td>';
         $html .= '<td>' . $uptime_status . '</td>';
+        $html .= '<td><code>' . htmlspecialchars($host['docker_api_url']) . '</code></td>';
         
         $tls_badge = $host['tls_enabled'] 
             ? '<span class="badge bg-success">Enabled</span>' 
             : '<span class="badge bg-secondary">Disabled</span>';
         $html .= '<td>' . $tls_badge . '</td>';
 
-        $html .= '<td>' . htmlspecialchars($host['description'] ?? '') . '</td>';
+        $html .= '<td><span class="badge bg-' . $agent_badge_class . '" data-bs-toggle="tooltip" title="' . $agent_badge_title . '">' . $agent_status . '</span></td>';
+        $html .= '<td><span class="badge bg-' . $cpu_reader_badge_class . '" data-bs-toggle="tooltip" title="' . $cpu_reader_badge_title . '">' . $cpu_reader_status . '</span></td>';
+
         $html .= '<td>' . $host['updated_at'] . '</td>';
         $html .= '<td class="text-end">';
         if ($manager_status_text === 'Worker' || str_starts_with($manager_status_text, 'Worker for:')) {

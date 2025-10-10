@@ -247,15 +247,6 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <span class="nav-link-text">Statistics</span>
                 </a>
             </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/agent-logs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Health Agent Logs">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-journal-text icon-default"></i>
-                        <i class="bi bi-journal-richtext icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Agent Logs</span>
-                </a>
-            </li>
 
             <li class="sidebar-header">System</li>
             <li class="nav-item">
@@ -268,12 +259,12 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/logs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Activity Log">
+                <a class="nav-link" href="<?= base_url('/logs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Log Viewer">
                     <span class="icon-wrapper">
-                        <i class="bi bi-card-list icon-default"></i>
-                        <i class="bi bi-card-checklist icon-active"></i>
+                        <i class="bi bi-journals icon-default"></i>
+                        <i class="bi bi-journals icon-active"></i>
                     </span>
-                    <span class="nav-link-text">Activity Log</span>
+                    <span class="nav-link-text">Log Viewer</span>
                 </a>
             </li>
             <li class="nav-item">

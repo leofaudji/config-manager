@@ -1,458 +1,383 @@
 <?php
 require_once __DIR__ . '/../includes/bootstrap.php';
+
 $conn = Database::getInstance()->getConnection();
 
-// Ambil pengaturan saat ini
-$settings = [];
+// Fetch all settings
 $settings_result = $conn->query("SELECT * FROM settings");
+$settings = [];
 while ($row = $settings_result->fetch_assoc()) {
     $settings[$row['setting_key']] = $row['setting_value'];
 }
 
-// Ambil daftar grup untuk dropdown
-$traefik_hosts_result = $conn->query("SELECT id, name FROM traefik_hosts ORDER BY name ASC");
+// Fetch groups for dropdown
 $groups_result = $conn->query("SELECT id, name FROM `groups` ORDER BY name ASC");
-// Ambil daftar middleware untuk dropdown
-$middlewares_result = $conn->query("SELECT id, name FROM middlewares ORDER BY name ASC");
+$groups = $groups_result->fetch_all(MYSQLI_ASSOC);
+
+// Fetch Traefik hosts for dropdown
+$traefik_hosts_result = $conn->query("SELECT id, name FROM `traefik_hosts` ORDER BY name ASC");
+$traefik_hosts = $traefik_hosts_result->fetch_all(MYSQLI_ASSOC);
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
-<h3>System Settings</h3>
-<hr>
-
-<div class="card">
-    <div class="card-body">
-        <form id="main-form" action="<?= base_url('/settings') ?>" method="POST" data-redirect="/settings">
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="default_group_id" class="form-label">Default Group for New Items</label>
-                        <select class="form-select" id="default_group_id" name="default_group_id" required>
-                            <?php mysqli_data_seek($groups_result, 0); ?>
-                            <?php while($group = $groups_result->fetch_assoc()): ?>
-                                <option value="<?= htmlspecialchars($group['id']) ?>" <?= ($settings['default_group_id'] ?? 1) == $group['id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($group['name']) ?>
-                                </option>
-                            <?php endwhile; ?>
-                        </select>
-                        <small class="form-text text-muted">Grup ini akan dipilih secara otomatis saat membuat Router atau Service baru.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="default_router_middleware" class="form-label">Default Middleware for New Routers</label>
-                        <select class="form-select" id="default_router_middleware" name="default_router_middleware" required>
-                            <option value="0">-- None --</option>
-                            <?php while($mw = $middlewares_result->fetch_assoc()): ?>
-                                <option value="<?= htmlspecialchars($mw['id']) ?>" <?= ($settings['default_router_middleware'] ?? 0) == $mw['id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($mw['name']) ?>
-                                </option>
-                            <?php endwhile; ?>
-                        </select>
-                        <small class="form-text text-muted">Middleware ini akan otomatis terpasang saat membuat Router baru.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="history_cleanup_days" class="form-label">Deployment History Cleanup Threshold (days)</label>
-                        <input type="number" class="form-control" id="history_cleanup_days" name="history_cleanup_days" value="<?= htmlspecialchars($settings['history_cleanup_days'] ?? 30) ?>" min="1" required>
-                        <small class="form-text text-muted">Archived deployment history older than this will be deleted during cleanup.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="default_router_prefix" class="form-label">Default Router Name Prefix</label>
-                        <input type="text" class="form-control" id="default_router_prefix" name="default_router_prefix" value="<?= htmlspecialchars($settings['default_router_prefix'] ?? 'router-') ?>">
-                        <small class="form-text text-muted">This text will be pre-filled when creating a new router.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="default_service_prefix" class="form-label">Default Service Name Prefix</label>
-                        <input type="text" class="form-control" id="default_service_prefix" name="default_service_prefix" value="<?= htmlspecialchars($settings['default_service_prefix'] ?? 'service-') ?>">
-                        <small class="form-text text-muted">This text will be pre-filled when creating a new service.</small>
-                    </div>
-                </div>
-            </div>
-
-            <hr>
-            <h5 class="mb-3">Deployment Settings</h5>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="yaml_output_path" class="form-label">Traefik Dynamic Config Base Path</label>
-                        <input type="text" class="form-control" id="yaml_output_path" name="yaml_output_path" value="<?= htmlspecialchars($settings['yaml_output_path'] ?? '/var/www/html/config-manager/traefik-configs') ?>">
-                        <small class="form-text text-muted">Base path to store generated `dynamic.yml` files. A subdirectory will be created for each Traefik Host.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="active_traefik_host_id" class="form-label">Active Traefik Host</label>
-                        <select class="form-select" id="active_traefik_host_id" name="active_traefik_host_id">
-                            <?php mysqli_data_seek($traefik_hosts_result, 0); ?>
-                            <?php while($host = $traefik_hosts_result->fetch_assoc()): ?>
-                                <option value="<?= htmlspecialchars($host['id']) ?>" <?= ($settings['active_traefik_host_id'] ?? 0) == $host['id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($host['name']) ?>
-                                </option>
-                            <?php endwhile; ?>
-                        </select>
-                        <small class="form-text text-muted">Select the host whose configuration will be generated. Routers/Services in groups not assigned to a specific host will always be included.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="default_compose_path" class="form-label">Default Standalone Compose Path</label>
-                        <input type="text" class="form-control" id="default_compose_path" name="default_compose_path" value="<?= htmlspecialchars($settings['default_compose_path'] ?? '/var/www/html/compose-files') ?>">
-                        <small class="form-text text-muted">Base path on this server to store generated compose files for standalone hosts.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="default_git_compose_path" class="form-label">Default Git Compose Path</label>
-                        <input type="text" class="form-control" id="default_git_compose_path" name="default_git_compose_path" value="<?= htmlspecialchars($settings['default_git_compose_path'] ?? 'docker-compose.yml') ?>">
-                        <small class="form-text text-muted">Default path to the compose file within a Git repository (e.g., `deploy/docker-compose.yml`).</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="temp_directory_path" class="form-label">Temporary Directory Path</label>
-                        <input type="text" class="form-control" id="temp_directory_path" name="temp_directory_path" value="<?= htmlspecialchars($settings['temp_directory_path'] ?? sys_get_temp_dir()) ?>">
-                        <small class="form-text text-muted">Base path for temporary files, like Git clones. Must be writable by the web server.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="git_persistent_repo_path" class="form-label">Git Persistent Repo Path (Optional)</label>
-                        <input type="text" class="form-control" id="git_persistent_repo_path" name="git_persistent_repo_path" value="<?= htmlspecialchars($settings['git_persistent_repo_path'] ?? '') ?>" placeholder="/opt/config-manager/repo">
-                        <small class="form-text text-muted">Path to store a persistent Git clone. Improves performance by pulling instead of re-cloning. Leave blank to use temporary directories.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="cron_log_path" class="form-label">Cron Job Log Path</label>
-                        <input type="text" class="form-control" id="cron_log_path" name="cron_log_path" value="<?= htmlspecialchars($settings['cron_log_path'] ?? '/var/log') ?>">
-                        <small class="form-text text-muted">Absolute path to the directory where cron job logs (`collect_stats.log`, `autoscaler.log`) will be stored.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="log_cleanup_days" class="form-label">Log Cleanup Threshold (days)</label>
-                        <input type="number" class="form-control" id="log_cleanup_days" name="log_cleanup_days" value="<?= htmlspecialchars($settings['log_cleanup_days'] ?? 7) ?>" min="0">
-                        <small class="form-text text-muted">Automatically delete cron job log files older than this many days. Set to 0 to disable.</small>
-                    </div>
-                </div>
-            </div>
-
-            <hr>
-            <h5 class="mb-3">Health Check & Auto-Healing</h5>
-            <div class="row">
-                <div class="col-md-12">
-                    <div class="form-check form-switch mb-3">
-                        <input type="hidden" name="health_check_global_enable" value="0">
-                        <input class="form-check-input" type="checkbox" role="switch" id="health_check_global_enable" name="health_check_global_enable" value="1" <?= ((int)($settings['health_check_global_enable'] ?? 0)) === 1 ? 'checked' : '' ?>>
-                        <label class="form-check-label" for="health_check_global_enable">Enable Health Check for ALL Services</label>
-                        <small class="form-text text-muted d-block"><strong>Warning:</strong> When enabled, the system will attempt to monitor every service, ignoring individual health check settings. This is useful for ensuring all services are monitored by default. A service must still have a valid health check endpoint (HTTP or Docker) to be monitored.</small>
-                    </div>
-                    <div class="form-check form-switch mb-3">
-                        <input type="hidden" name="auto_healing_enabled" value="0">
-                        <input class="form-check-input" type="checkbox" role="switch" id="auto_healing_enabled" name="auto_healing_enabled" value="1" <?= ((int)($settings['auto_healing_enabled'] ?? 0)) === 1 ? 'checked' : '' ?>>
-                        <label class="form-check-label" for="auto_healing_enabled">Enable Auto-Healing by Health Agent</label>
-                        <small class="form-text text-muted d-block">
-                            <strong>Penting:</strong> Jika diaktifkan, `health-agent` di setiap host akan secara otomatis me-restart kontainer yang terdeteksi `unhealthy`.
-                        </small>
-                    </div>
-                </div>
-                <div class="col-md-12">
-                    <p class="text-muted small">Pengaturan ambang batas berikut berlaku untuk kontainer yang dipantau oleh "Global Container Health Monitoring" (yang tidak memiliki pengaturan per-service).</p>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="health_check_default_healthy_threshold" class="form-label">Default Healthy Threshold</label>
-                        <input type="number" class="form-control" id="health_check_default_healthy_threshold" name="health_check_default_healthy_threshold" value="<?= htmlspecialchars($settings['health_check_default_healthy_threshold'] ?? 2) ?>" min="1">
-                        <small class="form-text text-muted">Jumlah keberhasilan berturut-turut agar kontainer dianggap `healthy`.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="health_check_default_unhealthy_threshold" class="form-label">Default Unhealthy Threshold</label>
-                        <input type="number" class="form-control" id="health_check_default_unhealthy_threshold" name="health_check_default_unhealthy_threshold" value="<?= htmlspecialchars($settings['health_check_default_unhealthy_threshold'] ?? 3) ?>" min="1">
-                        <small class="form-text text-muted">Jumlah kegagalan berturut-turut agar kontainer dianggap `unhealthy` dan memicu auto-healing.</small>
-                    </div>
-                </div>
-                <div class="col-md-12">
-                    <div class="mb-3">
-                        <label for="health_agent_api_token" class="form-label">Health Agent API Token</label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" id="health_agent_api_token" name="health_agent_api_token" value="<?= htmlspecialchars($settings['health_agent_api_token'] ?? '') ?>" placeholder="A strong, secret token">
-                             <button class="btn btn-outline-secondary" type="button" id="regenerate-agent-token-btn"><i class="bi bi-arrow-repeat"></i> Regenerate</button>
-                        </div>
-                        <small class="form-text text-muted">Token rahasia yang digunakan oleh `health-agent` untuk mengirim laporan. Harus sama di semua agen.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="app_base_url" class="form-label">Application Base URL</label>
-                        <input type="text" class="form-control" id="app_base_url" name="app_base_url" value="<?= htmlspecialchars($settings['app_base_url'] ?? base_url()) ?>" placeholder="e.g., http://config-manager.internal">
-                        <small class="form-text text-muted">URL yang dapat diakses oleh agen remote untuk mengirim laporan.</small>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="health_agent_image" class="form-label">Health Agent Image Name</label>
-                        <input type="text" class="form-control" id="health_agent_image" name="health_agent_image" value="<?= htmlspecialchars($settings['health_agent_image'] ?? 'your-registry/cm-health-agent:latest') ?>" placeholder="e.g., my-repo/cm-health-agent:latest">
-                        <small class="form-text text-muted">Nama image Docker yang akan digunakan untuk men-deploy health agent.</small>
-                    </div>
-                </div>
-            </div>
-
-            <hr>
-            <h5 class="mb-3">Git Integration</h5>
-            <div class="form-check form-switch mb-3">
-                <input type="hidden" name="git_integration_enabled" value="0">
-                <input class="form-check-input" type="checkbox" role="switch" id="git_integration_enabled" name="git_integration_enabled" value="1" <?= ($settings['git_integration_enabled'] ?? 0) == 1 ? 'checked' : '' ?>>
-                <label class="form-check-label" for="git_integration_enabled">Enable Git Integration</label>
-                <small class="form-text text-muted d-block">When enabled, "Generate & Deploy" will commit and push `dynamic.yml` to a Git repository instead of writing to a local file.</small>
-            </div>
-
-            <div id="git-settings-container" style="<?= ($settings['git_integration_enabled'] ?? 0) == 1 ? '' : 'display: none;' ?>">
-                <div class="row">
-                    <div class="col-md-12">
-                        <div class="mb-3">
-                            <label for="git_repository_url" class="form-label">Repository URL (HTTPS or SSH)</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="git_repository_url" name="git_repository_url" value="<?= htmlspecialchars($settings['git_repository_url'] ?? '') ?>" placeholder="e.g., git@github.com:user/repo.git or https://github.com/user/repo.git">
-                                <button class="btn btn-outline-secondary" type="button" id="test-git-settings-btn">Test Connection</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="git_branch" class="form-label">Branch Name</label>
-                            <input type="text" class="form-control" id="git_branch" name="git_branch" value="<?= htmlspecialchars($settings['git_branch'] ?? 'main') ?>">
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="git_ssh_key_path" class="form-label">Absolute Path to SSH Private Key</label>
-                            <input type="text" class="form-control" id="git_ssh_key_path" name="git_ssh_key_path" value="<?= htmlspecialchars($settings['git_ssh_key_path'] ?? '/var/www/.ssh/id_rsa') ?>">
-                            <small class="form-text text-muted">Required for cloning repositories using SSH URLs (e.g., `git@...`).</small>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="git_pat" class="form-label">Personal Access Token (for HTTPS)</label>
-                            <input type="password" class="form-control" id="git_pat" name="git_pat" value="<?= htmlspecialchars($settings['git_pat'] ?? '') ?>" placeholder="Enter token for HTTPS repos">
-                            <small class="form-text text-muted">Required for cloning private repositories using HTTPS URLs. Leave username blank and use the token as the password.</small>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="git_user_name" class="form-label">Git Commit User Name</label>
-                            <input type="text" class="form-control" id="git_user_name" name="git_user_name" value="<?= htmlspecialchars($settings['git_user_name'] ?? 'Config Manager') ?>">
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label for="git_user_email" class="form-label">Git Commit User Email</label>
-                            <input type="text" class="form-control" id="git_user_email" name="git_user_email" value="<?= htmlspecialchars($settings['git_user_email'] ?? 'bot@config-manager.local') ?>">
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <hr>
-            <h5 class="mb-3">Webhook Automation</h5>
-            <div class="alert alert-info">
-                <i class="bi bi-info-circle-fill"></i>
-                Use this webhook URL in your Git provider (e.g., GitHub, GitLab) to automatically trigger a "Generate & Deploy" action when you push to the configured branch.
-            </div>
-            <div class="mb-3">
-                <label for="webhook-url" class="form-label">Webhook URL</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="webhook-url" value="<?= base_url('/api/webhook/deploy?token=') . htmlspecialchars($settings['webhook_secret_token'] ?? '') ?>" readonly>
-                    <button class="btn btn-outline-secondary copy-btn" type="button" data-clipboard-text="<?= base_url('/api/webhook/deploy?token=') . htmlspecialchars($settings['webhook_secret_token'] ?? '') ?>" title="Copy URL"><i class="bi bi-clipboard"></i></button>
-                </div>
-            </div>
-            <div class="mb-3">
-                <button type="button" class="btn btn-warning" id="regenerate-webhook-token-btn">
-                    <i class="bi bi-arrow-repeat"></i> Regenerate Secret Token
-                </button>
-                <small class="form-text text-muted d-block mt-1">Regenerating the token will invalidate the old URL. You must update your Git provider with the new URL.</small>
-            </div>
-
-            <hr>
-            <h5 class="mb-3">Notification Server Integration</h5>
-            <div class="form-check form-switch mb-3">
-                <input type="hidden" name="notification_enabled" value="0">
-                <input class="form-check-input" type="checkbox" role="switch" id="notification_enabled" name="notification_enabled" value="1" <?= ((int)($settings['notification_enabled'] ?? 0)) === 1 ? 'checked' : '' ?>>
-                <label class="form-check-label" for="notification_enabled">Enable Notifications</label>
-                <small class="form-text text-muted d-block">Send a notification to an external server when a service or container becomes unhealthy.</small>
-            </div>
-
-            <div id="notification-settings-container" style="<?= ((int)($settings['notification_enabled'] ?? 0)) === 1 ? '' : 'display: none;' ?>">
-                <div class="row">
-                    <div class="col-md-12">
-                        <div class="mb-3">
-                            <label for="notification_server_url" class="form-label">Notification Server URL</label>
-                            <div class="input-group">
-                                <input type="url" class="form-control" id="notification_server_url" name="notification_server_url" value="<?= htmlspecialchars($settings['notification_server_url'] ?? '') ?>" placeholder="https://your-notification-server.com/webhook">
-                                <button class="btn btn-outline-secondary" type="button" id="test-notification-btn">Test</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-12">
-                        <div class="mb-3">
-                            <label for="notification_secret_token" class="form-label">Secret Token</label>
-                            <input type="password" class="form-control" id="notification_secret_token" name="notification_secret_token" value="<?= htmlspecialchars($settings['notification_secret_token'] ?? '') ?>" placeholder="A secret token to authenticate requests">
-                            <small class="form-text text-muted">This token will be sent in the `X-Secret-Token` header with each notification.</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-
-            <hr>
-            <button type="submit" class="btn btn-primary">Save Settings</button>
-        </form>
-    </div>
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-sliders"></i> General Settings</h1>
 </div>
 
-<?php
-$conn->close();
-?>
+<form id="main-form" action="<?= base_url('/settings') ?>" method="POST" data-redirect="/settings">
+
+    <!-- Traefik & YAML Configuration -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-file-earmark-code-fill me-2"></i>Traefik & YAML Configuration</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="active_traefik_host_id" class="form-label">Active Traefik Host</label>
+                    <select class="form-select" id="active_traefik_host_id" name="active_traefik_host_id">
+                        <?php foreach ($traefik_hosts as $host): ?>
+                            <option value="<?= $host['id'] ?>" <?= ($settings['active_traefik_host_id'] ?? 1) == $host['id'] ? 'selected' : '' ?>><?= htmlspecialchars($host['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <small class="form-text text-muted">Determines which Traefik Host's configuration is generated by default.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="yaml_output_path" class="form-label">Traefik Dynamic Config Base Path</label>
+                    <input type="text" class="form-control" id="yaml_output_path" name="yaml_output_path" value="<?= htmlspecialchars($settings['yaml_output_path'] ?? '/var/www/html/config-manager/traefik-configs') ?>" required>
+                    <small class="form-text text-muted">The absolute base path on the server where generated `dynamic.yml` files will be stored.</small>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="default_router_prefix" class="form-label">Default Router Prefix</label>
+                    <input type="text" class="form-control" id="default_router_prefix" name="default_router_prefix" value="<?= htmlspecialchars($settings['default_router_prefix'] ?? 'router-') ?>">
+                    <small class="form-text text-muted">Prefix automatically added to new router names.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="default_service_prefix" class="form-label">Default Service Prefix</label>
+                    <input type="text" class="form-control" id="default_service_prefix" name="default_service_prefix" value="<?= htmlspecialchars($settings['default_service_prefix'] ?? 'service-') ?>">
+                    <small class="form-text text-muted">Prefix automatically added to new service names.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Health Check & Agent Configuration -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-heart-pulse-fill me-2"></i>Health Check & Agent Configuration</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="app_base_url" class="form-label">Application Base URL</label>
+                    <input type="url" class="form-control" id="app_base_url" name="app_base_url" value="<?= htmlspecialchars($settings['app_base_url'] ?? '') ?>" placeholder="http://config-manager.example.com" required>
+                    <small class="form-text text-muted">The public URL of this Config Manager application. Used by agents to report back.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="health_agent_image" class="form-label">Health Agent Image</label>
+                    <input type="text" class="form-control" id="health_agent_image" name="health_agent_image" value="<?= htmlspecialchars($settings['health_agent_image'] ?? 'your-registry/config-manager-agent:latest') ?>" required>
+                    <small class="form-text text-muted">The full name of the Health Agent Docker image to deploy on hosts.</small>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="health_agent_api_token" class="form-label">Health Agent API Token</label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="health_agent_api_token" name="health_agent_api_token" value="<?= htmlspecialchars($settings['health_agent_api_token'] ?? '') ?>" required>
+                        <button class="btn btn-outline-secondary" type="button" id="toggle-token-visibility"><i class="bi bi-eye"></i></button>
+                        <button class="btn btn-outline-secondary" type="button" id="generate-token-btn" title="Generate a new secure token"><i class="bi bi-arrow-clockwise"></i></button>
+                    </div>
+                    <small class="form-text text-muted">A secret token for agents to authenticate with the main server.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Agent Log Levels to Send</label>
+                    <div class="d-flex flex-wrap">
+                        <?php
+                        $log_levels = ['INFO', 'WARN', 'ERROR', 'FATAL', 'UNHEALTHY'];
+                        $selected_levels = explode(',', $settings['agent_log_levels'] ?? 'ERROR,FATAL,UNHEALTHY');
+                        foreach ($log_levels as $level): ?>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" name="agent_log_levels[]" value="<?= $level ?>" id="log_level_<?= strtolower($level) ?>" <?= in_array($level, $selected_levels) ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="log_level_<?= strtolower($level) ?>"><?= $level ?></label>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <small class="form-text text-muted">Select which log levels the agent should send to the central server.</small>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <div class="form-check form-switch mt-4 pt-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="health_check_global_enable" name="health_check_global_enable" <?= ($settings['health_check_global_enable'] ?? 0) == 1 ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="health_check_global_enable">Enable Global Health Checks</label>
+                        <small class="form-text text-muted d-block">Force checks on all services, ignoring their individual settings.</small>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="form-check form-switch mt-4 pt-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="auto_healing_enabled" name="auto_healing_enabled" <?= ($settings['auto_healing_enabled'] ?? 0) == 1 ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="auto_healing_enabled">Enable Auto Healing</label>
+                        <small class="form-text text-muted d-block">Automatically restart containers/services marked as unhealthy.</small>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="health_check_default_healthy_threshold" class="form-label">Healthy Threshold</label>
+                    <input type="number" class="form-control" id="health_check_default_healthy_threshold" name="health_check_default_healthy_threshold" value="<?= (int)($settings['health_check_default_healthy_threshold'] ?? 2) ?>" min="1">
+                    <small class="form-text text-muted">Number of consecutive successes to be marked as 'healthy'.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="health_check_default_unhealthy_threshold" class="form-label">Unhealthy Threshold</label>
+                    <input type="number" class="form-control" id="health_check_default_unhealthy_threshold" name="health_check_default_unhealthy_threshold" value="<?= (int)($settings['health_check_default_unhealthy_threshold'] ?? 3) ?>" min="1">
+                    <small class="form-text text-muted">Number of consecutive failures to be marked as 'unhealthy'.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Git Integration -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-git me-2"></i>Git Integration</h5>
+        </div>
+        <div class="card-body">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="git_integration_enabled" name="git_integration_enabled" <?= ($settings['git_integration_enabled'] ?? 0) == 1 ? 'checked' : '' ?>>
+                <label class="form-check-label" for="git_integration_enabled">Enable Git Integration for Stack Sync</label>
+            </div>
+            <div id="git-settings-container" class="<?= ($settings['git_integration_enabled'] ?? 0) == 1 ? '' : 'd-none' ?>">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="git_repository_url" class="form-label">Git Repository URL</label>
+                        <input type="text" class="form-control" id="git_repository_url" name="git_repository_url" value="<?= htmlspecialchars($settings['git_repository_url'] ?? '') ?>" placeholder="https://github.com/user/repo.git or git@github.com:user/repo.git">
+                        <small class="form-text text-muted">The URL of the Git repository for backing up stack configurations.</small>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="git_branch" class="form-label">Branch</label>
+                        <input type="text" class="form-control" id="git_branch" name="git_branch" value="<?= htmlspecialchars($settings['git_branch'] ?? 'main') ?>">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="git_user_name" class="form-label">Git Commit User Name</label>
+                        <input type="text" class="form-control" id="git_user_name" name="git_user_name" value="<?= htmlspecialchars($settings['git_user_name'] ?? 'Config Manager') ?>">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="git_user_email" class="form-label">Git Commit User Email</label>
+                        <input type="email" class="form-control" id="git_user_email" name="git_user_email" value="<?= htmlspecialchars($settings['git_user_email'] ?? 'bot@config-manager.local') ?>">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="git_ssh_key_path" class="form-label">Git SSH Key Path (for SSH URLs)</label>
+                        <input type="text" class="form-control" id="git_ssh_key_path" name="git_ssh_key_path" value="<?= htmlspecialchars($settings['git_ssh_key_path'] ?? '') ?>" placeholder="/root/.ssh/id_rsa">
+                        <small class="form-text text-muted">Absolute path to the private SSH key on the server.</small>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="git_pat" class="form-label">Personal Access Token (for HTTPS URLs)</label>
+                        <input type="password" class="form-control" id="git_pat" name="git_pat" value="<?= htmlspecialchars($settings['git_pat'] ?? '') ?>">
+                        <small class="form-text text-muted">A PAT with repo access. Used as the password for HTTPS authentication.</small>
+                    </div>
+                </div>
+                <button type="button" id="test-git-connection-btn" class="btn btn-outline-secondary"><i class="bi bi-plug-fill"></i> Test Git Connection</button>
+                <div id="git-test-result" class="mt-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-bell-fill me-2"></i>Notifications</h5>
+        </div>
+        <div class="card-body">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="notification_enabled" name="notification_enabled" <?= ($settings['notification_enabled'] ?? 0) == 1 ? 'checked' : '' ?>>
+                <label class="form-check-label" for="notification_enabled">Enable Notifications</label>
+            </div>
+            <div id="notification-settings-container" class="<?= ($settings['notification_enabled'] ?? 0) == 1 ? '' : 'd-none' ?>">
+                <div class="mb-3">
+                    <label for="notification_server_url" class="form-label">Notification Server URL</label>
+                    <input type="url" class="form-control" id="notification_server_url" name="notification_server_url" value="<?= htmlspecialchars($settings['notification_server_url'] ?? '') ?>" placeholder="https://your-ntfy-server.com/topic">
+                    <small class="form-text text-muted">The URL of your ntfy.sh server and topic.</small>
+                </div>
+                <div class="mb-3">
+                    <label for="notification_secret_token" class="form-label">Authentication Token (Optional)</label>
+                    <input type="password" class="form-control" id="notification_secret_token" name="notification_secret_token" value="<?= htmlspecialchars($settings['notification_secret_token'] ?? '') ?>">
+                    <small class="form-text text-muted">If your ntfy topic requires authentication, enter the token here.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System & Paths -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-folder-fill me-2"></i>System & Paths</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="default_compose_path" class="form-label">Default Standalone Compose Path</label>
+                    <input type="text" class="form-control" id="default_compose_path" name="default_compose_path" value="<?= htmlspecialchars($settings['default_compose_path'] ?? '/var/www/html/compose-files') ?>">
+                    <small class="form-text text-muted">Base path on this server where compose files for standalone hosts are stored.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="default_git_compose_path" class="form-label">Default Git Compose File Path</label>
+                    <input type="text" class="form-control" id="default_git_compose_path" name="default_git_compose_path" value="<?= htmlspecialchars($settings['default_git_compose_path'] ?? 'docker-compose.yml') ?>">
+                    <small class="form-text text-muted">Default filename/path to look for inside a Git repository.</small>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="git_persistent_repo_path" class="form-label">Git Persistent Repo Path</label>
+                    <input type="text" class="form-control" id="git_persistent_repo_path" name="git_persistent_repo_path" value="<?= htmlspecialchars($settings['git_persistent_repo_path'] ?? '/var/www/html/config-manager/git-repo') ?>">
+                    <small class="form-text text-muted">Path to store a persistent clone of the Git repository for stack sync.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="temp_directory_path" class="form-label">Temporary Directory Path</label>
+                    <input type="text" class="form-control" id="temp_directory_path" name="temp_directory_path" value="<?= htmlspecialchars($settings['temp_directory_path'] ?? sys_get_temp_dir()) ?>">
+                    <small class="form-text text-muted">Path for temporary files, like Git clones for App Launcher.</small>
+                </div>
+            </div>
+             <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="cron_log_path" class="form-label">Cron Job Log Path</label>
+                    <input type="text" class="form-control" id="cron_log_path" name="cron_log_path" value="<?= htmlspecialchars($settings['cron_log_path'] ?? '/var/log') ?>">
+                    <small class="form-text text-muted">Directory where cron job output logs will be stored (e.g., `health_monitor.log`).</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data & History Management -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Data & History Management</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="history_cleanup_days" class="form-label">Cleanup Archived History After (Days)</label>
+                    <input type="number" class="form-control" id="history_cleanup_days" name="history_cleanup_days" value="<?= (int)($settings['history_cleanup_days'] ?? 30) ?>" min="1">
+                    <small class="form-text text-muted">Automatically delete archived deployment history entries older than this value.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="log_cleanup_days" class="form-label">Cleanup Activity Logs After (Days)</label>
+                    <input type="number" class="form-control" id="log_cleanup_days" name="log_cleanup_days" value="<?= (int)($settings['log_cleanup_days'] ?? 7) ?>" min="1">
+                    <small class="form-text text-muted">Automatically delete activity log entries older than this value.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="host_stats_history_cleanup_days" class="form-label">Cleanup Host Stats History After (Days)</label>
+                    <input type="number" class="form-control" id="host_stats_history_cleanup_days" name="host_stats_history_cleanup_days" value="<?= (int)($settings['host_stats_history_cleanup_days'] ?? 7) ?>" min="1">
+                    <small class="form-text text-muted">Automatically delete host resource usage history older than this value.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="cron_log_retention_days" class="form-label">Cron Log Retention Period (Days)</label>
+                    <input type="number" class="form-control" id="cron_log_retention_days" name="cron_log_retention_days" value="<?= (int)($settings['cron_log_retention_days'] ?? 7) ?>" min="0">
+                    <small class="form-text text-muted">Delete log entries inside cron log files that are older than this many days. Set to 0 to disable.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save-fill"></i> Save All Settings</button>
+    </div>
+</form>
+
 <script>
-(function() { // IIFE to ensure script runs on AJAX load
-    const gitToggle = document.getElementById('git_integration_enabled');
+window.pageInit = function() {
+    // Toggle visibility for Git settings
+    const gitSwitch = document.getElementById('git_integration_enabled');
     const gitContainer = document.getElementById('git-settings-container');
-    const notificationToggle = document.getElementById('notification_enabled');
-    const notificationContainer = document.getElementById('notification-settings-container');
+    if (gitSwitch && gitContainer) {
+        gitSwitch.addEventListener('change', function() {
+            gitContainer.classList.toggle('d-none', !this.checked);
+        });
+    }
 
-    gitToggle.addEventListener('change', function() {
-        gitContainer.style.display = this.checked ? 'block' : 'none';
-    });
+    // Toggle visibility for Notification settings
+    const notifSwitch = document.getElementById('notification_enabled');
+    const notifContainer = document.getElementById('notification-settings-container');
+    if (notifSwitch && notifContainer) {
+        notifSwitch.addEventListener('change', function() {
+            notifContainer.classList.toggle('d-none', !this.checked);
+        });
+    }
 
-    const testGitBtn = document.getElementById('test-git-settings-btn');
+    // Generate new API token for Health Agent
+    const generateTokenBtn = document.getElementById('generate-token-btn');
+    const tokenInput = document.getElementById('health_agent_api_token');
+    if (generateTokenBtn && tokenInput) {
+        generateTokenBtn.addEventListener('click', function() {
+            // Generate a 32-byte random string, hex-encoded to 64 characters
+            const buffer = new Uint8Array(32);
+            window.crypto.getRandomValues(buffer);
+            const token = Array.from(buffer, byte => byte.toString(16).padStart(2, '0')).join('');
+            tokenInput.value = token;
+            showToast('New token generated. Remember to save settings and redeploy agents.', true);
+        });
+    }
+
+    // Toggle token visibility
+    const toggleTokenBtn = document.getElementById('toggle-token-visibility');
+    if (toggleTokenBtn && tokenInput) {
+        toggleTokenBtn.addEventListener('click', function() {
+            const icon = this.querySelector('i');
+            if (tokenInput.type === 'password') {
+                tokenInput.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+            } else {
+                tokenInput.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+            }
+        });
+    }
+
+    // Test Git Connection
+    const testGitBtn = document.getElementById('test-git-connection-btn');
     if (testGitBtn) {
         testGitBtn.addEventListener('click', function() {
-            const gitUrl = document.getElementById('git_repository_url').value.trim();
-            const sshKeyPath = document.getElementById('git_ssh_key_path').value.trim();
-
-            if (!gitUrl) {
-                showToast('Please provide a Git Repository URL to test.', false);
-                return;
-            }
-
+            const resultContainer = document.getElementById('git-test-result');
             const originalBtnText = this.innerHTML;
             this.disabled = true;
             this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Testing...`;
+            resultContainer.innerHTML = '';
 
             const formData = new FormData();
-            formData.append('git_url', gitUrl);
-            formData.append('ssh_key_path', sshKeyPath); // Send the key path from the form
+            formData.append('git_repository_url', document.getElementById('git_repository_url').value);
+            formData.append('git_ssh_key_path', document.getElementById('git_ssh_key_path').value);
+            formData.append('git_pat', document.getElementById('git_pat').value);
 
-            fetch('<?= base_url('/api/git/test') ?>', {
+            fetch('<?= base_url('/api/git/test-connection') ?>', {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json().then(data => ({ ok: response.ok, data })))
-            .then(({ ok, data }) => {
-                showToast(data.message, ok);
+            .then(response => response.json().then(data => ({ok: response.ok, data})))
+            .then(({ok, data}) => {
+                const alertClass = ok ? 'alert-success' : 'alert-danger';
+                const icon = ok ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+                resultContainer.innerHTML = `<div class="alert ${alertClass} d-flex align-items-center mt-2"><i class="bi ${icon} me-2"></i><div>${data.message}</div></div>`;
             })
-            .catch(error => showToast(error.message || 'An unknown error occurred.', false))
+            .catch(error => {
+                resultContainer.innerHTML = `<div class="alert alert-danger d-flex align-items-center mt-2"><i class="bi bi-exclamation-triangle-fill me-2"></i><div>An unknown error occurred: ${error.message}</div></div>`;
+            })
             .finally(() => {
                 this.disabled = false;
                 this.innerHTML = originalBtnText;
             });
         });
     }
-
-    const regenerateBtn = document.getElementById('regenerate-webhook-token-btn');
-    if (regenerateBtn) {
-        regenerateBtn.addEventListener('click', function() {
-            if (!confirm('Are you sure you want to regenerate the webhook token? The old URL will stop working immediately.')) {
-                return;
-            }
-            const originalBtnText = this.innerHTML;
-            this.disabled = true;
-            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Regenerating...`;
-
-            fetch('<?= base_url('/api/webhook/regenerate-token') ?>', { method: 'POST' })
-                .then(response => response.json().then(data => ({ ok: response.ok, data })))
-                .then(({ ok, data }) => {
-                    if (ok) {
-                        const newUrl = '<?= base_url('/api/webhook/deploy?token=') ?>' + data.new_token;
-                        document.getElementById('webhook-url').value = newUrl;
-                        document.querySelector('.copy-btn[data-clipboard-text]').dataset.clipboardText = newUrl;
-                        showToast('Webhook token regenerated successfully. Please update your Git provider.', true);
-                    } else {
-                        throw new Error(data.message || 'Failed to regenerate token.');
-                    }
-                })
-                .catch(error => showToast(error.message, false))
-                .finally(() => {
-                    this.disabled = false;
-                    this.innerHTML = originalBtnText;
-                });
-        });
-    }
-
-    const regenerateAgentTokenBtn = document.getElementById('regenerate-agent-token-btn');
-    if (regenerateAgentTokenBtn) {
-        regenerateAgentTokenBtn.addEventListener('click', function() {
-            // Generate a secure random token (32 bytes -> 64 hex characters)
-            const array = new Uint32Array(8);
-            window.crypto.getRandomValues(array);
-            let token = '';
-            for (let i = 0; i < array.length; i++) {
-                token += array[i].toString(16).padStart(8, '0');
-            }
-            
-            const tokenInput = document.getElementById('health_agent_api_token');
-            tokenInput.value = token;
-            tokenInput.type = 'text'; // Show the new token
-            showToast('New token generated. Remember to save settings and update your agents.', true);
-        });
-    }
-
-    // Revert token input to password type on focus out if it's not empty
-    const agentTokenInput = document.getElementById('health_agent_api_token');
-    if (agentTokenInput) {
-        agentTokenInput.addEventListener('blur', function() {
-            if (this.value) this.type = 'password';
-        });
-    }
-
-    notificationToggle.addEventListener('change', function() {
-        notificationContainer.style.display = this.checked ? 'block' : 'none';
-    });
-    
-    const testNotificationBtn = document.getElementById('test-notification-btn');
-    if (testNotificationBtn) {
-        testNotificationBtn.addEventListener('click', function() {
-            const originalBtnText = this.innerHTML;
-            this.disabled = true;
-            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...`;
-
-            // We don't need to send any data, just trigger the endpoint
-            fetch('<?= base_url('/api/notifications/test') ?>', {
-                method: 'POST'
-            })
-            .then(response => response.json().then(data => ({ ok: response.ok, data })))
-            .then(({ ok, data }) => {
-                showToast(data.message, ok);
-            })
-            .catch(error => {
-                showToast('An unknown error occurred while sending the test notification.', false);
-            })
-            .finally(() => {
-                this.disabled = false;
-                this.innerHTML = 'Test';
-            });
-        });
-    }
-})();
+};
 </script>
+
 <?php
 require_once __DIR__ . '/../includes/footer.php';
 ?>

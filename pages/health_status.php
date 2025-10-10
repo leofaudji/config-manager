@@ -339,10 +339,25 @@ window.pageInit = function() {
             const stepsContainer = document.getElementById('health-flow-steps');
             stepsContainer.innerHTML = ''; // Clear previous steps
 
-            const steps = [
-                { key: 'HTTP', name: 'HTTP Endpoint Check', check: (log) => log.includes('HTTP') },
-                { key: 'Docker', name: 'Docker Internal Health Check', check: (log) => log.includes('Docker') }
-            ];
+            // Determine which flow to show based on the log message content
+            const isAgentLog = logMessage.includes('from Docker:') || logMessage.includes('published port') || logMessage.includes('internal port') || logMessage.includes('ICMP');
+            
+            let steps = [];
+            if (isAgentLog) {
+                // This is a log from the Health Agent (checks individual containers)
+                steps = [
+                    { key: 'Docker', name: 'Docker Native Healthcheck', check: (log) => log.includes('from Docker:') },
+                    { key: 'Published', name: 'Published Port TCP Check', check: (log) => log.includes('published port') },
+                    { key: 'Internal', name: 'Internal Port TCP Check', check: (log) => log.includes('internal port') },
+                    { key: 'Ping', name: 'Internal ICMP (Ping) Check', check: (log) => log.includes('ICMP (ping)') }
+                ];
+            } else {
+                // This is a log from the Health Monitor (checks services)
+                steps = [
+                    { key: 'HTTP', name: 'HTTP Endpoint Check', check: (log) => log.includes('HTTP') },
+                    { key: 'Docker', name: 'Docker Internal Health Check', check: (log) => log.includes('Docker') }
+                ];
+            }
 
             let checkUsed = null;
             let resultIsSuccess = false;
@@ -350,19 +365,33 @@ window.pageInit = function() {
             steps.forEach(step => {
                 if (checkUsed === null && step.check(logMessage)) {
                     checkUsed = step.key;
-                    resultIsSuccess = logMessage.includes(': OK') || logMessage.includes('status: healthy');
+                    resultIsSuccess = logMessage.includes(': OK') || logMessage.includes('status: healthy') || logMessage.includes('Docker: healthy');
                 }
             });
 
             steps.forEach(step => {
-                let icon = '<i class="bi bi-dash-circle text-secondary"></i>';
-                let textClass = 'text-muted';
-                let statusText = 'Not Used';
+                let icon, textClass, statusText;
 
                 if (checkUsed === step.key) {
-                    icon = resultIsSuccess ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>';
-                    textClass = resultIsSuccess ? 'fw-bold text-success' : 'fw-bold text-danger';
-                    statusText = resultIsSuccess ? 'Used & Succeeded' : 'Used & Failed';
+                    if (resultIsSuccess) {
+                        icon = '<i class="bi bi-check-circle-fill text-success"></i>';
+                        textClass = 'fw-bold text-success';
+                        statusText = 'Used & Succeeded';
+                    } else {
+                        icon = '<i class="bi bi-x-circle-fill text-danger"></i>';
+                        textClass = 'fw-bold text-danger';
+                        statusText = 'Used & Failed';
+                    }
+                } else if (checkUsed !== null) {
+                    // A check was used, so other steps were not.
+                    icon = '<i class="bi bi-dash-circle text-secondary"></i>';
+                    textClass = 'text-muted';
+                    statusText = 'Not Used';
+                } else {
+                    // No check was used (e.g., log is empty or unrecognized)
+                    icon = '<i class="bi bi-question-circle text-secondary"></i>';
+                    textClass = 'text-muted';
+                    statusText = 'Not Applicable';
                 }
 
                 const stepHtml = `<li class="list-group-item d-flex justify-content-between align-items-center"><span class="${textClass}">${step.name}</span><span class="badge bg-light text-dark d-flex align-items-center">${icon}<span class="ms-2">${statusText}</span></span></li>`;

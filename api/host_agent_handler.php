@@ -67,12 +67,20 @@ try {
     // Handle status check request
     if (str_ends_with($path, '-status')) {
         try {
+            $status_column = ($container_name === 'cm-health-agent') ? 'agent_status' : 'cpu_reader_status';
+
             $details = $dockerClient->inspectContainer($container_name);
             $status = ($details['State']['Running'] ?? false) ? 'Running' : 'Stopped';
         } catch (Exception $e) {
             if (strpos($e->getMessage(), '404') !== false) {
                 $status = 'Not Deployed';
             } else {
+                // For other errors (e.g., unreachable host), mark status accordingly
+                $status = 'Unreachable';
+                $stmt_update = $conn->prepare("UPDATE docker_hosts SET {$status_column} = ? WHERE id = ?");
+                $stmt_update->bind_param("si", $status, $host_id);
+                $stmt_update->execute();
+                $stmt_update->close();
                 throw $e; // Re-throw other errors
             }
         }
@@ -82,6 +90,13 @@ try {
         } elseif ($container_name === 'host-cpu-reader') {
             $response_data['last_report_at'] = $host['last_cpu_report_at'] ?? null;
         }
+
+        // Update the database with the latest known status
+        $stmt_update = $conn->prepare("UPDATE docker_hosts SET {$status_column} = ? WHERE id = ?");
+        $stmt_update->bind_param("si", $status, $host_id);
+        $stmt_update->execute();
+        $stmt_update->close();
+
         echo json_encode($response_data);
         exit;
     }
@@ -92,6 +107,8 @@ try {
         echo json_encode(['status' => 'error', 'message' => 'Invalid action or request method.']);
         exit;
     }
+
+    $status_column = ($container_name === 'cm-health-agent') ? 'agent_status' : 'cpu_reader_status';
 
     switch ($action) { 
         case 'deploy':
@@ -209,6 +226,12 @@ try {
             }
 
             log_activity($_SESSION['username'], 'Helper Deployed', $log_message);
+            // Update status in DB after successful deployment
+            $stmt_update = $conn->prepare("UPDATE docker_hosts SET {$status_column} = 'Running' WHERE id = ?");
+            $stmt_update->bind_param("i", $host_id);
+            $stmt_update->execute();
+            $stmt_update->close();
+
             stream_message("---");
             stream_message("Deployment finished successfully!", "SUCCESS");
             echo "_DEPLOYMENT_COMPLETE_";
@@ -218,6 +241,11 @@ try {
             $dockerClient->restartContainer($container_name);
             $log_message = "Helper container '{$container_name}' restarted on host '{$host['name']}'.";
             log_activity($_SESSION['username'], 'Helper Restarted', $log_message);
+            // Update status in DB
+            $stmt_update = $conn->prepare("UPDATE docker_hosts SET {$status_column} = 'Running' WHERE id = ?");
+            $stmt_update->bind_param("i", $host_id);
+            $stmt_update->execute();
+            $stmt_update->close();
             echo json_encode(['status' => 'success', 'message' => "Restart command sent for '{$container_name}'."]);
             break;
 
@@ -225,6 +253,12 @@ try {
             $dockerClient->removeContainer($container_name, true);
             $log_message = "Helper container '{$container_name}' removed from host '{$host['name']}'.";
             log_activity($_SESSION['username'], 'Helper Removed', $log_message);
+            // Update status in DB
+            $stmt_update = $conn->prepare("UPDATE docker_hosts SET {$status_column} = 'Not Deployed' WHERE id = ?");
+            $stmt_update->bind_param("i", $host_id);
+            $stmt_update->execute();
+            $stmt_update->close();
+
             echo json_encode(['status' => 'success', 'message' => "Helper container '{$container_name}' has been removed."]);
             break;
         
