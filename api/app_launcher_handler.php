@@ -251,6 +251,7 @@ try {
             ]
         ];
         AppLauncherHelper::applyFormSettings($compose_data, $form_params, $host, $is_swarm_manager);
+
         if (empty($compose_data['networks'])) unset($compose_data['networks']);
 
         $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
@@ -291,6 +292,7 @@ try {
 
         // Re-dump the modified YAML to be used for deployment.
         $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
+
 
     } else {
         throw new Exception("Invalid source type specified.");

@@ -139,21 +139,21 @@ window.pageInit = function() {
     const tableHeader = document.querySelector('#health-status-container').closest('table').querySelector('thead');
 
     function timeAgo(dateString) {
-        if (!dateString) return 'Never';
-        const date = new Date(dateString);
-        const now = new Date();
-        const seconds = Math.round((now - date) / 1000);
+    if (!dateString) return 'Never';
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.round((now - date) / 1000);
 
-        if (seconds < 5) return 'just now';
-        if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 5) return 'just now';
+    if (seconds < 60) return `${seconds} seconds ago`;
 
-        const minutes = Math.round(seconds / 60);
-        if (minutes < 60) return `${minutes}m ago`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
 
-        const hours = Math.round(minutes / 60);
-        if (hours < 24) return `${hours}h ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
 
-        return date.toLocaleString(); // Fallback for older dates
+    return date.toLocaleString(); // Fallback for older dates
     }
 
     let lastUnhealthySet = new Set();
@@ -165,12 +165,15 @@ window.pageInit = function() {
     let currentOrder = 'asc';
     let currentGroupFilter = '';
 
-    function loadHealthStatus(page = 1, limit = 15) {
+    function loadHealthStatus(page = 1, limit = 15, isAutoRefresh = false) {
         currentPage = parseInt(page) || 1;
         currentLimit = parseInt(limit) || 15;
-        container.innerHTML = '<tr><td colspan="7" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
         
-        // Show loading state on manual refresh
+        // Only show the table-clearing spinner on manual interactions, not on auto-refresh
+        if (!isAutoRefresh) {
+            container.innerHTML = '<tr><td colspan="7" class="text-center"><div class="spinner-border spinner-border-sm" role="status"><span class="visually-hidden">Loading...</span></div></td></tr>';
+        }
+        
         const originalBtnContent = refreshBtn.innerHTML;
         refreshBtn.disabled = true;
         refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
@@ -400,8 +403,8 @@ window.pageInit = function() {
     autoRefreshSwitch.addEventListener('change', function() {
         localStorage.setItem('health_status_auto_refresh', this.checked);
         if (this.checked) {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(() => loadHealthStatus(currentPage, currentLimit), 15000); // 15 seconds
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval); // Clear previous interval if any
+            autoRefreshInterval = setInterval(() => loadHealthStatus(currentPage, currentLimit, true), 15000); // Pass true for smooth refresh
             // --- Unlock audio on user interaction ---
             if (!audioUnlocked) {
                 alertSound.volume = 0;

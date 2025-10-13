@@ -120,6 +120,18 @@ class DockerClient
         return is_array($result) ? $result : [];
     }
 
+    public function getInfo(): array
+    {
+        $result = $this->sendRequest('/info');
+        return is_array($result) ? $result : [];
+    }
+
+    public function listNetworks(): array
+    {
+        $result = $this->sendRequest('/networks');
+        return is_array($result) ? $result : [];
+    }
+
     public function restartContainer(string $id): bool
     {
         // A successful restart returns a 204 No Content, which json_decode turns into null.
@@ -129,9 +141,17 @@ class DockerClient
         return $response === null || $response === true;
     }
 
-    public function connectToNetwork(string $networkId, string $containerId): bool
+    public function connectToNetwork(string $networkId, string $containerId, ?string $alias = null): bool
     {
-        $config = ['Container' => $containerId];
+        $config = [
+            'Container' => $containerId,
+            'EndpointConfig' => []
+        ];
+        // Add a unique alias to prevent network-scoped alias conflicts in Swarm
+        if ($alias) {
+            $config['EndpointConfig']['Aliases'] = [$alias];
+        }
+
         $this->sendRequest("/networks/{$networkId}/connect", 'POST', $config);
         return true;
     }
@@ -141,6 +161,26 @@ class DockerClient
         $config = ['Container' => $containerId, 'Force' => true];
         $this->sendRequest("/networks/{$networkId}/disconnect", 'POST', $config);
         return true;
+    }
+
+    public function forceServiceUpdate(string $serviceId): bool
+    {
+        // First, we need to get the current version of the service to send the update request.
+        try {
+            $service_details = $this->sendRequest("/services/{$serviceId}");
+            $version = $service_details['Version']['Index'] ?? null;
+
+            if ($version === null) {
+                throw new Exception("Could not determine service version.");
+            }
+
+            // The `--force` flag in the CLI is equivalent to sending an empty POST request
+            // with the current version. The API will re-evaluate and re-create tasks.
+            $this->sendRequest("/services/{$serviceId}/update?version={$version}", 'POST', []);
+            return true;
+        } catch (Exception $e) {
+            throw new Exception("Failed to force service update: " . $e->getMessage());
+        }
     }
 }
 
@@ -181,6 +221,31 @@ function run_check_cycle() {
 
     log_message("Memulai siklus pengecekan...");
     $dockerClient = new DockerClient();
+
+    // --- NEW: Determine if the host is a Swarm Node ---
+    $dockerInfo = [];
+    try {
+        $dockerInfo = $dockerClient->getInfo();
+    } catch (Exception $e) {
+        log_message("  -> WARN: Could not get Docker info: " . $e->getMessage());
+    }
+    // Check if the node is part of a swarm and is 'active'.
+    $is_swarm_node = (isset($dockerInfo['Swarm']['LocalNodeState']) && $dockerInfo['Swarm']['LocalNodeState'] === 'active');
+    log_message("Host Type Detection: " . ($is_swarm_node ? "Swarm Node" : "Standalone"));
+
+    // --- NEW: Get all networks on the host once for efficiency ---
+    $all_networks_on_host = [];
+    $network_name_to_id_map = [];
+    try {
+        $all_networks_on_host = $dockerClient->listNetworks();
+        foreach ($all_networks_on_host as $network) {
+            $network_name_to_id_map[$network['Name']] = $network['Id'];
+        }
+    } catch (Exception $e) {
+        log_message("  -> WARN: Could not list Docker networks: " . $e->getMessage());
+    }
+
+
     $containers = $dockerClient->listContainers();
     $health_reports = [];
 
@@ -296,7 +361,8 @@ function run_check_cycle() {
 
                 // Prioritas 2b: Jika status masih belum ditentukan, coba port internal.
                 // Ini akan berjalan jika tidak ada HEALTHCHECK, dan (tidak ada port publik ATAU port publik gagal dicek).
-                if ($is_healthy === null) {
+                // --- NEW: Only run this complex check for Standalone hosts ---
+                if ($is_healthy === null && !$is_swarm_node) {
                     $internal_ip = null;
                     $internal_port = null;
 
@@ -313,18 +379,10 @@ function run_check_cycle() {
                     // 2. Dapatkan port internal (prioritaskan 80/443, lalu port pertama, lalu tebakan)
                     $tcp_ports = [];
                     if (isset($details['NetworkSettings']['Ports']) && is_array($details['NetworkSettings']['Ports'])) {
-                        $exposed_ports = array_keys($details['NetworkSettings']['Ports']);
-                        $tcp_ports = array_map(fn($p) => (int)$p, array_filter($exposed_ports, fn($p) => str_ends_with($p, '/tcp')));
-                    }
-
-                    // --- NEW: Also inspect port bindings for a private port, in case expose is missing ---
-                    // This covers a common case where a container defines ports like "8080:80"
-                    // but does not explicitly expose the internal port 80.
-                    if (empty($tcp_ports) && isset($details['NetworkSettings']['Ports'])) {
+                        // This logic now correctly iterates through the port mappings to find the internal (private) port.
+                        // It only considers ports that are actually exposed by this specific container.
                         foreach ($details['NetworkSettings']['Ports'] as $port_mapping => $bindings) {
-                            // We only care about TCP ports and where a binding exists.
-                            if (str_ends_with($port_mapping, '/tcp') && is_array($bindings) && !empty($bindings)) {
-                                // Remove the '/tcp' suffix and cast to integer
+                            if (str_ends_with($port_mapping, '/tcp')) {
                                 $tcp_ports[] = (int)str_replace('/tcp', '', $port_mapping);
                             }
                         }
@@ -349,16 +407,14 @@ function run_check_cycle() {
                         }
                     }
 
-                    // 3. Lakukan pengecekan jika IP dan Port internal ditemukan
-                    if ($internal_ip && $internal_port) {
+                    // Lakukan pengecekan jika IP dan Port internal ditemukan
+                    if ($internal_ip && $internal_port) { // This block is now only for Standalone
+                        log_message("    -> [Standalone] Checking internal TCP port {$internal_ip}:{$internal_port}.");
                         $network_id_to_join = isset($details['NetworkSettings']['Networks']) ? key($details['NetworkSettings']['Networks']) : null;
                         $agent_container_id = getenv('HOSTNAME');
                         try {
                             $dockerClient->connectToNetwork($network_id_to_join, $agent_container_id);
-                            log_message("    -> Joined network '{$network_id_to_join}' to check internal IP {$internal_ip}:{$internal_port}.");
                             
-                            // Gunakan netcat (nc) untuk pengecekan TCP yang lebih andal dari dalam container.
-                            // -z: zero-I/O mode (scanning). -w 2: timeout 2 detik.
                             exec("nc -z -w 2 " . escapeshellarg($internal_ip) . " " . escapeshellarg($internal_port), $output, $return_var);
 
                             if ($return_var === 0) {
@@ -373,36 +429,93 @@ function run_check_cycle() {
                             $check_flow_log[] = ['step' => 'Internal TCP Check', 'status' => 'fail', 'message' => "Failed to join network or perform internal check: " . $e->getMessage()];
                         } finally {
                             $dockerClient->disconnectFromNetwork($network_id_to_join, $agent_container_id);
-                            log_message("    -> Left network '{$network_id_to_join}'.");
                         }
                     }
+                }
 
-                    // 4. Jika tidak ada port yang terdeteksi tapi IP ada, lakukan ping check sebagai fallback
-                    if ($is_healthy === null && $internal_ip) {
-                        log_message("    -> No TCP port found. Attempting ICMP (ping) check on internal IP {$internal_ip}.");
-                        $network_id_to_join = isset($details['NetworkSettings']['Networks']) ? key($details['NetworkSettings']['Networks']) : null;
+                // --- Final Fallback: Ping Check ---
+                // This will run if:
+                // - It's a Swarm node and previous checks failed.
+                // - It's a Standalone node and all previous checks (including internal TCP) failed.
+                if ($is_healthy === null) {
+                    // --- FIX: Ensure NetworkSettings and Networks exist and are not empty before proceeding ---
+                    $networks = $details['NetworkSettings']['Networks'] ?? null;
+                    if (is_array($networks) && !empty($networks)) {
+                        $first_network_key = array_key_first($networks);
+                        $internal_ip = $networks[$first_network_key]['IPAddress'] ?? null;
+
+                        // --- NEW: Check for a shared network first to avoid unnecessary join/disconnect ---
                         $agent_container_id = getenv('HOSTNAME');
-                        try {
-                            $dockerClient->connectToNetwork($network_id_to_join, $agent_container_id);
-                            log_message("    -> Joined network '{$network_id_to_join}' for ping check.");
-                            
-                            // Gunakan exec untuk menjalankan ping dan cek return code.
-                            // -c 1: kirim 1 paket. -W 1: timeout 1 detik.
-                            exec("ping -c 1 -W 1 " . escapeshellarg($internal_ip), $output, $return_var);
+                        $agent_details = $dockerClient->inspectContainer($agent_container_id);
+                        $agent_networks = array_keys($agent_details['NetworkSettings']['Networks'] ?? []);
+                        $target_networks = array_keys($networks);
 
+                        $shared_networks = array_intersect($agent_networks, $target_networks);
+                        // Filter out the default ingress network as it's not useful for direct communication
+                        $shared_networks = array_filter($shared_networks, fn($net) => strpos($net, 'ingress') === false);
+
+                        if (!empty($shared_networks)) {
+                            log_message("    -> Found shared network: " . implode(', ', $shared_networks) . ". Pinging directly.");
+                            exec("ping -c 1 -W 1 " . escapeshellarg($internal_ip), $output, $return_var);
                             if ($return_var === 0) {
                                 $is_healthy = true;
-                                $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'success', 'message' => "Ping to internal IP {$internal_ip} was successful."];
+                                $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'success', 'message' => "Ping to internal IP {$internal_ip} via shared network was successful."];
                             } else {
                                 $is_healthy = false;
-                                $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'fail', 'message' => "Ping to internal IP {$internal_ip} failed."];
+                                $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'fail', 'message' => "Ping to internal IP {$internal_ip} via shared network failed."];
                             }
-                        } finally {
-                            $dockerClient->disconnectFromNetwork($network_id_to_join, $agent_container_id);
-                            log_message("    -> Left network '{$network_id_to_join}'.");
                         }
-                    }
 
+                        // --- MODIFIED: Only run dynamic join if no shared network was found ---
+                        if ($is_healthy === null) {
+                            if (!$internal_ip) continue; // Skip if no IP found
+                            $network_name_to_join = null;
+                            // Find the first non-ingress, overlay network to join. This is the most reliable target.
+                            foreach ($details['NetworkSettings']['Networks'] as $net_name => $net_details) {
+                                if (strpos($net_name, 'ingress') === false) {
+                                    $network_name_to_join = $net_name;
+                                    break;
+                                }
+                            }
+    
+                            if (!$network_name_to_join) {
+                                $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'fail', 'message' => "Could not find a suitable non-ingress network to join for ping check."];
+                            } else {
+                                log_message("    -> No shared network found. Attempting ICMP (ping) check on internal IP {$internal_ip} via dynamic join to network '{$network_name_to_join}'.");
+                                $network_id_to_join = $network_name_to_id_map[$network_name_to_join] ?? null;
+    
+                                // Use a unique alias for the agent container when connecting to the target network.
+                                $agent_container_id = getenv('HOSTNAME');
+                                $unique_alias = 'agent-check-' . substr(md5(uniqid((string)rand(), true)), 0, 8);
+    
+                                if ($network_id_to_join) {
+                                    $network_joined = false; // Flag to track connection status
+                                    try {
+                                        $dockerClient->connectToNetwork($network_id_to_join, $agent_container_id, $unique_alias);
+                                        $network_joined = true; // Set flag on successful connection
+                                        
+                                        exec("ping -c 1 -W 1 " . escapeshellarg($internal_ip), $output, $return_var);
+    
+                                        if ($return_var === 0) {
+                                            $is_healthy = true;
+                                            $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'success', 'message' => "Ping to internal IP {$internal_ip} was successful."];
+                                        } else {
+                                            $is_healthy = false;
+                                            $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'fail', 'message' => "Ping to internal IP {$internal_ip} failed."];
+                                        }
+                                    } catch (Exception $e) {
+                                        $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'fail', 'message' => "Failed to join network '{$network_name_to_join}' for ping: " . $e->getMessage()];
+                                    } finally {
+                                        if ($network_joined) $dockerClient->disconnectFromNetwork($network_id_to_join, $agent_container_id);
+                                    }
+                                } else {
+                                     $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'fail', 'message' => "Network ID for '{$network_name_to_join}' not found. Cannot perform ping check."];
+                                }
+                            }
+                        }
+                    } else {
+                        $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'skipped', 'message' => 'Container is not attached to any scannable networks.'];
+                    }
                 }
 
                 // Jika setelah semua usaha, status masih belum ditentukan, biarkan null (unknown).
@@ -429,11 +542,25 @@ function run_check_cycle() {
             // --- Auto-Healing Logic ---
             if ($is_healthy === false && $autoHealingEnabled) {
                 log_message("  -> STATUS TIDAK SEHAT TERDETEKSI! Memicu auto-healing untuk kontainer '{$container_name}'.");
+                
+                // --- NEW: Swarm-aware auto-healing ---
+                $service_id = $details['Config']['Labels']['com.docker.swarm.service.id'] ?? null;
+
                 try {
-                    $dockerClient->restartContainer($container_id);
-                    log_message("  -> SUKSES: Perintah restart berhasil dikirim ke kontainer '{$container_name}'.");
-                    // Add the healing action to the check flow log
-                    $check_flow_log[] = ['step' => 'Auto-Healing', 'status' => 'success', 'message' => 'Restart command sent successfully.'];
+                    if ($is_swarm_node && $service_id) {
+                        // For Swarm, force the service to update, which recreates the task.
+                        log_message("    -> Mode Swarm terdeteksi. Memaksa pembaruan untuk service ID '{$service_id}'.");
+                        $dockerClient->forceServiceUpdate($service_id);
+                        $healing_message = "Force update command sent to service '{$service_id}'.";
+                        log_message("  -> SUKSES: {$healing_message}");
+                    } else {
+                        // For Standalone, just restart the container.
+                        log_message("    -> Mode Standalone terdeteksi. Merestart kontainer '{$container_name}'.");
+                        $dockerClient->restartContainer($container_id);
+                        $healing_message = "Restart command sent successfully to container '{$container_name}'.";
+                        log_message("  -> SUKSES: {$healing_message}");
+                    }
+                    $check_flow_log[] = ['step' => 'Auto-Healing', 'status' => 'success', 'message' => $healing_message];
                 } catch (Exception $e) {
                     log_message("  -> ERROR saat auto-healing: " . $e->getMessage());
                 }

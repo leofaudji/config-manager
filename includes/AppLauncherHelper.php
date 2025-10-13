@@ -104,6 +104,10 @@ class AppLauncherHelper
                     // Explicitly attach the service to the default network to support the hostname alias.
                     $compose_data['services'][$service_key]['networks'] = ['default'];
                 }
+                // --- NEW: Also attach to the agent network if it exists on a Swarm host ---
+                if ($is_swarm_manager) {
+                    $compose_data['services'][$service_key]['networks'][] = 'cm-agent-net';
+                }
             }
             // Apply network attachment to all services
             // Only apply network settings if a specific, non-default network is chosen.
@@ -189,21 +193,56 @@ class AppLauncherHelper
             if ($first_service_key) {
                 // Ensure the 'ports' array exists for the first service.
                 $compose_data['services'][$first_service_key]['ports'] = $compose_data['services'][$first_service_key]['ports'] ?? [];
+                $ports_array = &$compose_data['services'][$first_service_key]['ports'];
+                
+                // For Swarm, we must use the long syntax for reliable ingress routing.
+                if ($is_swarm_manager) {
+                    // Convert any existing short-syntax ports to long syntax to avoid mixing formats.
+                    foreach ($ports_array as $index => $port_mapping) {
+                        if (is_string($port_mapping)) {
+                            $parts = explode(':', $port_mapping);
+                            $ports_array[$index] = [
+                                'published' => (int)$parts[0],
+                                'target' => (int)end($parts),
+                                'protocol' => 'tcp',
+                                'mode' => 'ingress'
+                            ];
+                        }
+                    }
 
-                // If a host port is provided, create a "host:container" mapping.
-                // Otherwise, create a "container" mapping (publishes to a random host port).
-                $port_mapping = !empty($host_port) ? "{$host_port}:{$container_port}" : (string)$container_port;
+                    $port_mapping_object = [
+                        'target' => (int)$container_port,
+                        'protocol' => 'tcp',
+                        'mode' => 'ingress'
+                    ];
+                    if (!empty($host_port)) {
+                        $port_mapping_object['published'] = (int)$host_port;
+                    }
 
-                // Add the new mapping, but only if it doesn't already exist.
-                if (!in_array($port_mapping, $compose_data['services'][$first_service_key]['ports'])) {
-                    $compose_data['services'][$first_service_key]['ports'][] = $port_mapping;
+                    // Check for duplicates before adding
+                    $is_duplicate = false;
+                    foreach ($ports_array as $existing_port) {
+                        if (is_array($existing_port) && ($existing_port['target'] ?? null) == $container_port && ($existing_port['published'] ?? null) == $host_port) {
+                            $is_duplicate = true;
+                            break;
+                        }
+                    }
+                    if (!$is_duplicate) {
+                        $ports_array[] = $port_mapping_object;
+                    }
+                } else {
+                    // For Standalone, the short syntax is sufficient and common.
+                    $port_mapping_string = !empty($host_port) ? "{$host_port}:{$container_port}" : (string)$container_port;
+                    if (!in_array($port_mapping_string, $ports_array)) {
+                        $ports_array[] = $port_mapping_string;
+                    }
                 }
 
                 // Also add to 'expose' for better health agent discovery.
-                $compose_data['services'][$first_service_key]['expose'] = $compose_data['services'][$first_service_key]['expose'] ?? [];
+                /*$compose_data['services'][$first_service_key]['expose'] = $compose_data['services'][$first_service_key]['expose'] ?? [];
                 if (!in_array((string)$container_port, $compose_data['services'][$first_service_key]['expose'])) {
-                    $compose_data['services'][$first_service_key]['expose'][] = (string)$container_port;
-                }
+                    //$compose_data['services'][$first_service_key]['expose'][] = (string)$container_port;
+                }*/
             }
         }
 
@@ -219,5 +258,14 @@ class AppLauncherHelper
             ];
             }
         }
+        
+        // --- NEW: Define the agent network as external if it was used ---
+        if ($is_swarm_manager) {
+            if (!isset($compose_data['networks'])) $compose_data['networks'] = [];
+            if (!isset($compose_data['networks']['cm-agent-net'])) {
+                $compose_data['networks']['cm-agent-net'] = ['external' => true];
+            }
+        }
+
     }
 }

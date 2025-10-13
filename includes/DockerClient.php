@@ -138,18 +138,24 @@ class DockerClient
     /**
      * Ensures a specific network exists on the Docker host, creating it if necessary.
      * @param string $networkName The name of the network to ensure.
+     * @param bool $isSwarm If true, creates an attachable overlay network. Otherwise, a bridge network.
      * @return void
      * @throws Exception
      */
-    public function ensureNetworkExists(string $networkName): void
+    public function ensureNetworkExists(string $networkName, bool $isSwarm = false): void
     {
         try {
             // Try to inspect the network. If it fails with a 404, it doesn't exist.
             $this->request("/networks/{$networkName}");
         } catch (RuntimeException $e) {
             if (strpos($e->getMessage(), '404') !== false) {
-                // Network not found, so create it.
-                $this->createNetwork(['Name' => $networkName, 'Driver' => 'bridge']);
+                // Network not found, so create it based on the host type.
+                if ($isSwarm) {
+                    $config = ['Name' => $networkName, 'Driver' => 'overlay', 'Attachable' => true];
+                } else {
+                    $config = ['Name' => $networkName, 'Driver' => 'bridge'];
+                }
+                $this->createNetwork($config);
             } else {
                 throw $e; // Re-throw other errors
             }

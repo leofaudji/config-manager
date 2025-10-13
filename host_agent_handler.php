@@ -171,9 +171,7 @@ try {
 
                 $command = [
                     "/bin/sh", "-c",
-                    // 1. Install necessary tools (ping) for health checks. This is crucial for Swarm ICMP checks.
-                    "apk update && apk add --no-cache iputils && " .
-                    // 2. Create the wrapper script. It explicitly exports the necessary environment variables.
+                    // 1. Create the wrapper script. It explicitly exports the necessary variables.
                     "echo '#!/bin/sh' > {$wrapper_path} && " .
                     "echo \"export CONFIG_MANAGER_URL='{$app_base_url}'\" >> {$wrapper_path} && " .
                     "echo \"export API_KEY='{$agent_api_token}'\" >> {$wrapper_path} && " .
@@ -182,9 +180,9 @@ try {
                     // The final line of the wrapper script executes the PHP agent.
                     "echo 'php /usr/src/app/agent.php' >> {$wrapper_path} && " .
                     "chmod +x {$wrapper_path} && " .
-                    // 3. Create the crontab entry to call the wrapper script.
+                    // 2. Create the crontab entry to call the wrapper script.
                     "echo '{$crontab_entry}' > /etc/crontabs/root && " .
-                    // 4. Start crond in the foreground to keep the container running.
+                    // 3. Start crond in the foreground to keep the container running.
                     "crond -f -d 8"
                 ];
 

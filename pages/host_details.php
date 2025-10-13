@@ -17,6 +17,7 @@ if ($result->num_rows === 0) {
     exit;
 }
 $host = $result->fetch_assoc();
+$is_swarm_host = ($host['swarm_status'] === 'manager' || $host['swarm_status'] === 'worker');
 $stmt->close();
 
 $active_page = 'dashboard'; // Set this for the navigation tabs
@@ -442,6 +443,12 @@ window.pageInit = function() {
             const originalBtnText = button.innerHTML;
             button.disabled = false;
             button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deploying...`;
+
+            // --- NEW: Add network creation logic for Swarm ---
+            const isSwarm = <?= json_encode($is_swarm_host) ?>;
+            if (isSwarm) {
+                formData.append('create_agent_network', 'true');
+            }
 
             fetch(`<?= base_url('/api/hosts/') ?>${hostId}/helper/${actionPath}`, {
                 method: 'POST',

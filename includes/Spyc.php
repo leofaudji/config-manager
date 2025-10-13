@@ -326,21 +326,22 @@ class Spyc {
 
       $is_sequence_item = (is_int($key) && $key - 1 === $last_key && !$this->setting_dump_force_arrays);
 
-      // Special case for a sequence of maps (like the 'servers' list)
-      if ($is_sequence_item) {
+      // This is the definitive fix for indentation of list items that are maps (e.g., ports long syntax).
+      if ($is_sequence_item && is_array($value)) {
         $string = '';
-        $array_content = $this->yamlizeArray($value, $indent + $this->_dumpIndent);
+        // The first line of the map needs to be attached to the dash.
+        // Subsequent lines need to be indented to the same level as the first line's key.
+        $array_content = $this->yamlizeArray($value, $indent + 2); // Use a fixed indent of 2 for items in a list
         $lines = explode("\n", trim($array_content));
         $first_line = array_shift($lines);
+
         if ($first_line !== null) {
-            // Attach the first line of the map to the dash
-            $string .= str_repeat(' ', $indent) . '- ' . ltrim($first_line) . "\n";
+            // Attach the first line of the map to the dash, removing its own indentation.
+            $string .= str_repeat(' ', $indent) . '- ' . trim($first_line) . "\n";
         }
-        // Indent the rest of the lines of the map
         foreach ($lines as $line) {
-            if (trim($line) !== '') {
-                $string .= str_repeat(' ', $indent + $this->_dumpIndent) . $line . "\n";
-            }
+            // The rest of the lines need to be indented relative to the list item itself.
+            if (trim($line) !== '') $string .= str_repeat(' ', $indent + 2) . trim($line) . "\n";
         }
         return $string;
       }
