@@ -19,9 +19,6 @@ if (isset($_GET['error'])) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <script src="<?= base_url('assets/js/tailwind.config.js') ?>"></script>
-    <style> /* Custom animation */
-        .form-signin-item {
-    <link rel="stylesheet" href="<?= base_url('assets/css/style.css') ?>">
     <style>
         /* macOS-inspired Theme Variables */
         :root {
@@ -133,115 +130,27 @@ if (isset($_GET['error'])) {
         }
     </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900">
-<body class="text-center">
+<body class="bg-gray-100 dark:bg-gray-900 text-center">
 <script>
-    // Tailwind dark mode setup
-    if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.classList.add('dark');
-    } else {
-        document.documentElement.classList.remove('dark');
     // Apply theme immediately to prevent FOUC (Flash of Unstyled Content)
+    // --- REVISED: Unified Theme Logic ---
     (function() {
-        const theme = localStorage.getItem('theme') || 'light';
-        if (theme === 'dark') {
+        const isDarkMode = localStorage.getItem('color-theme') === 'dark' || 
+                           (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+        if (isDarkMode) {
+            document.documentElement.classList.add('dark');
             document.body.classList.add('dark-mode');
+        } else {
+            document.documentElement.classList.remove('dark');
+            document.body.classList.remove('dark-mode');
         }
     })();
 </script>
-    <main class="login-container">
-        <div class="jargon-section d-none d-md-flex">
-            <h1 class="fw-bold display-6">Deploy Faster, Manage Smarter.</h1>
-            <p class="lead mt-3">Accelerate your development workflow by turning complex configurations into simple, repeatable actions.</p>
-        </div>
-        <div class="form-signin">
-                <form action="<?= base_url('/login') ?>" method="POST" id="login-form" class="text-start">
-                    <center><img class="mb-4" src="<?= base_url('/assets/img/logo-assistindo.png') ?>" alt="Assistindo Logo" width="72">
-                    <h1 class="h3 mb-3 fw-normal"><i class="bi bi-gear-wide-connected"></i> Config Manager</h1>
-                    <h2 class="h5 mb-4 fw-light text-muted">Please sign in</h2></center>
-                    <div id="error-container">
-                        <?php if ($error_message): ?>
-                            <div class="alert alert-danger"><?= $error_message ?></div>
-                        <?php endif; ?>
-                    </div>
-                    <div class="form-floating"><input type="text" class="form-control" id="username" name="username" placeholder="Username" required autofocus><label for="username">Username</label></div>
-                    <div class="form-floating mt-2"><input type="password" class="form-control" id="password" name="password" placeholder="Password" required><label for="password">Password</label></div>
-                    <button class="w-100 btn btn-lg btn-primary mt-3" type="submit">Sign in</button>
-                    <div class="progress mt-3" id="login-progress" style="display: none;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                    </div>
-                    <p class="mt-5 mb-3 text-muted text-center">&copy; <?= date('Y') ?> Assistindo</p>
-                </form>
-        </div>
-    </main>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const loginForm = document.getElementById('login-form');
-    if (!loginForm) return;
-
-    const submitButton = loginForm.querySelector('button[type="submit"]');
-    const progressBarContainer = document.getElementById('login-progress');
-    const progressBar = progressBarContainer.querySelector('.progress-bar');
-    const errorContainer = document.getElementById('error-container');
-
-    loginForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        // Hide previous error
-        errorContainer.innerHTML = '';
-
-        // Disable button and show progress bar
-        const originalButtonText = submitButton.innerHTML;
-        submitButton.disabled = true;
-        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Logging in...';
-        progressBarContainer.style.display = 'block';
-        progressBar.style.width = '0%';
-        progressBar.setAttribute('aria-valuenow', 0);
-
-        // Animate progress bar
-        let progress = 0;
-        const interval = setInterval(() => {
-            progress += 25;
-            progressBar.style.width = progress + '%';
-            progressBar.setAttribute('aria-valuenow', progress);
-        }, 200);
-
-        const formData = new FormData(loginForm);
-
-        fetch(loginForm.action, {
-            method: 'POST',
-            body: formData,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(response => response.json().then(data => ({ ok: response.ok, data })))
-        .then(({ ok, data }) => {
-            if (ok && data.status === 'success') {
-                clearInterval(interval);
-                progressBar.style.width = '100%';
-                progressBar.setAttribute('aria-valuenow', 100);
-                setTimeout(() => { window.location.href = data.redirect; }, 400);
-            } else {
-                throw new Error(data.message || 'An unknown error occurred.');
-            }
-        })
-        .catch(error => {
-            clearInterval(interval);
-            progressBarContainer.style.display = 'none';
-            errorContainer.innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
-            submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonText;
-        });
-    });
-});
-</script>
-</body>
-</html>
-    }
-</script>
 <main class="flex items-center justify-center min-h-screen p-4">
-    <div class="w-full max-w-4xl flex bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+    <div class="w-full max-w-4xl flex bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden form-signin-item">
         <!-- Jargon Section -->
-        <div class="hidden md:flex flex-col justify-center w-2/5 bg-primary-600 p-12 text-white">
+        <div class="hidden md:flex flex-col justify-center w-2/5 bg-primary-600 p-12 text-white jargon-section">
             <h1 class="font-bold text-4xl">Deploy Faster, Manage Smarter.</h1>
             <p class="mt-4 text-lg text-primary-200">Accelerate your development workflow by turning complex configurations into simple, repeatable actions.</p>
         </div>
@@ -249,9 +158,9 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="w-full md:w-3/5 p-8 sm:p-12 flex flex-col justify-center">
             <form action="<?= base_url('/login') ?>" method="POST" id="login-form" class="space-y-6">
                 <div class="text-center">
-                    <img class="mx-auto mb-4" src="<?= base_url('/assets/img/logo-assistindo.png') ?>" alt="Assistindo Logo" width="72">
-                    <h1 class="text-2xl font-semibold text-gray-900 dark:text-white form-signin-item"><i class="bi bi-gear-wide-connected"></i> Config Manager</h1>
-                    <h2 class="text-lg font-light text-gray-500 dark:text-gray-400 mt-2 form-signin-item delay-1">Please sign in</h2>
+                    <img class="mx-auto mb-4 form-signin-item" src="<?= base_url('/assets/img/logo-assistindo.png') ?>" alt="Assistindo Logo" width="72">
+                    <h1 class="text-2xl font-semibold text-gray-900 dark:text-white form-signin-item delay-1"><i class="bi bi-gear-wide-connected"></i> Config Manager</h1>
+                    <h2 class="text-lg font-light text-gray-500 dark:text-gray-400 mt-2 form-signin-item delay-2">Please sign in</h2>
                 </div>
 
                 <div id="error-container">

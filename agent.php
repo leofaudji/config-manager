@@ -317,25 +317,13 @@ function run_check_cycle() {
                         $tcp_ports = array_map(fn($p) => (int)$p, array_filter($exposed_ports, fn($p) => str_ends_with($p, '/tcp')));
                     }
 
-                    // --- NEW: Also consider the private port from the first port binding ---
-                    // Ini penting untuk kontainer dari App Launcher yang tidak menggunakan 'expose'.
-                    if (empty($tcp_ports) && !empty($details['NetworkSettings']['Ports'])) {
-                        $first_binding_key = array_key_first($details['NetworkSettings']['Ports']);
-                        if ($first_binding_key && str_ends_with($first_binding_key, '/tcp')) {
-                            $private_port_from_binding = (int)$first_binding_key;
-                            if ($private_port_from_binding > 0) {
-                                $tcp_ports[] = $private_port_from_binding;
-                            }
-                        }
-                    }
-
                     // --- NEW: Also inspect port bindings for a private port, in case expose is missing ---
                     // This covers a common case where a container defines ports like "8080:80"
                     // but does not explicitly expose the internal port 80.
                     if (empty($tcp_ports) && isset($details['NetworkSettings']['Ports'])) {
                         foreach ($details['NetworkSettings']['Ports'] as $port_mapping => $bindings) {
                             // We only care about TCP ports and where a binding exists.
-                            if (strpos($port_mapping, '/tcp') !== false && is_array($bindings) && !empty($bindings)) {
+                            if (str_ends_with($port_mapping, '/tcp') && is_array($bindings) && !empty($bindings)) {
                                 // Remove the '/tcp' suffix and cast to integer
                                 $tcp_ports[] = (int)str_replace('/tcp', '', $port_mapping);
                             }
@@ -345,12 +333,6 @@ function run_check_cycle() {
                     // --- Prioritize 80/443, then first exposed port, then educated guess ---
                     // Remove duplicates after the above steps to ensure the prioritized ports are listed first.
                     $tcp_ports = array_unique($tcp_ports);
-                    
-                    // Use in_array to check for the key in the array first
-                    if (in_array(80, $tcp_ports)) $internal_port = 80;
-                    elseif (in_array(443, $tcp_ports)) $internal_port = 443;
-                    elseif (!empty($tcp_ports)) $internal_port = $tcp_ports[0];  
-                    
 
                     if (in_array(80, $tcp_ports)) $internal_port = 80;
                     elseif (in_array(443, $tcp_ports)) $internal_port = 443;

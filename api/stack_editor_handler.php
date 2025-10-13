@@ -85,8 +85,8 @@ try {
             $compose_data['networks']['default']['driver_opts'] = [];
         }
         // Ensure both options are set to true for reliable communication.
-        $compose_data['networks']['default']['driver_opts']['com.docker.network.bridge.enable_icc'] = 'true '; // Add space to force string type
-        $compose_data['networks']['default']['driver_opts']['com.docker.network.bridge.enable_ip_masquerade'] = 'true '; // Add space
+        //$compose_data['networks']['default']['driver_opts']['com.docker.network.bridge.enable_icc'] = true;
+        //$compose_data['networks']['default']['driver_opts']['com.docker.network.bridge.enable_ip_masquerade'] = true;
         
         // Re-dump the content with the added driver_opts.
         $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
@@ -187,7 +187,7 @@ try {
     if ($is_swarm_manager) {
         $main_compose_command = "docker stack deploy -c docker-compose.yml " . escapeshellarg($stack['stack_name']) . " --with-registry-auth --prune 2>&1";
     } else {
-        $main_compose_command = "docker-compose -p " . escapeshellarg($stack['stack_name']) . " up -d --force-recreate --remove-orphans 2>&1";
+        $main_compose_command = "docker compose -p " . escapeshellarg($stack['stack_name']) . " up -d --force-recreate --remove-orphans 2>&1";
     }
 
     $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($cd_command . ' && ' . $main_compose_command);

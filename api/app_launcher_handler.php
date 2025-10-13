@@ -323,212 +323,210 @@ try {
         stream_message("Container names are valid.");
     }
 
-    // --- Deployment ---
-    if ($is_swarm_manager) {
-        $deployment_dir = '';
-        $compose_file_name = ''; // Relative path to the compose file within the deployment_dir
-        $base_compose_path = get_setting('default_compose_path', '');
-        $is_persistent_path = !empty($base_compose_path);
+    // --- Deployment ---    
+    $deployment_dir = '';
+    $compose_file_name = ''; // Relative path to the compose file within the deployment_dir
+    $base_compose_path = get_setting('default_compose_path', '');
+    $is_persistent_path = !empty($base_compose_path);
 
-        stream_message("Preparing deployment directory...");
-        if ($source_type === 'git') {
-            // For Git source, we need the entire repository content, not just the compose file.
-            // $repo_path holds the path to the temporarily cloned repo.
-            if ($is_persistent_path) {
-                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
-                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
-                // Ensure a clean state by removing the old directory if it exists.
-                if (is_dir($deployment_dir)) {
-                    shell_exec("rm -rf " . escapeshellarg($deployment_dir));
-                }
-                // Use a recursive copy for cross-device compatibility, as rename() can fail.
-                // First, create the destination directory.
-                if (!mkdir($deployment_dir, 0755, true) && !is_dir($deployment_dir)) {
-                    throw new \RuntimeException(sprintf('Deployment directory "%s" could not be created.', $deployment_dir));
-                }
-                if (file_exists($deployment_dir) && !is_dir($deployment_dir)) {
-                    throw new \RuntimeException(sprintf('Cannot create deployment directory "%s" because a file with that name already exists.', $deployment_dir));
-                }
-                if (!is_dir($deployment_dir) && !@mkdir($deployment_dir, 0755, true) && !is_dir($deployment_dir)) {
-                    throw new \RuntimeException(sprintf('Deployment directory "%s" could not be created. Check permissions.', $deployment_dir));
-                }
-                // Then, copy the contents of the cloned repo.
-                exec("cp -a " . escapeshellarg($repo_path . '/.') . " " . escapeshellarg($deployment_dir), $output, $return_var);
-                if ($return_var !== 0) throw new Exception("Failed to copy repository to deployment directory. Output: " . implode("\n", $output));
-                // The original temporary repo at $repo_path will be cleaned up by the 'finally' logic.
-            } else {
-                // Use the temporary cloned repo path directly for deployment.
-                $deployment_dir = $repo_path; // This is a temporary path
-                $temp_dir = $deployment_dir; // Mark it for cleanup.
-                $repo_path = null; // Prevent double cleanup.
+    stream_message("Preparing deployment directory...");
+    if ($source_type === 'git') {
+        // For Git source, we need the entire repository content, not just the compose file.
+        // $repo_path holds the path to the temporarily cloned repo.
+        if ($is_persistent_path) {
+            $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+            $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
+            // Ensure a clean state by removing the old directory if it exists.
+            if (is_dir($deployment_dir)) {
+                shell_exec("rm -rf " . escapeshellarg($deployment_dir));
             }
-            // The compose file is inside the deployment directory. We just need its full path.
-            $compose_file_name = $final_compose_path; // Use the path that was actually found
-            $compose_file_full_path = $deployment_dir . '/' . $compose_file_name;
-            // Overwrite the original compose file with the one modified by the form settings.
-            if (file_put_contents($compose_file_full_path, $compose_content) === false) throw new Exception("Could not write modified compose file to: " . $compose_file_full_path);
-
-        } else {
-            // For 'image', 'hub', or 'editor' source, we only need to create a directory with a single compose file.
-            if ($is_persistent_path) {
-                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
-                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
-            } else {
-                $deployment_dir = rtrim(sys_get_temp_dir(), '/') . '/app_launcher_' . uniqid();
-                $temp_dir = $deployment_dir; // Mark for cleanup.
+            // Use a recursive copy for cross-device compatibility, as rename() can fail.
+            // First, create the destination directory.
+            if (!mkdir($deployment_dir, 0755, true) && !is_dir($deployment_dir)) {
+                throw new \RuntimeException(sprintf('Deployment directory "%s" could not be created.', $deployment_dir));
             }
-            if (!is_dir($deployment_dir) && !mkdir($deployment_dir, 0755, true)) throw new Exception("Could not create deployment directory: {$deployment_dir}.");
             if (file_exists($deployment_dir) && !is_dir($deployment_dir)) {
-                throw new Exception("Cannot create deployment directory '{$deployment_dir}' because a file with that name already exists.");
+                throw new \RuntimeException(sprintf('Cannot create deployment directory "%s" because a file with that name already exists.', $deployment_dir));
             }
             if (!is_dir($deployment_dir) && !@mkdir($deployment_dir, 0755, true) && !is_dir($deployment_dir)) {
-                throw new Exception("Could not create deployment directory: {$deployment_dir}. Check permissions.");
+                throw new \RuntimeException(sprintf('Deployment directory "%s" could not be created. Check permissions.', $deployment_dir));
             }
-            $compose_file_name = 'docker-compose.yml';
-            $compose_file_full_path = $deployment_dir . '/' . $compose_file_name;
-            if (file_put_contents($compose_file_full_path, $compose_content) === false) throw new Exception("Could not write compose file to: " . $compose_file_full_path);
-        }
-
-        stream_message("Configuring remote Docker environment...");
-        // This logic is now shared between Standalone and Swarm
-        $env_vars = "DOCKER_HOST=" . escapeshellarg($host['docker_api_url']);
-        if ($host['tls_enabled']) {
-            $env_vars .= " DOCKER_TLS_VERIFY=1";
-            $cert_path_dir = $deployment_dir . '/certs';
-            if (!is_dir($cert_path_dir) && !mkdir($cert_path_dir, 0700, true)) throw new Exception("Could not create cert directory in {$deployment_dir}.");
-            if (!is_dir($cert_path_dir) && !@mkdir($cert_path_dir, 0700, true) && !is_dir($cert_path_dir)) {
-                throw new Exception("Could not create cert directory in {$deployment_dir}.");
-            }
-            
-            if (!file_exists($host['ca_cert_path'])) throw new Exception("CA certificate not found at: {$host['ca_cert_path']}");
-            if (!file_exists($host['client_cert_path'])) throw new Exception("Client certificate not found at: {$host['client_cert_path']}");
-            if (!file_exists($host['client_key_path'])) throw new Exception("Client key not found at: {$host['client_key_path']}");
-
-            // Copy certs to the deployment directory
-            copy($host['ca_cert_path'], $cert_path_dir . '/ca.pem');
-            copy($host['client_cert_path'], $cert_path_dir . '/cert.pem');
-            copy($host['client_key_path'], $cert_path_dir . '/key.pem');
-
-            $env_vars .= " DOCKER_CERT_PATH=" . escapeshellarg($cert_path_dir);
-        }
-
-        // Set compose to non-interactive mode to prevent it from hanging on prompts.
-        $env_vars .= " COMPOSE_NONINTERACTIVE=1";
-
-        stream_message("Checking for private registry credentials...");
-        // Prepare docker login command if registry credentials are provided
-        $login_command = '';
-        if (!empty($host['registry_username']) && !empty($host['registry_password'])) {
-            // Use a persistent path from .env if available, otherwise use a temporary one.
-            $docker_config_path_from_env = Config::get('DOCKER_CONFIG_PATH');
-            if (!empty($docker_config_path_from_env)) {
-                if (!is_dir($docker_config_path_from_env) && !mkdir($docker_config_path_from_env, 0755, true)) {
-                    throw new Exception("Could not create specified DOCKER_CONFIG_PATH: {$docker_config_path_from_env}. Check permissions.");
-                }
-                if (file_exists($docker_config_path_from_env) && !is_dir($docker_config_path_from_env)) {
-                    throw new Exception("Cannot create DOCKER_CONFIG_PATH '{$docker_config_path_from_env}' because a file with that name already exists.");
-                }
-                if (!is_dir($docker_config_path_from_env) && !@mkdir($docker_config_path_from_env, 0755, true) && !is_dir($docker_config_path_from_env)) {
-                    throw new Exception("Could not create specified DOCKER_CONFIG_PATH: {$docker_config_path_from_env}. Check permissions on the parent directory.");
-                }
-                $docker_config_dir = $docker_config_path_from_env;
-            } else {
-                $docker_config_dir = rtrim(sys_get_temp_dir(), '/') . '/docker_config_' . uniqid();
-                if (!mkdir($docker_config_dir, 0700, true)) throw new Exception("Could not create temporary docker config directory.");
-                if (!is_dir($docker_config_dir) && !@mkdir($docker_config_dir, 0700, true) && !is_dir($docker_config_dir)) {
-                    throw new Exception("Could not create temporary docker config directory.");
-                }
-            }
-            $env_vars .= " DOCKER_CONFIG=" . escapeshellarg($docker_config_dir);
-
-            $registry_url = !empty($host['registry_url']) ? escapeshellarg($host['registry_url']) : '';
-            // The login command is chained before the pull command.
-            $login_command = "echo " . escapeshellarg($host['registry_password']) . " | docker login {$registry_url} -u " . escapeshellarg($host['registry_username']) . " --password-stdin 2>&1 && ";
-        }
-
-        stream_message("Preparing docker-compose commands...");
-        // Change directory to the deployment dir before running docker-compose
-        // This ensures relative paths (like `build: .`) in the compose file work correctly.
-        $cd_command = "cd " . escapeshellarg($deployment_dir);
-
-        stream_message("Checking for volume creation request...");
-        $mkdir_command = '';
-        // This logic is only for standalone hosts. Swarm manages volumes differently.
-        if (!empty($volume_paths) && is_array($volume_paths) && !$is_swarm_manager) {
-            $mkdir_commands = [];
-            $default_volume_path_on_host = $host['default_volume_path'] ?? null;
-
-            if (empty($default_volume_path_on_host)) {
-                stream_message("Skipping remote volume directory creation because 'Default Volume Path' is not set for this host.", 'WARN');
-            } else {
-                foreach ($volume_paths as $volume_map) {
-                    $host_path = $volume_map['host'] ?? null;
-                    if ($host_path) {
-                        // Ensure the host path is within the allowed default volume path for security
-                        if (strpos($host_path, $default_volume_path_on_host) !== 0) {
-                            stream_message("Volume path '{$host_path}' is outside the host's default volume path '{$default_volume_path_on_host}'. Skipping creation for security.", 'WARN');
-                            continue;
-                        }
-                        // This is the new, more robust command. It mounts the configured base path and creates the full subdirectory structure inside.
-                        $mkdir_commands[] = "docker run --rm -v " . escapeshellarg($default_volume_path_on_host . ':/data') . " alpine mkdir -p " . escapeshellarg('/data/' . ltrim(substr($host_path, strlen($default_volume_path_on_host)), '/'));
-                    }
-                }
-            }
-            if (!empty($mkdir_commands)) {
-                // Use array_unique to prevent running the same mkdir command multiple times if paths overlap
-                $mkdir_command = implode(' 2>&1 && ', array_unique($mkdir_commands)) . ' 2>&1 && ';
-            }
-        }
-
-        // --- Auto-detect if a build is needed by inspecting the final compose content ---
-        $compose_data_for_build_check = DockerComposeParser::YAMLLoad($compose_content);
-        $is_build_required = false;
-        if (isset($compose_data_for_build_check['services']) && is_array($compose_data_for_build_check['services'])) {
-            foreach ($compose_data_for_build_check['services'] as $service_config) {
-                if (isset($service_config['build'])) {
-                    $is_build_required = true;
-                    break;
-                }
-            }
-        }
-
-        if ($is_swarm_manager) {
-            stream_message("Host is a Swarm Manager. Preparing 'docker stack deploy' command...");
-            $main_compose_command = "docker stack deploy -c " . escapeshellarg($compose_file_name) . " " . escapeshellarg($stack_name) . " --with-registry-auth --prune 2>&1";
-            // For Swarm, we don't need to explicitly pull. The --with-registry-auth flag handles it.
-            // However, if a build is required, we must build first.
-            if ($is_build_required) {
-                stream_message("Build directive detected. Running 'docker-compose build' before deployment...");
-                $build_command = "docker-compose -f " . escapeshellarg($compose_file_name) . " build --pull 2>&1";
-                $main_compose_command = $build_command . " && " . $main_compose_command;
-            }
+            // Then, copy the contents of the cloned repo.
+            exec("cp -a " . escapeshellarg($repo_path . '/.') . " " . escapeshellarg($deployment_dir), $output, $return_var);
+            if ($return_var !== 0) throw new Exception("Failed to copy repository to deployment directory. Output: " . implode("\n", $output));
+            // The original temporary repo at $repo_path will be cleaned up by the 'finally' logic.
         } else {
-            // --- Standalone Host Deployment ---
-            stream_message("Host is Standalone. Preparing 'docker-compose' commands...");
-            $compose_up_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes 2>&1";
-            // For Standalone, we always try to pull first to get the latest image.
-            $main_compose_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1 && " . $compose_up_command;
+            // Use the temporary cloned repo path directly for deployment.
+            $deployment_dir = $repo_path; // This is a temporary path
+            $temp_dir = $deployment_dir; // Mark it for cleanup.
+            $repo_path = null; // Prevent double cleanup.
         }
+        // The compose file is inside the deployment directory. We just need its full path.
+        $compose_file_name = $final_compose_path; // Use the path that was actually found
+        $compose_file_full_path = $deployment_dir . '/' . $compose_file_name;
+        // Overwrite the original compose file with the one modified by the form settings.
+        if (file_put_contents($compose_file_full_path, $compose_content) === false) throw new Exception("Could not write modified compose file to: " . $compose_file_full_path);
 
-        $script_to_run = $cd_command . ' && ' . $login_command . $mkdir_command . $main_compose_command;
-        $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($script_to_run);
-
-        stream_message("Executing deployment script on remote host...");
-        stream_exec($full_command, $return_var);
-
-        // Cleanup temporary docker config directory immediately after use
-        if (empty(Config::get('DOCKER_CONFIG_PATH')) && isset($docker_config_dir) && is_dir($docker_config_dir)) {
-             shell_exec("rm -rf " . escapeshellarg($docker_config_dir));
+    } else {
+        // For 'image', 'hub', or 'editor' source, we only need to create a directory with a single compose file.
+        if ($is_persistent_path) {
+            $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+            $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
+        } else {
+            $deployment_dir = rtrim(sys_get_temp_dir(), '/') . '/app_launcher_' . uniqid();
+            $temp_dir = $deployment_dir; // Mark for cleanup.
         }
-
-        stream_message("Checking deployment result...");
-        if ($return_var !== 0) {
-            throw new Exception("Docker-compose deployment failed. Check log for details.");
+        if (!is_dir($deployment_dir) && !mkdir($deployment_dir, 0755, true)) throw new Exception("Could not create deployment directory: {$deployment_dir}.");
+        if (file_exists($deployment_dir) && !is_dir($deployment_dir)) {
+            throw new Exception("Cannot create deployment directory '{$deployment_dir}' because a file with that name already exists.");
         }
-
-        stream_message("Deployment command executed successfully.");
+        if (!is_dir($deployment_dir) && !@mkdir($deployment_dir, 0755, true) && !is_dir($deployment_dir)) {
+            throw new Exception("Could not create deployment directory: {$deployment_dir}. Check permissions.");
+        }
+        $compose_file_name = 'docker-compose.yml';
+        $compose_file_full_path = $deployment_dir . '/' . $compose_file_name;
+        if (file_put_contents($compose_file_full_path, $compose_content) === false) throw new Exception("Could not write compose file to: " . $compose_file_full_path);
     }
 
+    stream_message("Configuring remote Docker environment...");
+    // This logic is now shared between Standalone and Swarm
+    $env_vars = "DOCKER_HOST=" . escapeshellarg($host['docker_api_url']);
+    if ($host['tls_enabled']) {
+        $env_vars .= " DOCKER_TLS_VERIFY=1";
+        $cert_path_dir = $deployment_dir . '/certs';
+        if (!is_dir($cert_path_dir) && !mkdir($cert_path_dir, 0700, true)) throw new Exception("Could not create cert directory in {$deployment_dir}.");
+        if (!is_dir($cert_path_dir) && !@mkdir($cert_path_dir, 0700, true) && !is_dir($cert_path_dir)) {
+            throw new Exception("Could not create cert directory in {$deployment_dir}.");
+        }
+        
+        if (!file_exists($host['ca_cert_path'])) throw new Exception("CA certificate not found at: {$host['ca_cert_path']}");
+        if (!file_exists($host['client_cert_path'])) throw new Exception("Client certificate not found at: {$host['client_cert_path']}");
+        if (!file_exists($host['client_key_path'])) throw new Exception("Client key not found at: {$host['client_key_path']}");
+
+        // Copy certs to the deployment directory
+        copy($host['ca_cert_path'], $cert_path_dir . '/ca.pem');
+        copy($host['client_cert_path'], $cert_path_dir . '/cert.pem');
+        copy($host['client_key_path'], $cert_path_dir . '/key.pem');
+
+        $env_vars .= " DOCKER_CERT_PATH=" . escapeshellarg($cert_path_dir);
+    }
+
+    // Set compose to non-interactive mode to prevent it from hanging on prompts.
+    $env_vars .= " COMPOSE_NONINTERACTIVE=1";
+
+    stream_message("Checking for private registry credentials...");
+    // Prepare docker login command if registry credentials are provided
+    $login_command = '';
+    if (!empty($host['registry_username']) && !empty($host['registry_password'])) {
+        // Use a persistent path from .env if available, otherwise use a temporary one.
+        $docker_config_path_from_env = Config::get('DOCKER_CONFIG_PATH');
+        if (!empty($docker_config_path_from_env)) {
+            if (!is_dir($docker_config_path_from_env) && !mkdir($docker_config_path_from_env, 0755, true)) {
+                throw new Exception("Could not create specified DOCKER_CONFIG_PATH: {$docker_config_path_from_env}. Check permissions.");
+            }
+            if (file_exists($docker_config_path_from_env) && !is_dir($docker_config_path_from_env)) {
+                throw new Exception("Cannot create DOCKER_CONFIG_PATH '{$docker_config_path_from_env}' because a file with that name already exists.");
+            }
+            if (!is_dir($docker_config_path_from_env) && !@mkdir($docker_config_path_from_env, 0755, true) && !is_dir($docker_config_path_from_env)) {
+                throw new Exception("Could not create specified DOCKER_CONFIG_PATH: {$docker_config_path_from_env}. Check permissions on the parent directory.");
+            }
+            $docker_config_dir = $docker_config_path_from_env;
+        } else {
+            $docker_config_dir = rtrim(sys_get_temp_dir(), '/') . '/docker_config_' . uniqid();
+            if (!mkdir($docker_config_dir, 0700, true)) throw new Exception("Could not create temporary docker config directory.");
+            if (!is_dir($docker_config_dir) && !@mkdir($docker_config_dir, 0700, true) && !is_dir($docker_config_dir)) {
+                throw new Exception("Could not create temporary docker config directory.");
+            }
+        }
+        $env_vars .= " DOCKER_CONFIG=" . escapeshellarg($docker_config_dir);
+
+        $registry_url = !empty($host['registry_url']) ? escapeshellarg($host['registry_url']) : '';
+        // The login command is chained before the pull command.
+        $login_command = "echo " . escapeshellarg($host['registry_password']) . " | docker login {$registry_url} -u " . escapeshellarg($host['registry_username']) . " --password-stdin 2>&1 && ";
+    }
+
+    stream_message("Preparing docker-compose commands...");
+    // Change directory to the deployment dir before running docker-compose
+    // This ensures relative paths (like `build: .`) in the compose file work correctly.
+    $cd_command = "cd " . escapeshellarg($deployment_dir);
+
+    stream_message("Checking for volume creation request...");
+    $mkdir_command = '';
+    // This logic is only for standalone hosts. Swarm manages volumes differently.
+    if (!empty($volume_paths) && is_array($volume_paths) && !$is_swarm_manager) {
+        $mkdir_commands = [];
+        $default_volume_path_on_host = $host['default_volume_path'] ?? null;
+
+        if (empty($default_volume_path_on_host)) {
+            stream_message("Skipping remote volume directory creation because 'Default Volume Path' is not set for this host.", 'WARN');
+        } else {
+            foreach ($volume_paths as $volume_map) {
+                $host_path = $volume_map['host'] ?? null;
+                if ($host_path) {
+                    // Ensure the host path is within the allowed default volume path for security
+                    if (strpos($host_path, $default_volume_path_on_host) !== 0) {
+                        stream_message("Volume path '{$host_path}' is outside the host's default volume path '{$default_volume_path_on_host}'. Skipping creation for security.", 'WARN');
+                        continue;
+                    }
+                    // This is the new, more robust command. It mounts the configured base path and creates the full subdirectory structure inside.
+                    $mkdir_commands[] = "docker run --rm -v " . escapeshellarg($default_volume_path_on_host . ':/data') . " alpine mkdir -p " . escapeshellarg('/data/' . ltrim(substr($host_path, strlen($default_volume_path_on_host)), '/'));
+                }
+            }
+        }
+        if (!empty($mkdir_commands)) {
+            // Use array_unique to prevent running the same mkdir command multiple times if paths overlap
+            $mkdir_command = implode(' 2>&1 && ', array_unique($mkdir_commands)) . ' 2>&1 && ';
+        }
+    }
+
+    // --- Auto-detect if a build is needed by inspecting the final compose content ---
+    $compose_data_for_build_check = DockerComposeParser::YAMLLoad($compose_content);
+    $is_build_required = false;
+    if (isset($compose_data_for_build_check['services']) && is_array($compose_data_for_build_check['services'])) {
+        foreach ($compose_data_for_build_check['services'] as $service_config) {
+            if (isset($service_config['build'])) {
+                $is_build_required = true;
+                break;
+            }
+        }
+    }
+
+    if ($is_swarm_manager) {
+        stream_message("Host is a Swarm Manager. Preparing 'docker stack deploy' command...");
+        $main_compose_command = "docker stack deploy -c " . escapeshellarg($compose_file_name) . " " . escapeshellarg($stack_name) . " --with-registry-auth --prune 2>&1";
+        // For Swarm, we don't need to explicitly pull. The --with-registry-auth flag handles it.
+        // However, if a build is required, we must build first.
+        if ($is_build_required) {
+            stream_message("Build directive detected. Running 'docker-compose build' before deployment...");
+            $build_command = "docker compose -f " . escapeshellarg($compose_file_name) . " build --pull 2>&1";
+            $main_compose_command = $build_command . " && " . $main_compose_command;
+        }
+    } else {
+        // --- Standalone Host Deployment ---
+        stream_message("Host is Standalone. Preparing 'docker compose' commands...");
+        $compose_up_command = "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes 2>&1";
+        // For Standalone, we always try to pull first to get the latest image.
+        $main_compose_command = "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1 && " . $compose_up_command;
+    }
+
+    $script_to_run = $cd_command . ' && ' . $login_command . $mkdir_command . $main_compose_command;
+    $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($script_to_run);
+
+    stream_message("Executing deployment script on remote host...");
+    stream_exec($full_command, $return_var);
+
+    // Cleanup temporary docker config directory immediately after use
+    if (empty(Config::get('DOCKER_CONFIG_PATH')) && isset($docker_config_dir) && is_dir($docker_config_dir)) {
+         shell_exec("rm -rf " . escapeshellarg($docker_config_dir));
+    }
+
+    stream_message("Checking deployment result...");
+    if ($return_var !== 0) {
+        throw new Exception("Docker-compose deployment failed. Check log for details.");
+    }
+
+    stream_message("Deployment command executed successfully.");
+    
     // --- Prepare deployment details for saving ---
     stream_message("Saving deployment configuration to database...");
     $log_details = "Launched app '{$stack_name}' on host '{$host['name']}'. Source: {$source_type}.";

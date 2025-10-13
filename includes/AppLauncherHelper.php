@@ -94,12 +94,12 @@ class AppLauncherHelper
                 if (empty($network) && !isset($compose_data['services'][$service_key]['networks'])) {
                     if (!isset($compose_data['networks']['default'])) {
                         // Define a default network that allows inter-container communication (including ping)
-                        $compose_data['networks']['default'] = [
+                        /*$compose_data['networks']['default'] = [
                             'driver_opts' => [
-                                'com.docker.network.bridge.enable_icc' => 'true ', // Add space to force string type in YAML
-                                'com.docker.network.bridge.enable_ip_masquerade' => 'true ', // Add space
+                                'com.docker.network.bridge.enable_icc' => true,
+                                'com.docker.network.bridge.enable_ip_masquerade' => true,
                             ]
-                        ];
+                        ];*/
                     }
                     // Explicitly attach the service to the default network to support the hostname alias.
                     $compose_data['services'][$service_key]['networks'] = ['default'];
@@ -178,27 +178,31 @@ class AppLauncherHelper
             }
         }
 
-        // --- Port & Expose Mapping (Applied to all services for simplicity) ---
-        // This is applied after the loop to ensure it's not tied to is_first_service
+        // --- NEW: Definitive Port & Expose Mapping Logic ---
+        // This logic now correctly targets ONLY the first service in the compose file
+        // for applying the port settings from the App Launcher form. This prevents
+        // settings from being incorrectly applied or wiped by other services in the file.
         if ($container_port) {
-            foreach (array_keys($compose_data['services']) as $service_key) {
-                // Overwrite any existing ports for the service.
-                $compose_data['services'][$service_key]['ports'] = [];
+            // Get the key of the very first service defined in the compose file.
+            $first_service_key = array_key_first($compose_data['services']);
 
-                if ($host_port) {
-                    // If host port is specified, create a full mapping.
-                    $port_mapping = $host_port . ':' . $container_port;
-                } else {
-                    // If only container port is specified, just expose it (maps to a random host port).
-                    $port_mapping = (string)$container_port;
+            if ($first_service_key) {
+                // Ensure the 'ports' array exists for the first service.
+                $compose_data['services'][$first_service_key]['ports'] = $compose_data['services'][$first_service_key]['ports'] ?? [];
+
+                // If a host port is provided, create a "host:container" mapping.
+                // Otherwise, create a "container" mapping (publishes to a random host port).
+                $port_mapping = !empty($host_port) ? "{$host_port}:{$container_port}" : (string)$container_port;
+
+                // Add the new mapping, but only if it doesn't already exist.
+                if (!in_array($port_mapping, $compose_data['services'][$first_service_key]['ports'])) {
+                    $compose_data['services'][$first_service_key]['ports'][] = $port_mapping;
                 }
-                $compose_data['services'][$service_key]['ports'][] = $port_mapping;
-                // Also add to expose for better health agent discovery
-                if (!isset($compose_data['services'][$service_key]['expose'])) {
-                    $compose_data['services'][$service_key]['expose'] = [];
-                }
-                if (!in_array((string)$container_port, $compose_data['services'][$service_key]['expose'])) {
-                    $compose_data['services'][$service_key]['expose'][] = (string)$container_port;
+
+                // Also add to 'expose' for better health agent discovery.
+                $compose_data['services'][$first_service_key]['expose'] = $compose_data['services'][$first_service_key]['expose'] ?? [];
+                if (!in_array((string)$container_port, $compose_data['services'][$first_service_key]['expose'])) {
+                    $compose_data['services'][$first_service_key]['expose'][] = (string)$container_port;
                 }
             }
         }

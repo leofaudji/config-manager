@@ -957,7 +957,7 @@ class DockerClient
 
         // Build the full command
         $cd_command = "cd " . escapeshellarg($deployment_dir);
-        $compose_command = "docker-compose -p " . escapeshellarg($stackName) . " up -d --force-recreate " . escapeshellarg($serviceName);
+        $compose_command = "docker compose -p " . escapeshellarg($stackName) . " up -d --force-recreate " . escapeshellarg($serviceName);
         $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($cd_command . ' && ' . $compose_command) . ' 2>&1';
 
         exec($full_command, $output, $return_var);

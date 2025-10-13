@@ -470,7 +470,7 @@ try {
                 }
 
                 $cd_command = "cd " . escapeshellarg($deployment_dir);
-                $compose_down_command = "docker-compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_filename) . " down --remove-orphans --volumes 2>&1";
+                $compose_down_command = "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_filename) . " down --remove-orphans --volumes 2>&1";
                 $full_command = $env_vars . ' ' . $cd_command . ' && ' . $compose_down_command;
 
                 exec($full_command, $output, $return_var);
