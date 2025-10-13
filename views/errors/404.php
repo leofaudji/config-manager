@@ -4,38 +4,31 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>404 Not Found - Config Manager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.0/flowbite.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="<?= htmlspecialchars($basePath ?? '') ?>/assets/css/style.css">
-    <style>
-        .error-container {
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-        }
-    </style>
+    <script src="<?= htmlspecialchars($basePath ?? '') ?>/assets/js/tailwind.config.js"></script>
 </head>
-<body>
+<body class="bg-gray-100 dark:bg-gray-900">
 <script>
-    // Apply theme immediately to prevent FOUC (Flash of Unstyled Content)
-    (function() {
-        const theme = localStorage.getItem('theme') || 'light';
-        if (theme === 'dark') {
-            document.body.classList.add('dark-mode');
-        }
-    })();
+    // Tailwind dark mode setup
+    if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+    } else {
+        document.documentElement.classList.remove('dark');
+    }
 </script>
-    <div class="container error-container">
-        <div>
-            <h1 class="display-1 fw-bold text-primary">404</h1>
-            <p class="fs-3"> <span class="text-danger">Oops!</span> Halaman tidak ditemukan.</p>
-            <p class="lead">
+    <main class="flex items-center justify-center min-h-screen">
+        <div class="text-center">
+            <h1 class="text-8xl font-bold text-primary-600">404</h1>
+            <p class="text-3xl font-semibold text-gray-800 dark:text-gray-200 mt-4">
+                <span class="text-red-600 dark:text-red-500">Oops!</span> Halaman tidak ditemukan.
+            </p>
+            <p class="text-lg text-gray-600 dark:text-gray-400 mt-2">
                 <?php echo htmlspecialchars($message ?? 'Halaman yang Anda cari tidak ada atau telah dipindahkan.'); ?>
             </p>
-            <a href="<?php echo htmlspecialchars($basePath ?? '/'); ?>/" class="btn btn-primary mt-3">Kembali ke Dashboard</a>
+            <a href="<?php echo htmlspecialchars($basePath ?? '/'); ?>/" class="mt-6 inline-block px-6 py-3 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700">Kembali ke Dashboard</a>
         </div>
-    </div>
+    </main>
 </body>
 </html>

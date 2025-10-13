@@ -223,7 +223,8 @@ require_once __DIR__ . '/../includes/host_nav.php';
                             if (sourceType === 'builder') {
                                 updateButton = `<a href="${basePath}/hosts/${hostId}/stacks/${stackDbId}/edit" class="btn btn-sm btn-outline-warning" title="Edit Stack"><i class="bi bi-pencil-square"></i></a>`;
                             } else {
-                                updateButton = `<a href="${basePath}/hosts/${hostId}/stacks/${stackDbId}/update" class="btn btn-sm btn-outline-warning" title="Update Stack"><i class="bi bi-arrow-repeat"></i></a>`;
+                                updateButton = `<a href="${basePath}/hosts/${hostId}/stacks/${stackDbId}/update" class="btn btn-sm btn-outline-warning" title="Update Stack"><i class="bi bi-arrow-repeat"></i></a>
+                                                <a href="${basePath}/hosts/${hostId}/stacks/${stackDbId}/edit-compose" class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Edit Raw Compose File"><i class="bi bi-file-code"></i></a>`;
                             }
                         }
                         const deleteButton = `<button class="btn btn-sm btn-outline-danger delete-stack-btn" data-stack-name="${stack.Name}" title="Delete Stack"><i class="bi bi-trash"></i></button>`;

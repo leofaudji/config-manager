@@ -14,53 +14,6 @@ $preselected_host_id = $_GET['host_id'] ?? null;
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
-<style>
-.editor-wrapper {
-    position: relative;
-    height: 350px;
-    background-color: #fff;
-}
-.dark-mode .editor-wrapper {
-    background-color: #212529;
-}
-#compose_content_editor, #editor-highlight-pre {
-    /* Common styles to look like a form-control */
-    margin: 0;
-    padding: .375rem .75rem;
-    border: 1px solid #ced4da;
-    border-radius: .375rem;
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: .875em;
-    line-height: 1.5;
-    height: 100%;
-    width: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    overflow: auto;
-    white-space: pre;
-    word-wrap: normal;
-}
-#compose_content_editor {
-    z-index: 2;
-    color: transparent;
-    background: transparent;
-    caret-color: #212529; /* Black caret */
-    resize: none;
-}
-#editor-highlight-pre {
-    z-index: 1;
-    pointer-events: none; /* Make it unclickable */
-}
-/* Adjust for dark mode */
-.dark-mode #compose_content_editor {
-    caret-color: #f8f9fa; /* White caret */
-}
-.dark-mode #compose_content_editor, .dark-mode #editor-highlight-pre {
-    border-color: #495057;
-}
-</style>
-
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2"><i class="bi bi-rocket-launch-fill"></i> App Launcher</h1>
 </div>
@@ -183,11 +136,8 @@ require_once __DIR__ . '/../includes/header.php';
                             <!-- Editor -->
                             <div id="editor-source-section" style="display: none;">
                                 <div class="mb-3">
-                                    <label for="compose_content_editor" class="form-label">Docker Compose Content <span class="text-danger">*</span></label>
-                                    <div class="editor-wrapper">
-                                        <textarea id="compose_content_editor" name="compose_content_editor" placeholder="version: '3.8'&#10;services:&#10;  my-app:&#10;    image: nginx:latest" spellcheck="false"></textarea>
-                                        <pre id="editor-highlight-pre" aria-hidden="true"><code class="language-yaml" id="editor-highlight-code"></code></pre>
-                                    </div>
+                                    <label class="form-label">Docker Compose Content <span class="text-danger">*</span></label>
+                                    <textarea id="compose_content_editor" name="compose_content_editor" placeholder="version: '3.8'&#10;services:&#10;  my-app:&#10;    image: nginx:latest"></textarea>
                                     <small class="form-text text-muted">Paste or write your `docker-compose.yml` content here. Syntax highlighting is supported.</small>
                                 </div>
                             </div>
@@ -640,31 +590,23 @@ window.pageInit = function() {
     sourceTypeGitRadio.addEventListener('change', toggleSourceSections);
     sourceTypeLocalImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeHubImageRadio.addEventListener('change', toggleSourceSections);
-    sourceTypeEditorRadio.addEventListener('change', toggleSourceSections);
-    // --- YAML Editor with Syntax Highlighting ---
-    if (composeContentEditor && editorHighlightCode && editorHighlightPre) {
-        const updateHighlight = () => {
-            const code = composeContentEditor.value;
-            // Prism can sometimes miss the last line if it doesn't end with a newline.
-            // Appending a newline character ensures it gets processed.
-            editorHighlightCode.textContent = code + '\n'; 
-            Prism.highlightElement(editorHighlightCode);
-        };
 
-        const syncScroll = () => {
-            editorHighlightPre.scrollTop = composeContentEditor.scrollTop;
-            editorHighlightPre.scrollLeft = composeContentEditor.scrollLeft;
-        };
+    const editor = CodeMirror.fromTextArea(document.getElementById('compose_content_editor'), {
+        lineNumbers: true,
+        mode: 'yaml',
+        theme: document.body.classList.contains('dark-mode') ? 'monokai' : 'default',
+        lineWrapping: true,
+        indentUnit: 2,
+        tabSize: 2
+    });
+    editor.setSize(null, '350px');
+    editor.on('change', () => editor.save()); // Save on change to keep textarea updated
 
-        composeContentEditor.addEventListener('input', () => {
-            updateHighlight();
-            syncScroll(); // Also sync on input in case of word wrap
-        });
-
-        composeContentEditor.addEventListener('scroll', syncScroll);
-
-        updateHighlight(); // Initial highlight
-    }
+    sourceTypeEditorRadio.addEventListener('change', function() {
+        toggleSourceSections();
+        // Refresh CodeMirror when its container becomes visible
+        if (this.checked) editor.refresh();
+    });
 
     function updateHostVolumePath() {
         const selectedHostOption = hostSelect.options[hostSelect.selectedIndex];

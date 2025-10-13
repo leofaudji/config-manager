@@ -51,6 +51,59 @@ try {
         $service_types .= 's';
     }
 
+    // --- NEW: Build Summary Query ---
+    $summary = [];
+    $host_names = [];
+
+    // Query for service health summary
+    $service_summary_sql = "
+        SELECT 
+            COALESCE(h_stack.id, g.traefik_host_id, 1) as host_id,
+            COALESCE(h_stack.name, th.name, 'Global') as host_name,
+            shs.status,
+            COUNT(s.id) as count
+        FROM services s
+        JOIN service_health_status shs ON s.id = shs.service_id
+        LEFT JOIN application_stacks stack ON s.target_stack_id = stack.id
+        LEFT JOIN docker_hosts h_stack ON stack.host_id = h_stack.id
+        LEFT JOIN `groups` g ON s.group_id = g.id
+        LEFT JOIN `traefik_hosts` th ON g.traefik_host_id = th.id
+        WHERE (s.health_check_enabled = 1 OR ? = 1)
+        GROUP BY host_id, host_name, shs.status
+    ";
+    $stmt_summary_svc = $conn->prepare($service_summary_sql);
+    $stmt_summary_svc->bind_param("i", $global_health_check_enabled);
+    $stmt_summary_svc->execute();
+    $summary_svc_result = $stmt_summary_svc->get_result();
+    while ($row = $summary_svc_result->fetch_assoc()) {
+        $host_id = $row['host_id'];
+        if (!isset($summary[$host_id])) {
+            $summary[$host_id] = ['healthy' => 0, 'unhealthy' => 0, 'unknown' => 0];
+            $host_names[$host_id] = $row['host_name'];
+        }
+        $summary[$host_id][$row['status']] = ($summary[$host_id][$row['status']] ?? 0) + $row['count'];
+    }
+    $stmt_summary_svc->close();
+
+    // Query for container health summary (if global checks are on)
+    if ($global_health_check_enabled) {
+        $container_summary_sql = "
+            SELECT chs.host_id, h.name as host_name, chs.status, COUNT(chs.container_id) as count
+            FROM container_health_status chs
+            JOIN docker_hosts h ON chs.host_id = h.id
+            GROUP BY chs.host_id, h.name, chs.status
+        ";
+        $summary_cont_result = $conn->query($container_summary_sql);
+        while ($row = $summary_cont_result->fetch_assoc()) {
+            $host_id = $row['host_id'];
+            if (!isset($summary[$host_id])) {
+                $summary[$host_id] = ['healthy' => 0, 'unhealthy' => 0, 'unknown' => 0];
+                $host_names[$host_id] = $row['host_name'];
+            }
+            $summary[$host_id][$row['status']] = ($summary[$host_id][$row['status']] ?? 0) + $row['count'];
+        }
+    }
+
     $services_sql = "
         SELECT 
             s.id, s.name, s.health_check_type,
@@ -152,6 +205,13 @@ try {
     $paginated_results = array_slice($all_results, $offset, $limit);
 
     echo json_encode([
+        'summary' => array_map(function($host_id, $counts) use ($host_names) {
+            return [
+                'host_id' => $host_id,
+                'host_name' => $host_names[$host_id],
+                'counts' => $counts
+            ];
+        }, array_keys($summary), array_values($summary)),
         'status' => 'success',
         'data' => $paginated_results,
         'total_pages' => $total_pages,

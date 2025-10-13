@@ -38,7 +38,8 @@ services:
 
 networks:
   traefik-manager-net:
-    driver: bridge
+    driver: overlay
+    attachable: true
 volumes:
   db_data:
     driver: local

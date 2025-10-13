@@ -63,53 +63,6 @@ if ($stack_data['source_type'] === 'editor') {
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
-<style>
-.editor-wrapper {
-    position: relative;
-    height: 350px;
-    background-color: #fff;
-}
-.dark-mode .editor-wrapper {
-    background-color: #212529;
-}
-#compose_content_editor, #editor-highlight-pre {
-    /* Common styles to look like a form-control */
-    margin: 0;
-    padding: .375rem .75rem;
-    border: 1px solid #ced4da;
-    border-radius: .375rem;
-    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: .875em;
-    line-height: 1.5;
-    height: 100%;
-    width: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    overflow: auto;
-    white-space: pre;
-    word-wrap: normal;
-}
-#compose_content_editor {
-    z-index: 2;
-    color: transparent;
-    background: transparent;
-    caret-color: #212529; /* Black caret */
-    resize: none;
-}
-#editor-highlight-pre {
-    z-index: 1;
-    pointer-events: none; /* Make it unclickable */
-}
-/* Adjust for dark mode */
-.dark-mode #compose_content_editor {
-    caret-color: #f8f9fa; /* White caret */
-}
-.dark-mode #compose_content_editor, .dark-mode #editor-highlight-pre {
-    border-color: #495057;
-}
-</style>
-
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2"><i class="bi bi-arrow-repeat"></i> Update Application: <?= htmlspecialchars($details['stack_name'] ?? 'N/A') ?></h1>
 </div>
@@ -219,11 +172,8 @@ require_once __DIR__ . '/../includes/header.php';
                             <!-- Editor -->
                             <div id="editor-source-section" style="display: none;">
                                 <div class="mb-3">
-                                    <label for="compose_content_editor" class="form-label">Docker Compose Content <span class="text-danger">*</span></label>
-                                    <div class="editor-wrapper">
-                                        <textarea id="compose_content_editor" name="compose_content_editor" placeholder="version: '3.8'&#10;services:&#10;  my-app:&#10;    image: nginx:latest" spellcheck="false"><?= htmlspecialchars($compose_content_for_editor) ?></textarea>
-                                        <pre id="editor-highlight-pre" aria-hidden="true"><code class="language-yaml" id="editor-highlight-code"></code></pre>
-                                    </div>
+                                    <label class="form-label">Docker Compose Content <span class="text-danger">*</span></label>
+                                    <textarea id="compose_content_editor" name="compose_content_editor"><?= htmlspecialchars($compose_content_for_editor) ?></textarea>
                                     <small class="form-text text-muted">Paste or write your `docker-compose.yml` content here. Syntax highlighting is supported.</small>
                                 </div>
                             </div>
@@ -448,7 +398,6 @@ window.pageInit = function() {
     const imageNameHubInput = document.getElementById('image_name_hub');
     const composeContentEditor = document.getElementById('compose_content_editor');
     const editorHighlightCode = document.getElementById('editor-highlight-code');
-    const editorHighlightPre = document.getElementById('editor-highlight-pre');
     const composePathInput = document.getElementById('compose_path');
     const hostPortInput = document.getElementById('host_port');
     const containerPortInput = document.getElementById('container_port');
@@ -582,28 +531,18 @@ window.pageInit = function() {
     sourceTypeLocalImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeHubImageRadio.addEventListener('change', toggleSourceSections);
     sourceTypeEditorRadio.addEventListener('change', toggleSourceSections);
-    // --- YAML Editor with Syntax Highlighting ---
-    if (composeContentEditor && editorHighlightCode && editorHighlightPre) {
-        const updateHighlight = () => {
-            const code = composeContentEditor.value;
-            editorHighlightCode.textContent = code + '\n'; 
-            Prism.highlightElement(editorHighlightCode);
-        };
+    sourceTypeEditorRadio.addEventListener('change', toggleSourceSections);
 
-        const syncScroll = () => {
-            editorHighlightPre.scrollTop = composeContentEditor.scrollTop;
-            editorHighlightPre.scrollLeft = composeContentEditor.scrollLeft;
-        };
-
-        composeContentEditor.addEventListener('input', () => {
-            updateHighlight();
-            syncScroll();
-        });
-
-        composeContentEditor.addEventListener('scroll', syncScroll);
-
-        updateHighlight(); // Initial highlight
-    }
+    const editor = CodeMirror.fromTextArea(document.getElementById('compose_content_editor'), {
+        lineNumbers: true,
+        mode: 'yaml',
+        theme: document.body.classList.contains('dark-mode') ? 'monokai' : 'default',
+        lineWrapping: true,
+        indentUnit: 2,
+        tabSize: 2
+    });
+    editor.setSize(null, '350px');
+    mainForm.addEventListener('submit', () => editor.save());
 
     function updateHostVolumePath() {
         const baseVolumePath = '<?= htmlspecialchars($host['default_volume_path'] ?? '/opt/stacks') ?>';

@@ -394,7 +394,12 @@ document.body.addEventListener('submit', function(e) {
              .then(({ ok, data }) => {
                  showToast(data.message, ok);
                  if (ok) {
-                     setTimeout(() => loadPage(finalRedirectUrl), 1500);
+                    // Use redirect URL from API response if available, otherwise use form's data-redirect
+                    const destinationUrl = data.redirect 
+                        ? (window.location.origin + data.redirect) 
+                        : finalRedirectUrl;
+
+                    setTimeout(() => loadPage(destinationUrl), 1500);
                  } else {
                      throw new Error(data.message || 'An unknown error occurred.');
                  }

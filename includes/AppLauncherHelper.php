@@ -93,7 +93,13 @@ class AppLauncherHelper
                 // Also, do not create a default network if the user intended to use 'ingress' or the default 'bridge'.
                 if (empty($network) && !isset($compose_data['services'][$service_key]['networks'])) {
                     if (!isset($compose_data['networks']['default'])) {
-                        $compose_data['networks']['default'] = null; // Define a default network if none exists
+                        // Define a default network that allows inter-container communication (including ping)
+                        $compose_data['networks']['default'] = [
+                            'driver_opts' => [
+                                'com.docker.network.bridge.enable_icc' => 'true ', // Add space to force string type in YAML
+                                'com.docker.network.bridge.enable_ip_masquerade' => 'true ', // Add space
+                            ]
+                        ];
                     }
                     // Explicitly attach the service to the default network to support the hostname alias.
                     $compose_data['services'][$service_key]['networks'] = ['default'];
@@ -139,24 +145,6 @@ class AppLauncherHelper
                     $compose_data['services'][$service_key]['deploy']['replicas'] = $replicas;
                 }
 
-                // Handle port mapping. If a container port is provided in the form, it overrides any existing ports.
-                if ($container_port) {
-                    // Overwrite any existing ports for the first service.
-                    $compose_data['services'][$service_key]['ports'] = [];
-
-                    if ($host_port) {
-                        // If host port is specified, create a full mapping.
-                        $port_mapping = $host_port . ':' . $container_port;
-                    } else {
-                        // If only container port is specified, just expose it (maps to a random host port).
-                        $port_mapping = (string)$container_port;
-                    }
-                    $compose_data['services'][$service_key]['ports'][] = $port_mapping;
-                }
-                if ($container_port) {
-                    $compose_data['services'][$service_key]['expose'] = [(string)$container_port];
-                }
-
                 // --- Volume Mapping ---
                 if (!empty($volume_paths) && is_array($volume_paths)) {
                     foreach ($volume_paths as $volume_map) {
@@ -187,6 +175,31 @@ class AppLauncherHelper
                 }
 
                 $is_first_service = false;
+            }
+        }
+
+        // --- Port & Expose Mapping (Applied to all services for simplicity) ---
+        // This is applied after the loop to ensure it's not tied to is_first_service
+        if ($container_port) {
+            foreach (array_keys($compose_data['services']) as $service_key) {
+                // Overwrite any existing ports for the service.
+                $compose_data['services'][$service_key]['ports'] = [];
+
+                if ($host_port) {
+                    // If host port is specified, create a full mapping.
+                    $port_mapping = $host_port . ':' . $container_port;
+                } else {
+                    // If only container port is specified, just expose it (maps to a random host port).
+                    $port_mapping = (string)$container_port;
+                }
+                $compose_data['services'][$service_key]['ports'][] = $port_mapping;
+                // Also add to expose for better health agent discovery
+                if (!isset($compose_data['services'][$service_key]['expose'])) {
+                    $compose_data['services'][$service_key]['expose'] = [];
+                }
+                if (!in_array((string)$container_port, $compose_data['services'][$service_key]['expose'])) {
+                    $compose_data['services'][$service_key]['expose'][] = (string)$container_port;
+                }
             }
         }
 

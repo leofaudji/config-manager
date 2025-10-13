@@ -197,14 +197,30 @@ function run_check_cycle() {
 
     foreach ($containers as $container) {
         try {
+            $container_id = $container['Id'];
+            $container_name = ltrim($container['Names'][0] ?? $container_id, '/');
+
             if ($container['State'] !== 'running') {
+                // --- NEW: Logic to differentiate between stopped and unhealthy ---
+                $details = $dockerClient->inspectContainer($container_id);
+                $exitCode = $details['State']['ExitCode'] ?? -1;
+                $errorMsg = $details['State']['Error'] ?? '';
+
+                // If container was stopped manually (usually ExitCode 0) and not by an error, skip it.
+                if ($exitCode === 0 && empty($errorMsg)) {
+                    log_message("    - Container '{$container_name}' is stopped (manual). Skipping health check.");
+                    continue;
+                }
+
+                // If it's not running and has an error, it's unhealthy.
+                $health_reports[] = ['container_id' => $container_id, 'container_name' => $container_name, 'is_healthy' => false, 'log_message' => "Container is not running. Exit Code: {$exitCode}. Error: {$errorMsg}"];
+                $unhealthy_count++;
+                $unhealthy_container_names[] = $container_name;
+                log_message("    - Mengevaluasi '{$container_name}': Tidak Sehat (Tidak Berjalan)");
                 continue;
             }
             $running_container_count++;
             $all_running_container_ids[] = $container['Id']; // NEW: Add ID to the list
-
-            $container_id = $container['Id'];
-            $container_name = ltrim($container['Names'][0] ?? $container_id, '/');
 
             // --- Pengecualian Khusus ---
             // Abaikan kontainer utilitas yang tidak perlu dicek kesehatannya.
@@ -221,22 +237,34 @@ function run_check_cycle() {
             $docker_health_status = $details['State']['Health']['Status'] ?? null;
 
             $is_healthy = null; // Default to unknown
-            $log_message = '';
+            $check_flow_log = [];
 
             if ($docker_health_status) {
                 // --- Alur 1: Gunakan HEALTHCHECK bawaan dari Docker ---
                 $is_healthy = ($docker_health_status === 'healthy');
-                $log_message = "Container health status from Docker: {$docker_health_status}";
+                $check_flow_log[] = [
+                    'step' => 'Docker Healthcheck',
+                    'status' => $is_healthy ? 'success' : 'fail',
+                    'message' => "Container reported status: {$docker_health_status}"
+                ];
             } else {
                 // --- Alur 2: Fallback ke Pengecekan Port TCP ---
+                $check_flow_log[] = ['step' => 'Docker Healthcheck', 'status' => 'skipped', 'message' => 'No built-in HEALTHCHECK instruction found.'];
 
                 // Prioritas 2a: Coba cek SEMUA Published Port terlebih dahulu via host.docker.internal
                 // Ini adalah cara paling andal jika port dipublikasikan ke host.
                 $all_published_ports = [];
                 if (!empty($details['NetworkSettings']['Ports'])) {
                     foreach ($details['NetworkSettings']['Ports'] as $port_bindings) {
-                        if (is_array($port_bindings) && !empty($port_bindings[0]['HostPort']) && $port_bindings[0]['HostPort'] != '0') {
-                            $all_published_ports[] = (int)$port_bindings[0]['HostPort'];
+                        // FIX: Iterate through the bindings for a given private port.
+                        // $port_bindings is an array of mappings for a single private port.
+                        if (is_array($port_bindings)) {
+                            foreach ($port_bindings as $binding) {
+                                // Ensure the binding has a HostPort and it's not an ephemeral port (0).
+                                if (isset($binding['HostPort']) && !empty($binding['HostPort']) && $binding['HostPort'] != '0') {
+                                    $all_published_ports[] = (int)$binding['HostPort'];
+                                }
+                            }
                         }
                     }
                 }
@@ -249,15 +277,21 @@ function run_check_cycle() {
                         $connection = @fsockopen('host.docker.internal', $port, $errno, $errstr, 2);
                         if (is_resource($connection)) {
                             $is_healthy = true;
-                            $log_message = "TCP check on published port host.docker.internal:{$port}: OK";
+                            $check_flow_log[] = ['step' => 'Published Port Check', 'status' => 'success', 'message' => "TCP connection to host.docker.internal:{$port} was successful."];
                             fclose($connection);
                             break; // Ditemukan port yang sehat, hentikan pengecekan.
                         }
                     }
                     if ($is_healthy === null) {
                         // Jika semua port publik sudah dicoba dan gagal, catat pesannya.
-                        $log_message = "TCP check on all published ports failed. Trying internal check...";
+                        $check_flow_log[] = ['step' => 'Published Port Check', 'status' => 'fail', 'message' => 'Could not connect to any published ports: ' . implode(', ', $all_published_ports)];
                     }
+                } else {
+                    $check_flow_log[] = [
+                        'step' => 'Published Port Check',
+                        'status' => 'skipped',
+                        'message' => 'No published ports found to check.'
+                    ];
                 }
 
                 // Prioritas 2b: Jika status masih belum ditentukan, coba port internal.
@@ -295,6 +329,29 @@ function run_check_cycle() {
                         }
                     }
 
+                    // --- NEW: Also inspect port bindings for a private port, in case expose is missing ---
+                    // This covers a common case where a container defines ports like "8080:80"
+                    // but does not explicitly expose the internal port 80.
+                    if (empty($tcp_ports) && isset($details['NetworkSettings']['Ports'])) {
+                        foreach ($details['NetworkSettings']['Ports'] as $port_mapping => $bindings) {
+                            // We only care about TCP ports and where a binding exists.
+                            if (strpos($port_mapping, '/tcp') !== false && is_array($bindings) && !empty($bindings)) {
+                                // Remove the '/tcp' suffix and cast to integer
+                                $tcp_ports[] = (int)str_replace('/tcp', '', $port_mapping);
+                            }
+                        }
+                    }
+
+                    // --- Prioritize 80/443, then first exposed port, then educated guess ---
+                    // Remove duplicates after the above steps to ensure the prioritized ports are listed first.
+                    $tcp_ports = array_unique($tcp_ports);
+                    
+                    // Use in_array to check for the key in the array first
+                    if (in_array(80, $tcp_ports)) $internal_port = 80;
+                    elseif (in_array(443, $tcp_ports)) $internal_port = 443;
+                    elseif (!empty($tcp_ports)) $internal_port = $tcp_ports[0];  
+                    
+
                     if (in_array(80, $tcp_ports)) $internal_port = 80;
                     elseif (in_array(443, $tcp_ports)) $internal_port = 443;
                     elseif (!empty($tcp_ports)) $internal_port = $tcp_ports[0];
@@ -324,14 +381,14 @@ function run_check_cycle() {
 
                             if ($return_var === 0) {
                                 $is_healthy = true;
-                                $log_message = "Internal TCP check on {$internal_ip}:{$internal_port}: OK";
+                                $check_flow_log[] = ['step' => 'Internal TCP Check', 'status' => 'success', 'message' => "TCP connection to internal IP {$internal_ip}:{$internal_port} was successful."];
                             } else {
                                 $is_healthy = false;
-                                $log_message = "Internal TCP check on {$internal_ip}:{$internal_port}: FAILED";
+                                $check_flow_log[] = ['step' => 'Internal TCP Check', 'status' => 'fail', 'message' => "TCP connection to internal IP {$internal_ip}:{$internal_port} failed."];
                             }
                         } catch (Exception $e) {
                             $is_healthy = false;
-                            $log_message = "Failed to join network or perform internal check: " . $e->getMessage();
+                            $check_flow_log[] = ['step' => 'Internal TCP Check', 'status' => 'fail', 'message' => "Failed to join network or perform internal check: " . $e->getMessage()];
                         } finally {
                             $dockerClient->disconnectFromNetwork($network_id_to_join, $agent_container_id);
                             log_message("    -> Left network '{$network_id_to_join}'.");
@@ -353,10 +410,10 @@ function run_check_cycle() {
 
                             if ($return_var === 0) {
                                 $is_healthy = true;
-                                $log_message = "ICMP (ping) check on internal IP {$internal_ip}: OK";
+                                $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'success', 'message' => "Ping to internal IP {$internal_ip} was successful."];
                             } else {
                                 $is_healthy = false;
-                                $log_message = "ICMP (ping) check on internal IP {$internal_ip}: FAILED";
+                                $check_flow_log[] = ['step' => 'ICMP (Ping) Check', 'status' => 'fail', 'message' => "Ping to internal IP {$internal_ip} failed."];
                             }
                         } finally {
                             $dockerClient->disconnectFromNetwork($network_id_to_join, $agent_container_id);
@@ -369,7 +426,7 @@ function run_check_cycle() {
                 // Jika setelah semua usaha, status masih belum ditentukan, biarkan null (unknown).
                 if ($is_healthy === null) {
                     $is_healthy = null; // Tetap null untuk status 'unknown'
-                    $log_message = "Container does not have a HEALTHCHECK instruction and no TCP port could be reliably checked.";
+                    $check_flow_log[] = ['step' => 'Final Result', 'status' => 'unknown', 'message' => 'No reliable check method could determine the container status.'];
                 }
             }
 
@@ -393,8 +450,8 @@ function run_check_cycle() {
                 try {
                     $dockerClient->restartContainer($container_id);
                     log_message("  -> SUKSES: Perintah restart berhasil dikirim ke kontainer '{$container_name}'.");
-                    // Add the healing action to the main log message
-                    $log_message .= " | Auto-healing: Restart command sent.";
+                    // Add the healing action to the check flow log
+                    $check_flow_log[] = ['step' => 'Auto-Healing', 'status' => 'success', 'message' => 'Restart command sent successfully.'];
                 } catch (Exception $e) {
                     log_message("  -> ERROR saat auto-healing: " . $e->getMessage());
                 }
@@ -404,7 +461,7 @@ function run_check_cycle() {
                 'container_id' => $container_id,
                 'container_name' => $container_name,
                 'is_healthy' => $is_healthy,
-                'log_message' => $log_message
+                'log_message' => json_encode($check_flow_log)
             ];
         } catch (Exception $e) {
             $container_name_for_log = isset($container['Names'][0]) ? ltrim($container['Names'][0], '/') : ($container['Id'] ?? 'unknown');
