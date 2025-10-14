@@ -124,7 +124,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
         networksContainer.classList.add('table-loading');
 
         const searchTerm = searchInput.value.trim();
-        fetch(`${basePath}/api/hosts/${hostId}/networks?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${limit}&sort=${currentSort}&order=${currentOrder}`)
+        fetch(`${basePath}/api/hosts/${hostId}/networks?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${limit}&sort=${currentSort}&order=${currentOrder}&details=true`)
             .then(response => response.json())
             .then(result => {
                 if (result.status === 'error') throw new Error(result.message);
@@ -151,12 +151,8 @@ require_once __DIR__ . '/../includes/host_nav.php';
                             }
                         }
 
-                        let containersHtml = '<span class="text-muted small">None</span>';
-                        if (net.Containers && Object.keys(net.Containers).length > 0) {
-                            containersHtml = Object.values(net.Containers).map(c => 
-                                `<span class="badge bg-primary me-1">${c.Name}</span>`
-                            ).join(' ');
-                        }
+                        const containerCount = net.Containers ? Object.keys(net.Containers).length : 0;
+                        const containersHtml = `<span class="badge bg-secondary">${containerCount}</span>`;
 
                         const unusedBadge = isUnused && !isDefaultNetwork ? ' <span class="badge bg-secondary">Unused</span>' : '';
 

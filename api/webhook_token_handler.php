@@ -9,26 +9,33 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
+    http_response_code(403);
+    echo json_encode(['status' => 'error', 'message' => 'Forbidden.']);
+    exit;
+}
+
 $conn = Database::getInstance()->getConnection();
 
 try {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $type = $input['type'] ?? 'webhook_token';
+
+    $setting_key = ($type === 'agent_token') ? 'health_agent_api_token' : 'webhook_secret_token';
+
     $new_token = bin2hex(random_bytes(32));
 
-    $stmt = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = 'webhook_secret_token'");
-    $stmt->bind_param("s", $new_token);
-    if (!$stmt->execute()) {
-        throw new Exception("Failed to update webhook token in database.");
-    }
+    $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+    $stmt->bind_param("ss", $setting_key, $new_token);
+    $stmt->execute();
     $stmt->close();
 
-    log_activity($_SESSION['username'], 'Webhook Token Regenerated', 'A new webhook secret token was generated.');
-
-    echo json_encode(['status' => 'success', 'new_token' => $new_token]);
+    log_activity($_SESSION['username'], 'Token Regenerated', "A new token was generated for: {$setting_key}.");
+    echo json_encode(['status' => 'success', 'token' => $new_token]);
 
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => 'Failed to regenerate token: ' . $e->getMessage()]);
+} finally {
+    if (isset($conn)) $conn->close();
 }
-
-$conn->close();
-?>

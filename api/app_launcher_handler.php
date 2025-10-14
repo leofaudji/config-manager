@@ -64,6 +64,7 @@ try {
     $host_port = !empty($_POST['host_port']) ? (int)$_POST['host_port'] : null;
     $container_port = !empty($_POST['container_port']) ? (int)$_POST['container_port'] : null;
     $container_ip = !empty($_POST['container_ip']) ? trim($_POST['container_ip']) : null;
+    $privileged = isset($_POST['privileged']) && $_POST['privileged'] === 'true';
     $deploy_placement_constraint = !empty($_POST['deploy_placement_constraint']) ? trim($_POST['deploy_placement_constraint']) : null;
     $is_update = isset($_POST['update_stack']) && $_POST['update_stack'] === 'true';
 
@@ -103,6 +104,7 @@ try {
         'host_port' => $host_port,
         'container_port' => $container_port,
         'container_ip' => $container_ip,
+        'privileged' => $privileged,
         'deploy_placement_constraint' => $deploy_placement_constraint,
     ];
 
@@ -256,44 +258,11 @@ try {
 
         $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
     } elseif ($source_type === 'editor') {
-        $compose_content_from_editor = $_POST['compose_content_editor'] ?? '';
-        if (empty($compose_content_from_editor)) {
+        $compose_content = $_POST['compose_content_editor'] ?? '';
+        if (empty($compose_content)) {
             throw new Exception("Compose content from editor is required.");
         }
         stream_message("Processing YAML from editor...");
-
-        // Parse the YAML from the editor to apply necessary modifications.
-        $compose_data = DockerComposeParser::YAMLLoad($compose_content_from_editor);
-        if (!isset($compose_data['services']) || !is_array($compose_data['services'])) {
-            throw new Exception("Invalid YAML from editor: 'services' key is missing or not an array.");
-        }
-
-        foreach (array_keys($compose_data['services']) as $service_key) {
-            if ($is_swarm_manager) {
-                // For Swarm, remove standalone-specific keys and ensure deploy key exists.
-                unset($compose_data['services'][$service_key]['container_name']);
-                unset($compose_data['services'][$service_key]['cpus']);
-                unset($compose_data['services'][$service_key]['mem_limit']);
-                unset($compose_data['services'][$service_key]['restart']);
-
-                // Ensure deploy.restart_policy exists for Swarm.
-                if (!isset($compose_data['services'][$service_key]['deploy']['restart_policy'])) {
-                    $compose_data['services'][$service_key]['deploy']['restart_policy'] = [
-                        'condition' => 'any'
-                    ];
-                }
-            } else {
-                // For standalone, ensure a restart policy exists for reliability.
-                if (!isset($compose_data['services'][$service_key]['restart'])) {
-                    $compose_data['services'][$service_key]['restart'] = 'unless-stopped';
-                }
-            }
-        }
-
-        // Re-dump the modified YAML to be used for deployment.
-        $compose_content = Spyc::YAMLDump($compose_data, 2, 0);
-
-
     } else {
         throw new Exception("Invalid source type specified.");
     }
@@ -498,10 +467,32 @@ try {
         $main_compose_command = "docker stack deploy -c " . escapeshellarg($compose_file_name) . " " . escapeshellarg($stack_name) . " --with-registry-auth --prune 2>&1";
         // For Swarm, we don't need to explicitly pull. The --with-registry-auth flag handles it.
         // However, if a build is required, we must build first.
-        if ($is_build_required) {
-            stream_message("Build directive detected. Running 'docker-compose build' before deployment...");
-            $build_command = "docker compose -f " . escapeshellarg($compose_file_name) . " build --pull 2>&1";
-            $main_compose_command = $build_command . " && " . $main_compose_command;
+        if ($is_build_required && $build_from_dockerfile) {
+            stream_message("Build directive detected for Swarm deployment. Building and pushing image to registry...");
+
+            if (empty($host['registry_url'])) {
+                throw new Exception("A private registry URL must be configured for the host to use the 'Build from Dockerfile' feature with Docker Swarm.");
+            }
+
+            // Define a unique image name in the private registry
+            $image_tag = rtrim($host['registry_url'], '/') . '/' . $stack_name . ':' . date('Ymd-His');
+            stream_message("Image will be tagged as: {$image_tag}");
+
+            // Modify the compose data in memory to use the new image tag instead of the build directive.
+            // This is crucial for the final `docker stack deploy` command.
+            foreach ($compose_data_for_build_check['services'] as $service_name => &$service_config) {
+                if (isset($service_config['build'])) {
+                    unset($service_config['build']); // Remove the build directive
+                    $service_config['image'] = $image_tag; // Add the image directive
+                }
+            }
+            unset($service_config); // Unset reference
+            $compose_content_for_deploy = Spyc::YAMLDump($compose_data_for_build_check, 2, 0);
+            file_put_contents($compose_file_full_path, $compose_content_for_deploy); // Overwrite the compose file with the modified version
+
+            // Create a command that builds, pushes, and then deploys.
+            $build_and_push_command = "docker compose -f " . escapeshellarg($compose_file_name) . " build --pull && docker compose -f " . escapeshellarg($compose_file_name) . " push";
+            $main_compose_command = $build_and_push_command . " && " . $main_compose_command;
         }
     } else {
         // --- Standalone Host Deployment ---

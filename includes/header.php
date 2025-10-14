@@ -167,33 +167,6 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/groups') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Groups">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-collection icon-default"></i>
-                        <i class="bi bi-collection-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Groups</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/traefik-hosts') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Traefik Hosts">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-hdd-rack icon-default"></i>
-                        <i class="bi bi-hdd-rack-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Traefik Hosts</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/templates') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Config Templates">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-file-earmark-code icon-default"></i>
-                        <i class="bi bi-file-earmark-code-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Config Templates</span>
-                </a>
-            </li>
-            <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/history') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Deployment History">
                     <span class="icon-wrapper">
                         <i class="bi bi-clock-history icon-default"></i>
@@ -202,6 +175,25 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <span class="nav-link-text">Deployment History</span>
                 </a>
             </li>
+        <li class="nav-item">
+            <a class="nav-link" href="<?= base_url('/groups') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Groups">
+                <span class="icon-wrapper">
+                    <i class="bi bi-collection icon-default"></i>
+                    <i class="bi bi-collection-fill icon-active"></i>
+                </span>
+                <span class="nav-link-text">Groups</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="<?= base_url('/traefik-hosts') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Traefik Hosts">
+                <span class="icon-wrapper">
+                    <i class="bi bi-hdd-rack icon-default"></i>
+                    <i class="bi bi-hdd-rack-fill icon-active"></i>
+                </span>
+                <span class="nav-link-text">Traefik Hosts</span>
+            </a>
+        </li>
+
 
             <li class="sidebar-header">Container Management</li>
             <li class="nav-item">
@@ -231,6 +223,16 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <span class="nav-link-text">Stack Changes</span>
                 </a>
             </li>
+        <li class="nav-item">
+            <a class="nav-link" href="<?= base_url('/templates') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Config Templates">
+                <span class="icon-wrapper">
+                    <i class="bi bi-file-earmark-code icon-default"></i>
+                    <i class="bi bi-file-earmark-code-fill icon-active"></i>
+                </span>
+                <span class="nav-link-text">Config Templates</span>
+            </a>
+        </li>
+
 
         <li class="sidebar-header">Monitoring</li>
             <li class="nav-item">
@@ -240,6 +242,51 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <i class="bi bi-heart-pulse-fill icon-active"></i>
                     </span>
                     <span class="nav-link-text">Service Health</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/host-overview') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Host Overview">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-display icon-default"></i>
+                        <i class="bi bi-display-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Host Overview</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/container-events') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Container Events">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-activity icon-default"></i>
+                        <i class="bi bi-activity icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Container Events</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/central-logs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Centralized Log Viewer">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-journals icon-default"></i>
+                        <i class="bi bi-journals icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Centralized Logs</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/resource-hotspots') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Resource Hotspots">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-fire icon-default"></i>
+                        <i class="bi bi-fire icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Resource Hotspots</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/network-inspector') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Network Inspector">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-diagram-3-fill icon-default"></i>
+                        <i class="bi bi-diagram-3-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Network Inspector</span>
                 </a>
             </li>
             <li class="nav-item">
@@ -271,6 +318,24 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <span class="nav-link-text">Log Viewer</span>
                 </a>
             </li>
+        <li class="nav-item">
+            <a class="nav-link" href="<?= base_url('/health-check') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Health Check">
+                <span class="icon-wrapper">
+                    <i class="bi bi-heart-pulse icon-default"></i>
+                    <i class="bi bi-heart-pulse-fill icon-active"></i>
+                </span>
+                <span class="nav-link-text">Health Check</span>
+            </a>
+        </li>
+            <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/webhook-reports') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Webhook Reports">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-github icon-default"></i>
+                        <i class="bi bi-github icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Webhook Reports</span>
+                </a>
+            </li>
             <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/settings') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="General Settings">
                     <span class="icon-wrapper">
@@ -278,15 +343,6 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <i class="bi bi-sliders2 icon-active"></i>
                     </span>
                     <span class="nav-link-text">General Settings</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/health-check') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Health Check">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-heart-pulse icon-default"></i>
-                        <i class="bi bi-heart-pulse-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Health Check</span>
                 </a>
             </li>
             <li class="nav-item">

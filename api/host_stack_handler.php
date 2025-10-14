@@ -565,7 +565,7 @@ $conn->close();
 // This function is duplicated from api/stack_handler.php.
 // In a larger refactor, this should be moved to a shared helper/class.
 function buildComposeArrayFromPost(array $postData): array {
-    $compose = ['version' => '3.8', 'services' => [], 'networks' => []];
+    $compose = ['services' => [], 'networks' => []];
     $is_swarm_manager = $postData['is_swarm_manager'] ?? false; // Pass this info to the function
 
     if (isset($postData['services']) && is_array($postData['services'])) {

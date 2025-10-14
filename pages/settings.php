@@ -189,6 +189,28 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
+    <!-- Webhook Settings -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-github me-2"></i>CI/CD Integration (Webhook)</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="webhook_url" class="form-label">Deployment Webhook URL</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="webhook_url" value="<?= base_url('/api/webhook/deploy?token=') . htmlspecialchars($settings['webhook_secret_token'] ?? '') ?>" readonly>
+                    <button class="btn btn-outline-secondary" type="button" id="copy-webhook-url-btn" title="Copy URL"><i class="bi bi-clipboard"></i></button>
+                </div>
+                <small class="form-text text-muted">Gunakan URL ini di penyedia Git Anda (misalnya, GitHub, GitLab) untuk memicu deployment otomatis saat ada event `push`.</small>
+            </div>
+            <div class="alert alert-info small">
+                <i class="bi bi-info-circle-fill me-2"></i>
+                Webhook akan secara otomatis men-deploy ulang semua stack yang sumbernya adalah 'Git' dan cocok dengan branch yang dikonfigurasi di bawah "Git Integration".
+            </div>
+            <button type="button" class="btn btn-outline-warning" id="regenerate-webhook-token-btn">Regenerate Webhook Token</button>
+        </div>
+    </div>
+
     <!-- Notifications -->
     <div class="card mb-4">
         <div class="card-header">
@@ -252,7 +274,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             </div>
         </div>
-    </div>
+    </div> 
 
     <!-- Data & History Management -->
     <div class="card mb-4">
@@ -275,6 +297,11 @@ require_once __DIR__ . '/../includes/header.php';
                     <label for="host_stats_history_cleanup_days" class="form-label">Cleanup Host Stats History After (Days)</label>
                     <input type="number" class="form-control" id="host_stats_history_cleanup_days" name="host_stats_history_cleanup_days" value="<?= (int)($settings['host_stats_history_cleanup_days'] ?? 7) ?>" min="1">
                     <small class="form-text text-muted">Automatically delete host resource usage history older than this value.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="container_stats_cleanup_days" class="form-label">Cleanup Container Stats After (Days)</label>
+                    <input type="number" class="form-control" id="container_stats_cleanup_days" name="container_stats_cleanup_days" value="<?= (int)($settings['container_stats_cleanup_days'] ?? 1) ?>" min="1">
+                    <small class="form-text text-muted">Automatically delete individual container stats (for Resource Hotspots) older than this value. Recommended to keep this low (1-3 days).</small>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="cron_log_retention_days" class="form-label">Cron Log Retention Period (Days)</label>
@@ -338,6 +365,41 @@ window.pageInit = function() {
                 icon.classList.remove('bi-eye-slash');
                 icon.classList.add('bi-eye');
             }
+        });
+    }
+
+    // Regenerate Webhook Token
+    const regenerateWebhookBtn = document.getElementById('regenerate-webhook-token-btn');
+    if (regenerateWebhookBtn) {
+        regenerateWebhookBtn.addEventListener('click', function() {
+            if (!confirm('Are you sure you want to regenerate the webhook token? You will need to update the URL in your Git provider.')) return;
+
+            fetch('<?= base_url('/api/webhook/regenerate-token') ?>', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ type: 'webhook_token' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const webhookUrlInput = document.getElementById('webhook_url');
+                    const baseUrl = webhookUrlInput.value.split('?token=')[0];
+                    webhookUrlInput.value = baseUrl + '?token=' + data.token;
+                    showToast('Webhook token regenerated successfully.', true);
+                } else { throw new Error(data.message); }
+            })
+            .catch(error => showToast('Error: ' + error.message, false));
+        });
+    }
+
+    // Copy Webhook URL
+    const copyWebhookBtn = document.getElementById('copy-webhook-url-btn');
+    if (copyWebhookBtn) {
+        copyWebhookBtn.addEventListener('click', function() {
+            const webhookUrlInput = document.getElementById('webhook_url');
+            navigator.clipboard.writeText(webhookUrlInput.value).then(() => {
+                showToast('Webhook URL copied to clipboard!', true);
+            });
         });
     }
 

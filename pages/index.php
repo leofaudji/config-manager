@@ -127,7 +127,7 @@ $router->post('/api/hosts/{id}/networks/prune', 'api/network_handler.php', ['aut
 $router->get('/api/dockerhub/search', 'api/dockerhub_handler.php', ['auth', 'admin']);
 $router->get('/api/dockerhub/tags', 'api/dockerhub_tags_handler.php', ['auth', 'admin']);
 $router->post('/api/hosts/{id}/containers/{container_id}/check-update', 'api/container_update_check_handler.php', ['auth', 'admin']);
-$router->post('/api/webhook/deploy', 'api/webhook_handler.php'); // No auth middleware, security is via token
+$router->post('/api/webhook/deploy', 'api/webhook_handler.php'); // Keamanan melalui token
 $router->post('/api/webhook/regenerate-token', 'api/webhook_token_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/logs', 'api/container_log_handler.php', ['auth', 'admin']);
 $router->post('/api/health/report', 'api/health_report_handler.php'); // For health agent callbacks

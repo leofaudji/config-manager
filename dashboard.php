@@ -9,6 +9,15 @@ require_once 'includes/header.php';
 
 ?>
 
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Dashboard</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="<?= base_url('/quick-access') ?>" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-lightning-charge-fill"></i> Quick Access
+        </a>
+    </div>
+</div>
+
 <!-- Pesan Sukses/Error (jika ada dari redirect) -->
 <?php if (isset($_GET['status'])): ?>
 <div class="alert alert-<?= $_GET['status'] == 'success' ? 'success' : 'danger' ?> alert-dismissible fade show" role="alert">

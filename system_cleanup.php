@@ -47,8 +47,19 @@ try {
     $deleted_stats = $stmt_stats->affected_rows;
     $stmt_stats->close();
     echo "SUKSES: {$deleted_stats} entri riwayat statistik host dihapus.\n";
-
-    // --- 4. Cleanup Cron Job Log File Entries ---
+    
+    // --- 4. Cleanup Container Stats (for Resource Hotspots) ---
+    $container_stats_cleanup_days = (int)get_setting('container_stats_cleanup_days', 1);
+    if ($container_stats_cleanup_days > 0) {
+        echo "INFO: Menghapus statistik kontainer lebih dari {$container_stats_cleanup_days} hari...\n";
+        $stmt_container_stats = $conn->prepare("DELETE FROM container_stats WHERE created_at < NOW() - INTERVAL ? DAY");
+        $stmt_container_stats->bind_param("i", $container_stats_cleanup_days);
+        $stmt_container_stats->execute();
+        $deleted_container_stats = $stmt_container_stats->affected_rows;
+        $stmt_container_stats->close();
+        echo "SUKSES: {$deleted_container_stats} entri statistik kontainer dihapus.\n";
+    }
+    // --- 5. Cleanup Cron Job Log File Entries ---
     $cron_log_retention_days = (int)get_setting('cron_log_retention_days', 7);
     if ($cron_log_retention_days > 0) {
         echo "INFO: Menghapus entri log cron yang lebih lama dari {$cron_log_retention_days} hari...\n";

@@ -24,6 +24,7 @@ $router->get('/', 'dashboard.php', ['auth']);
 $router->get('/logout', 'logout.php', ['auth']);
 $router->get('/my-profile/change-password', 'pages/change_own_password_form.php', ['auth']); // Form ganti password sendiri
 
+$router->get('/quick-access', 'pages/quick_access.php', ['auth', 'admin']); // Rute baru
 // Rute yang memerlukan akses admin
 $router->get('/generate', 'generate_config.php', ['auth', 'admin']);
 $router->get('/users', 'pages/user_management.php', ['auth', 'admin']);
@@ -44,7 +45,13 @@ $router->get('/settings', 'pages/settings.php', ['auth', 'admin']);
 $router->get('/health-check', 'pages/health_check.php', ['auth', 'admin']);
 $router->get('/health-status', 'pages/health_status.php', ['auth']);
 $router->get('/changelog', 'pages/changelog.php', ['auth']);
+$router->get('/host-overview', 'pages/host_overview.php', ['auth', 'admin']); // Rute baru
+$router->get('/central-logs', 'pages/central_log_viewer.php', ['auth', 'admin']); // Rute baru
+$router->get('/resource-hotspots', 'pages/resource_hotspots.php', ['auth', 'admin']); // Rute baru
+$router->get('/network-inspector', 'pages/network_inspector.php', ['auth', 'admin']); // Rute baru
+$router->get('/container-events', 'pages/container_events.php', ['auth', 'admin']); // Rute baru
 $router->get('/health-agent-workflow', 'pages/health_agent_workflow.php', ['auth', 'admin']); // Rute baru untuk diagram
+$router->get('/webhook-reports', 'pages/webhook_reports.php', ['auth', 'admin']); // Rute baru untuk laporan webhook
 $router->get('/cpu-reader-workflow', 'pages/cpu_reader_workflow.php', ['auth', 'admin']); // Rute baru untuk diagram CPU Reader
 $router->get('/traefik-workflow', 'pages/traefik_workflow.php', ['auth', 'admin']);
 $router->get('/container-management-workflow', 'pages/container_management_workflow.php', ['auth', 'admin']);
@@ -102,7 +109,9 @@ $router->post('/api/cron', 'api/cron_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->post('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->get('/api/stack-changes', 'api/stack_changes_handler.php', ['auth', 'admin']);
+$router->get('/api/hosts/{id}/events', 'api/container_events_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/stats', 'api/container_stats_stream_handler.php', ['auth', 'admin']);
+$router->get('/api/monitoring/hotspots', 'api/resource_hotspots_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{host_id}/stacks/{stack_name}/spec', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->post('/api/stacks/{stack_id}/edit-compose', 'api/stack_editor_handler.php', ['auth', 'admin']);
 $router->post('/api/git/test', 'api/git_test_handler.php', ['auth', 'admin']);

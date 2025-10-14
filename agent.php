@@ -120,6 +120,12 @@ class DockerClient
         return is_array($result) ? $result : [];
     }
 
+    public function getContainerStats(string $id): array
+    {
+        $result = $this->sendRequest("/containers/{$id}/stats?stream=false");
+        return is_array($result) ? $result : [];
+    }
+
     public function getInfo(): array
     {
         $result = $this->sendRequest('/info');
@@ -254,6 +260,7 @@ function run_check_cycle() {
     $unhealthy_count = 0;
     $unknown_count = 0;
     $running_container_count = 0;
+    $container_stats_reports = [];
     $unhealthy_container_names = [];
     $unknown_container_names = [];
 
@@ -286,6 +293,28 @@ function run_check_cycle() {
             }
             $running_container_count++;
             $all_running_container_ids[] = $container['Id']; // NEW: Add ID to the list
+
+            // --- NEW: Collect stats for each running container ---
+            try {
+                $stats = $dockerClient->getContainerStats($container_id);
+                $cpu_delta = ($stats['cpu_stats']['cpu_usage']['total_usage'] ?? 0) - ($stats['precpu_stats']['cpu_usage']['total_usage'] ?? 0);
+                $system_cpu_delta = ($stats['cpu_stats']['system_cpu_usage'] ?? 0) - ($stats['precpu_stats']['system_cpu_usage'] ?? 0);
+                $number_cpus = $stats['cpu_stats']['online_cpus'] ?? count($stats['cpu_stats']['cpu_usage']['percpu_usage'] ?? []);
+
+                $cpu_percent = 0.0;
+                if ($system_cpu_delta > 0.0 && $cpu_delta > 0.0 && $number_cpus > 0) {
+                    $cpu_percent = ($cpu_delta / $system_cpu_delta) * $number_cpus * 100.0;
+                }
+
+                $container_stats_reports[] = [
+                    'container_id' => $container_id,
+                    'container_name' => $container_name,
+                    'cpu_usage' => round($cpu_percent, 2),
+                    'memory_usage' => $stats['memory_stats']['usage'] ?? 0,
+                ];
+            } catch (Exception $e) {
+                log_message("  -> WARN: Could not get stats for container '{$container_name}': " . $e->getMessage());
+            }
 
             // --- Pengecualian Khusus ---
             // Abaikan kontainer utilitas yang tidak perlu dicek kesehatannya.
@@ -609,7 +638,8 @@ function run_check_cycle() {
         'host_id' => (int)$hostId,
         'host_uptime_seconds' => $host_uptime_seconds,
         'reports' => $health_reports,
-        'running_container_ids' => $all_running_container_ids // NEW: Send the complete list
+        'running_container_ids' => $all_running_container_ids, // NEW: Send the complete list
+        'container_stats' => $container_stats_reports // NEW: Send container stats
     ]; 
 
     //log_message("  -> Preparing to send report with the following configuration:");

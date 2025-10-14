@@ -46,15 +46,77 @@ try {
     }
 
     // If we're here, it's a push to the correct branch. Trigger the deployment.
-    $_SESSION['username'] = 'webhook_bot'; // Set a username for logging purposes
+    // --- NEW: Find and redeploy all stacks linked to this repository ---
+    $repo_url_from_payload = $data['repository']['clone_url'] ?? null;
+    if (!$repo_url_from_payload) {
+        throw new Exception("Could not determine repository URL from webhook payload.");
+    }
+
+    // --- NEW: Prepare for internal cURL call ---
+    $app_base_url = get_setting('app_base_url');
+    // Use loopback address for internal calls for performance and security
+    $internal_app_url = str_replace(['localhost', '127.0.0.1'], 'traefik-manager', $app_base_url);
+    $deployment_endpoint = rtrim($internal_app_url, '/') . '/api/app-launcher/deploy';
+
+    $conn = Database::getInstance()->getConnection();
+    // Find all stacks that use this Git repository as their source
+    $stmt = $conn->prepare("SELECT s.id, s.stack_name, s.host_id, s.deployment_details, h.name as host_name FROM application_stacks s JOIN docker_hosts h ON s.host_id = h.id WHERE s.source_type = 'git' AND JSON_UNQUOTE(JSON_EXTRACT(s.deployment_details, '$.git_url')) = ?");
+    $stmt->bind_param("s", $repo_url_from_payload);
+    $stmt->execute();
+    $stacks_to_update = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    $conn->close();
+
+    if (empty($stacks_to_update)) {
+        http_response_code(200);
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'success', 'message' => "Webhook received for '{$repo_url_from_payload}', but no stacks are configured to use this repository. Nothing to do."]);
+        log_activity('webhook_bot', 'Webhook Ignored', "Webhook received for '{$repo_url_from_payload}', but no stacks are configured to use this repository.");
+        exit;
+    }
+
+    $updated_stacks = [];
+    foreach ($stacks_to_update as $stack) {
+        // --- NEW: Trigger the actual deployment ---
+        // We will simulate a form submission to the app_launcher_handler.
+        $deployment_details = json_decode($stack['deployment_details'], true);
+        if (!$deployment_details) {
+            log_activity('webhook_bot', 'Webhook Redeploy Failed', "Could not decode deployment details for stack '{$stack['stack_name']}'. Skipping.");
+            continue;
+        }
+
+        // Prepare the POST data for the app launcher
+        $post_data = $deployment_details;
+        $post_data['host_id'] = $stack['host_id'];
+        $post_data['stack_name'] = $stack['stack_name'];
+        $post_data['update_stack'] = 'true'; // This is crucial to tell the launcher it's an update
+
+        // Use cURL to make an internal, non-blocking POST request to the deployment handler
+        $ch = curl_init($deployment_endpoint);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5); // Don't wait for the full deployment, just trigger it.
+        curl_exec($ch);
+        curl_close($ch);
+
+        log_activity('webhook_bot', 'Webhook Redeploy Triggered', "Redeployment triggered for stack '{$stack['stack_name']}' on host '{$stack['host_name']}' due to a push to '{$target_branch}'.");
+        $updated_stacks[] = "{$stack['stack_name']} (on {$stack['host_name']})";
+    }
+
+    // --- NEW: Send a notification ---
+    if (!empty($updated_stacks)) {
+        $notification_title = "Webhook Deployment Triggered";
+        $notification_message = "Push to '{$target_branch}' triggered redeployment for: " . implode(', ', $updated_stacks);
+        send_notification($notification_title, $notification_message, 'info');
+    }
     
-    // Capture the output of the generate_config.php script
-    ob_start();
-    require_once PROJECT_ROOT . '/generate_config.php';
-    $output = ob_get_clean();
-    
+    // Respond with a success message
     header('Content-Type: application/json');
-    echo $output;
+    echo json_encode([
+        'status' => 'success',
+        'message' => 'Webhook processed. Redeployment triggered for the following stacks: ' . implode(', ', $updated_stacks)
+    ]);
 
 } catch (Exception $e) {
     http_response_code(500);

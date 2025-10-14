@@ -125,6 +125,17 @@ class DockerClient
     }
 
     /**
+     * Inspects a single network to get its full details.
+     * @param string $networkId The ID of the network.
+     * @return array The network details.
+     * @throws Exception
+     */
+    public function inspectNetwork(string $networkId): array
+    {
+        return $this->request("/networks/{$networkId}");
+    }
+
+    /**
      * Creates a new network.
      * @param array $config The network configuration.
      * @return array The response from the API.

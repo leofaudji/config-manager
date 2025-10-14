@@ -225,6 +225,12 @@ require_once __DIR__ . '/../includes/header.php';
                             <small class="form-text text-muted d-block mt-1">A persistent volume will be created on the host for each mapping. Container Path is required for each entry.</small>
 
                             <hr>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="privileged_mode" name="privileged" value="true">
+                                <label class="form-check-label" for="privileged_mode">Enable Privileged Mode</label>
+                                <small class="form-text text-muted d-block">Grants the container extended privileges on the host. Use with caution.</small>
+                            </div>
+                            <hr>
                             <h5 class="mt-4">Autoscaling Settings</h5>
                             <p class="text-muted small">Atur autoscaling untuk stack ini berdasarkan utilisasi CPU dari host tempatnya berjalan. Fitur ini hanya berlaku untuk Docker Swarm.</p>
 

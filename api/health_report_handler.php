@@ -31,6 +31,7 @@ try {
     $host_id = (int)$data['host_id'];
     $reports = $data['reports'];
     $running_container_ids = $data['running_container_ids'] ?? [];
+    $container_stats = $data['container_stats'] ?? [];
     $host_uptime_seconds = $data['host_uptime_seconds'] ?? null;
 
     // --- Update Host Status (last_report_at and uptime) ---
@@ -73,6 +74,23 @@ try {
         $stmt_update->execute();
     }
     $stmt_update->close();
+
+    // --- NEW: Insert container stats ---
+    if (!empty($container_stats)) {
+        $stmt_stats = $conn->prepare(
+            "INSERT INTO container_stats (host_id, container_id, container_name, cpu_usage, memory_usage)
+             VALUES (?, ?, ?, ?, ?)"
+        );
+        foreach ($container_stats as $stat) {
+            $stmt_stats->bind_param(
+                "issdi",
+                $host_id, $stat['container_id'], $stat['container_name'],
+                $stat['cpu_usage'], $stat['memory_usage']
+            );
+            $stmt_stats->execute();
+        }
+        $stmt_stats->close();
+    }
 
     // --- Cleanup Stale Container Records ---
     if (!empty($running_container_ids)) {

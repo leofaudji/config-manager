@@ -46,6 +46,18 @@ try {
         if (str_ends_with($request_uri_path, '/networks')) {
             // LIST networks
             $networks = $dockerClient->listNetworks();
+            $details = isset($_GET['details']) && $_GET['details'] === 'true';
+
+            // If details are requested (for Network Inspector), inspect each network
+            // to get the list of attached containers.
+            if ($details) {
+                $detailed_networks = [];
+                foreach ($networks as $network) {
+                    $detailed_networks[] = $dockerClient->inspectNetwork($network['Id']);
+                }
+                $networks = $detailed_networks;
+            }
+
             $sort = $_GET['sort'] ?? 'Name';
             $order = $_GET['order'] ?? 'asc';
             $limit_get = isset($_GET['limit']) ? (int)$_GET['limit'] : 10;

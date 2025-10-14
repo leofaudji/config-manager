@@ -304,7 +304,7 @@ class Spyc {
     }
 
     // New YAML document
-    $string = "---\n";
+    $string = "";
 
     // Start at the base of the array and move through it.
     $string .= $this->yamlizeArray($array, 0);
@@ -329,8 +329,7 @@ class Spyc {
       // This is the definitive fix for indentation of list items that are maps (e.g., ports long syntax).
       if ($is_sequence_item && is_array($value)) {
         $string = '';
-        // The first line of the map needs to be attached to the dash.
-        // Subsequent lines need to be indented to the same level as the first line's key.
+        // The first line of the map needs to be attached to the dash, and subsequent lines indented correctly.
         $array_content = $this->yamlizeArray($value, $indent + 2); // Use a fixed indent of 2 for items in a list
         $lines = explode("\n", trim($array_content));
         $first_line = array_shift($lines);

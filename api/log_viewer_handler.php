@@ -133,6 +133,56 @@ try {
             ]);
             break;
 
+        case 'webhook':
+            $limit = $is_download_request ? 10000 : 25;
+            $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+            $offset = ($page - 1) * $limit;
+            $search = trim($_GET['search'] ?? '');
+            $status = trim($_GET['status'] ?? '');
+
+            $where_clauses = ["action LIKE '%Webhook%'"];
+            $params = [];
+            $types = '';
+
+            if (!empty($search)) {
+                $where_clauses[] = "(details LIKE ? OR ip_address LIKE ?)";
+                $search_param = "%{$search}%";
+                $params[] = $search_param;
+                $params[] = $search_param;
+                $types .= 'ss';
+            }
+
+            if (!empty($status)) {
+                $where_clauses[] = "action LIKE ?";
+                $status_param = "%{$status}%";
+                $params[] = $status_param;
+                $types .= 's';
+            }
+
+            $where_sql = "WHERE " . implode(' AND ', $where_clauses);
+
+            $total_items_result = $conn->query("SELECT COUNT(*) as count FROM activity_log {$where_sql}");
+            $total_items = $total_items_result->fetch_assoc()['count'];
+            $total_pages = ceil($total_items / $limit);
+
+            $stmt = $conn->prepare("SELECT * FROM activity_log {$where_sql} ORDER BY id DESC LIMIT ? OFFSET ?");
+            $params[] = $limit;
+            $params[] = $offset;
+            $types .= 'ii';
+            $stmt->bind_param($types, ...$params);
+            $stmt->execute();
+            $result = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt->close();
+
+            echo json_encode([
+                'status' => 'success',
+                'data' => $result,
+                'total_pages' => $total_pages,
+                'current_page' => $page,
+                'info' => "Showing " . count($result) . " of " . $total_items . " records."
+            ]);
+            break;
+
         case 'cron':
             $script_name = $_GET['script'] ?? '';
             if (empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup'])) {

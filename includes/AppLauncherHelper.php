@@ -12,6 +12,8 @@ class AppLauncherHelper
      */
     public static function applyFormSettings(array &$compose_data, array $params, array $host, bool $is_swarm_manager): void
     {
+        // The 'version' attribute is obsolete in modern docker-compose.
+        unset($compose_data['version']);
         // Extract params for easier access
         $replicas = $params['replicas'] ?? null;
         $cpu = $params['cpu'] ?? null;
@@ -21,6 +23,7 @@ class AppLauncherHelper
         $host_port = $params['host_port'] ?? null;
         $container_port = $params['container_port'] ?? null;
         $container_ip = $params['container_ip'] ?? null;
+        $privileged = $params['privileged'] ?? false;
         $placement_constraint = $params['deploy_placement_constraint'] ?? null;
         $stack_name = $params['stack_name'] ?? '';
 
@@ -69,6 +72,11 @@ class AppLauncherHelper
                     $compose_data['services'][$service_key]['restart'] = 'unless-stopped';
                 }
             }
+            
+            // Add privileged mode if requested. Convert boolean to string for YAML compatibility.
+            if ($privileged) {
+                $compose_data['services'][$service_key]['privileged'] = 'true';
+            }
 
             // For standalone hosts, explicitly set the container name.
             // This avoids the default "{project}_{service}_1" naming convention.
@@ -107,6 +115,36 @@ class AppLauncherHelper
                 // --- NEW: Also attach to the agent network if it exists on a Swarm host ---
                 if ($is_swarm_manager) {
                     $compose_data['services'][$service_key]['networks'][] = 'cm-agent-net';
+                }
+            }
+
+            // --- NEW: Automatically add a generic HEALTHCHECK if one doesn't exist ---
+            // This makes containers more observable by the health agent.
+            if (!isset($compose_data['services'][$service_key]['healthcheck'])) {
+                $port_to_check = null;
+                // Prioritize the port from the form for the first service
+                if ($is_first_service && $container_port) {
+                    $port_to_check = $container_port;
+                } 
+                // Otherwise, try to find the first exposed port for the current service
+                elseif (isset($compose_data['services'][$service_key]['ports'][0])) {
+                    $port_mapping = $compose_data['services'][$service_key]['ports'][0];
+                    if (is_string($port_mapping)) {
+                        $parts = explode(':', $port_mapping);
+                        $port_to_check = end($parts);
+                    } elseif (is_array($port_mapping) && isset($port_mapping['target'])) {
+                        $port_to_check = $port_mapping['target'];
+                    }
+                }
+
+                if ($port_to_check) {
+                    $compose_data['services'][$service_key]['healthcheck'] = [
+                        'test' => ["CMD-SHELL", "nc -z 127.0.0.1 {$port_to_check} || exit 1"],
+                        'interval' => '30s',
+                        'timeout' => '10s',
+                        'retries' => 3,
+                        'start_period' => '30s'
+                    ];
                 }
             }
             // Apply network attachment to all services
