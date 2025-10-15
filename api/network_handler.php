@@ -254,16 +254,46 @@ try {
                     'info' => "Showing <strong>" . count($paginated_images) . "</strong> of <strong>{$total_items}</strong> images."
                 ]);
             } else {
-                // Original behavior for App Launcher
-                $all_tags = [];
+                // --- CORRECTED: Combined logic for App Launcher ---
+                $local_images_data = [];
                 if (is_array($images_data)) {
                     foreach ($images_data as $image) {
                         if (!empty($image['RepoTags']) && is_array($image['RepoTags'])) {
-                            $all_tags = array_merge($all_tags, array_filter($image['RepoTags'], fn($tag) => $tag !== '<none>:<none>'));
+                            foreach ($image['RepoTags'] as $tag) {
+                                if ($tag !== '<none>:<none>') {
+                                    $local_images_data[$tag] = ['name' => $tag, 'source' => 'local'];
+                                }
+                            }
                         }
                     }
                 }
-                echo json_encode(['status' => 'success', 'data' => array_values(array_unique($all_tags))]);
+    
+                $registry_images_data = [];
+                if (!empty($host['registry_url'])) {
+                    try {
+                        $registry_url = rtrim($host['registry_url'], '/');
+                        $registry_host_only = parse_url($registry_url, PHP_URL_HOST) . (parse_url($registry_url, PHP_URL_PORT) ? ':' . parse_url($registry_url, PHP_URL_PORT) : '');
+                        // Use the generic registry handler which is more robust
+                        $catalog_response = call_registry_api("{$registry_url}/v2/_catalog", $host['registry_username'], $host['registry_password']);
+                        $repositories = $catalog_response['repositories'] ?? [];
+    
+                        foreach ($repositories as $repo) {
+                            $tags_response = call_registry_api("{$registry_url}/v2/" . urlencode($repo) . "/tags/list", $host['registry_username'], $host['registry_password']);
+                            $tags = $tags_response['tags'] ?? [];
+                            foreach ($tags as $tag) {
+                                $full_image_name = "{$registry_host_only}/{$repo}:{$tag}";
+                                $registry_images_data[$full_image_name] = ['name' => $full_image_name, 'source' => 'registry'];
+                            }
+                        }
+                    } catch (Exception $e) {
+                        error_log("Config Manager: Failed to fetch images from registry '{$host['registry_url']}': " . $e->getMessage());
+                    }
+                }
+    
+                // Merge, giving priority to registry images if names conflict
+                $combined_images = array_values(array_merge($registry_images_data, $local_images_data));
+                usort($combined_images, fn($a, $b) => strnatcasecmp($a['name'], $b['name']));
+                echo json_encode(['status' => 'success', 'data' => $combined_images]);
             }
         }
 
@@ -540,6 +570,31 @@ try {
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+}
+
+/**
+ * Helper function to call the registry API.
+ * This is a simplified version of the one in registry_handler.php for internal use.
+ */
+function call_registry_api($url, $username, $password) {
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+
+    if (!empty($username) && !empty($password)) {
+        curl_setopt($ch, CURLOPT_USERPWD, "$username:$password");
+    }
+
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http_code !== 200) return []; // Return empty on failure
+
+    return json_decode($response, true) ?: [];
 }
 
 $conn->close();

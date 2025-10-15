@@ -625,7 +625,7 @@ class DockerClient
      * @return mixed The response from the API.
      * @throws Exception
      */
-    private function request(string $path, string $method = 'GET', $data = null, string $contentType = 'application/json', array $extraHeaders = [], int $timeout = 15)
+    public function request(string $path, string $method = 'GET', $data = null, string $contentType = 'application/json', array $extraHeaders = [], int $timeout = 15)
     {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->apiUrl . $path);

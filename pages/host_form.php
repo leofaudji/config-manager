@@ -74,6 +74,14 @@ if (isset($_GET['id'])) { // Edit Mode
     $submit_button_text = 'Save as New Host';
 }
 
+// --- NEW: Fetch existing registries for the dropdown ---
+$registries_result = $conn->query("SELECT id, name, registry_url FROM docker_hosts WHERE registry_url IS NOT NULL AND registry_url != '' ORDER BY name ASC");
+$existing_registries = [];
+if ($registries_result) {
+    $existing_registries = $registries_result->fetch_all(MYSQLI_ASSOC);
+}
+
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -117,8 +125,20 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
             <div class="row">
                 <div class="col-md-12 mb-3">
-                    <label for="registry_url" class="form-label">Registry URL</label>
-                    <input type="text" class="form-control" id="registry_url" name="registry_url" value="<?= htmlspecialchars($host['registry_url'] ?? '') ?>" placeholder="e.g., docker.io (for Docker Hub), ghcr.io">
+                    <label for="registry_url_select" class="form-label">Registry URL</label>
+                    <select class="form-select" id="registry_url_select" name="registry_url">
+                        <option value="">-- No Registry --</option>
+                        <?php foreach ($existing_registries as $reg): ?>
+                            <option value="<?= htmlspecialchars($reg['registry_url']) ?>" <?= (isset($host['registry_url']) && $host['registry_url'] === $reg['registry_url']) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($reg['name'] . ' (' . $reg['registry_url'] . ')') ?>
+                            </option>
+                        <?php endforeach; ?>
+                        <option value="other">Other (Specify URL)...</option>
+                    </select>
+                </div>
+                <div class="mb-3" id="registry_url_other_container" style="display: none;">
+                    <label for="registry_url_other" class="form-label">Custom Registry URL</label>
+                    <input type="text" class="form-control" id="registry_url_other" name="registry_url_other" value="" placeholder="e.g., https://my.private.registry.com">
                 </div>
                 <div class="col-md-6 mb-3">
                     <label for="registry_username" class="form-label">Username</label>
@@ -167,6 +187,33 @@ require_once __DIR__ . '/../includes/header.php';
 (function() { // IIFE to ensure script runs on AJAX load
     const tlsToggle = document.getElementById('tls_enabled');
     const tlsContainer = document.getElementById('tls-settings-container');
+
+    const registrySelect = document.getElementById('registry_url_select');
+    const otherUrlContainer = document.getElementById('registry_url_other_container');
+    const otherUrlInput = document.getElementById('registry_url_other');
+
+    function toggleOtherUrlInput() {
+        if (registrySelect.value === 'other') {
+            otherUrlContainer.style.display = 'block';
+        } else {
+            otherUrlContainer.style.display = 'none';
+            otherUrlInput.value = ''; // Clear the value when hidden
+        }
+    }
+
+    // Check on page load if "Other" should be shown.
+    // This handles the case where the saved URL is not in the list of existing registries.
+    const savedUrl = <?= json_encode($host['registry_url'] ?? '') ?>;
+    if (savedUrl) {
+        const isUrlInOptions = Array.from(registrySelect.options).some(opt => opt.value === savedUrl);
+        if (!isUrlInOptions) {
+            registrySelect.value = 'other';
+            otherUrlInput.value = savedUrl;
+        }
+    }
+
+    registrySelect.addEventListener('change', toggleOtherUrlInput);
+    toggleOtherUrlInput(); // Initial check
 
     tlsToggle.addEventListener('change', function() {
         tlsContainer.style.display = this.checked ? 'block' : 'none';

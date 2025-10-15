@@ -568,34 +568,54 @@ elseif ($type === 'stacks') {
     $response['info'] = "Showing <strong>{$result->num_rows}</strong> of <strong>{$total_items}</strong> stacks.";
 }
 elseif ($type === 'hosts') {
+    $group_by = $_GET['group_by'] ?? '';
+
+    $where_clause = '';
+    $params = [];
+    $types = '';
+
+    if ($group_by === 'standalone' || $group_by === 'manager' || $group_by === 'worker') {
+        $where_clause = ' WHERE swarm_status = ?';
+        $params[] = $group_by;
+        $types .= 's';
+    } elseif ($group_by === 'registry') {
+        $where_clause = " WHERE registry_url IS NOT NULL AND registry_url != ''";
+    }
+
     // Get total count
-    $total_items = $conn->query("SELECT COUNT(*) as count FROM `docker_hosts`")->fetch_assoc()['count'];
+    $stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM `docker_hosts`" . $where_clause);
+    if (!empty($params)) {
+        $stmt_count->bind_param($types, ...$params);
+    }
+    $stmt_count->execute();
+    $total_items = $stmt_count->get_result()->fetch_assoc()['count'];
+    $stmt_count->close();
+
     $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
 
     // Get data
-    $stmt = $conn->prepare("SELECT * FROM `docker_hosts` ORDER BY name ASC LIMIT ? OFFSET ?");
-    $stmt->bind_param("ii", $limit, $offset);
+    $stmt = $conn->prepare("SELECT * FROM `docker_hosts`" . $where_clause . " ORDER BY name ASC LIMIT ? OFFSET ?");
+    $final_params = array_merge($params, [$limit, $offset]);
+    $stmt->bind_param($types . 'ii', ...$final_params);
     $stmt->execute();
     $result = $stmt->get_result();
+    $all_hosts = $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
 
-    $html = '';
-    while ($host = $result->fetch_assoc()) {
+    // --- Group hosts by their role ---
+    $grouped_hosts = [
+        'manager' => [], 'worker' => [], 'standalone' => [], 'registry' => []
+    ];
+
+    foreach ($all_hosts as $host) {
         $uptime_status = 'N/A';
         $uptime_timestamp = $host['host_uptime_seconds'] ?? 0;
         $manager_status_text = '';
         $swarm_status_for_db = 'unreachable'; // Default value
-
-        // Prepare statement for updating swarm status
-        $stmt_update_status = $conn->prepare("UPDATE docker_hosts SET swarm_status = ? WHERE id = ?");
-
-
         $connection_status_badge = '<span class="badge bg-secondary">Unknown</span>';
-
-        // Use the accurate uptime from the database if available
         if ($uptime_timestamp > 0) {
             $uptime_status = format_uptime($uptime_timestamp);
         }
-
         try {
             $dockerClient = new DockerClient($host);
             $dockerInfo = $dockerClient->getInfo();
@@ -642,8 +662,92 @@ elseif ($type === 'hosts') {
             $connection_status_badge = '<span class="badge bg-danger" title="' . htmlspecialchars($e->getMessage()) . '">Unreachable</span>';
             $swarm_status_for_db = 'unreachable';
         }
+
+        // --- NEW: Detect if a registry container is running on the host ---
+        $is_registry_host = false;
+        if ($swarm_status_for_db !== 'unreachable') {
+            try {
+                $containers = $dockerClient->listContainers();
+                foreach ($containers as $container) {
+                    if (isset($container['Ports']) && is_array($container['Ports'])) {
+                        foreach ($container['Ports'] as $port_mapping) {
+                            if (isset($port_mapping['PublicPort']) && $port_mapping['PublicPort'] == 5000) {
+                                $is_registry_host = true;
+                                break 2; // Break both loops once found
+                            }
+                        }
+                    }
+                }
+            } catch (Exception $e) { /* Ignore if listing containers fails */ }
+        }
+
+        // Prepare and execute status update inside the loop for each host
+        $stmt_update_status = $conn->prepare("UPDATE docker_hosts SET swarm_status = ? WHERE id = ?");
         $stmt_update_status->bind_param("si", $swarm_status_for_db, $host['id']);
         $stmt_update_status->execute();
+        $stmt_update_status->close();
+
+
+             // --- Grouping Logic: Prioritize registry, then fall back to swarm status ---
+        if ($is_registry_host) {
+            $grouped_hosts['registry'][] = $host;
+        } elseif ($swarm_status_for_db !== 'unreachable') {
+            $grouped_hosts[$swarm_status_for_db][] = $host;
+        }
+
+
+    } // End of foreach ($all_hosts as $host)
+
+    // --- Generate HTML from grouped hosts ---
+    $html = '';
+    $group_definitions = [
+        'manager' => ['title' => 'Swarm Managers', 'icon' => 'hdd-stack-fill'],
+        'worker' => ['title' => 'Swarm Workers', 'icon' => 'hdd-fill'],
+        'standalone' => ['title' => 'Standalone Hosts', 'icon' => 'hdd-network-fill'],
+        'registry' => ['title' => 'Local Registries', 'icon' => 'database-fill']
+    ];
+
+    $total_rendered = 0;
+    foreach ($group_definitions as $group_key => $group_info) {
+        // If a specific group is filtered, only show that one. Otherwise, show all.
+        if (!empty($group_by) && $group_by !== $group_key) {
+            continue;
+        }
+
+        $hosts_in_group = $grouped_hosts[$group_key];
+        if (empty($hosts_in_group)) {
+            continue;
+        }
+
+        // Add group header row
+        $html .= '<tr class="table-group-header"><th colspan="9"><i class="bi bi-' . $group_info['icon'] . ' me-2"></i>' . $group_info['title'] . ' (' . count($hosts_in_group) . ')</th></tr>';
+
+        foreach ($hosts_in_group as $host) {
+            // Re-calculate display values for this specific host
+            $uptime_status = ($host['host_uptime_seconds'] ?? 0) > 0 ? format_uptime($host['host_uptime_seconds']) : 'N/A';
+            $swarm_status_for_db = $host['swarm_status'] ?? 'unreachable';
+            $connection_status_badge = '<span class="badge bg-success">Reachable</span>'; // Assume reachable if in a group
+            if ($swarm_status_for_db === 'unreachable') {
+                 $connection_status_badge = '<span class="badge bg-danger">Unreachable</span>';
+            }
+
+            $manager_status_text = ucfirst($host['swarm_status'] ?? 'Unknown');
+            if ($manager_status_text === 'Manager' && str_contains($host['name'], 'Leader')) { // Simplified for display
+                $manager_status_text = 'Manager (Leader)';
+            }
+
+        // --- Registry Browser Button ---
+        $registry_browser_btn = '';
+        if (!empty($host['registry_url'])) {
+            $registry_browser_btn = '<a href="' . base_url('/registry-browser?host_id=' . $host['id']) . '" class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Browse Registry"><i class="bi bi-box-seam"></i></a> ';
+        }
+
+        // --- NEW: Setup as Registry Button ---
+        $setup_registry_btn = '';
+        // Show this button only if the host is reachable and doesn't already have a registry URL configured.
+        if ($swarm_status_for_db !== 'unreachable' && empty($host['registry_url'])) {
+            $setup_registry_btn = '<button class="btn btn-sm btn-outline-success setup-registry-btn" data-host-id="' . $host['id'] . '" data-host-name="' . htmlspecialchars($host['name']) . '" title="Setup as Local Registry"><i class="bi bi-database-add"></i></button> ';
+        }
 
         // --- Agent Status Badge ---
         $agent_status = $host['agent_status'] ?? 'Unknown';
@@ -698,18 +802,21 @@ elseif ($type === 'hosts') {
         } elseif ($manager_status_text === 'Standalone') {
             $html .= '<button class="btn btn-sm btn-outline-primary join-swarm-btn" data-host-id="' . $host['id'] . '" data-bs-toggle="modal" data-bs-target="#joinSwarmModal" title="Join a Swarm Cluster"><i class="bi bi-person-plus-fill"></i> Join Swarm</button> ';
         }
+        $html .= $setup_registry_btn;
+        $html .= $registry_browser_btn;
         $html .= '<a href="' . base_url('/hosts/' . $host['id'] . '/details') . '" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Manage Host"><i class="bi bi-box-arrow-in-right"></i></a> ';
         $html .= '<a href="' . base_url('/hosts/' . $host['id'] . '/clone') . '" class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Clone Host"><i class="bi bi-copy"></i></a> ';
         $html .= '<button class="btn btn-sm btn-outline-info test-connection-btn" data-id="' . $host['id'] . '" data-bs-toggle="tooltip" title="Test Connection"><i class="bi bi-plug-fill"></i></button> ';
         $html .= '<a href="' . base_url('/hosts/' . $host['id'] . '/edit') . '" class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Edit Host"><i class="bi bi-pencil-square"></i></a> ';
         $html .= '<button class="btn btn-sm btn-outline-danger delete-btn" data-id="' . $host['id'] . '" data-url="' . base_url('/hosts/' . $host['id'] . '/delete') . '" data-type="hosts" data-confirm-message="Are you sure you want to delete host \'' . htmlspecialchars($host['name']) . '\'?"><i class="bi bi-trash"></i></button>';
         $html .= '</td></tr>';
+            $total_rendered++;
+        }
     }
-    $stmt_update_status->close();
 
     $response['html'] = $html;
     $response['total_pages'] = $total_pages;
-    $response['info'] = "Showing <strong>{$result->num_rows}</strong> of <strong>{$total_items}</strong> hosts.";
+    $response['info'] = "Showing <strong>{$total_rendered}</strong> of <strong>{$total_items}</strong> hosts.";
 }
 elseif ($type === 'traefik-hosts') {
     // Get total count

@@ -253,6 +253,15 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <span class="nav-link-text">Host Overview</span>
                 </a>
             </li>
+        <li class="nav-item">
+            <a class="nav-link" href="<?= base_url('/host-overview-cards') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Host Overview (Card View)">
+                <span class="icon-wrapper">
+                    <i class="bi bi-grid-3x3-gap icon-default"></i>
+                    <i class="bi bi-grid-3x3-gap-fill icon-active"></i>
+                </span>
+                <span class="nav-link-text">Card View</span>
+            </a>
+        </li>
             <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/container-events') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Container Events">
                     <span class="icon-wrapper">

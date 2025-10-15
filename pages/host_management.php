@@ -12,6 +12,26 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
+<div class="mb-3">
+    <small class="text-muted">Group by:</small>
+    <div class="btn-group" role="group" aria-label="Host Groups" id="host-group-filter-container">
+        <input type="radio" class="btn-check" name="host-group-filter" id="group-all" value="" autocomplete="off" checked>
+        <label class="btn btn-sm btn-outline-secondary" for="group-all">All</label>
+
+        <input type="radio" class="btn-check" name="host-group-filter" id="group-standalone" value="standalone" autocomplete="off">
+        <label class="btn btn-sm btn-outline-secondary" for="group-standalone">Standalone</label>
+
+        <input type="radio" class="btn-check" name="host-group-filter" id="group-manager" value="manager" autocomplete="off">
+        <label class="btn btn-sm btn-outline-secondary" for="group-manager">Swarm Managers</label>
+
+        <input type="radio" class="btn-check" name="host-group-filter" id="group-worker" value="worker" autocomplete="off">
+        <label class="btn btn-sm btn-outline-secondary" for="group-worker">Swarm Workers</label>
+
+        <input type="radio" class="btn-check" name="host-group-filter" id="group-registry" value="registry" autocomplete="off">
+        <label class="btn btn-sm btn-outline-secondary" for="group-registry">Local Registries</label>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-body">
         <div class="table-responsive">

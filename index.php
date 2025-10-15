@@ -47,8 +47,10 @@ $router->get('/health-status', 'pages/health_status.php', ['auth']);
 $router->get('/changelog', 'pages/changelog.php', ['auth']);
 $router->get('/host-overview', 'pages/host_overview.php', ['auth', 'admin']); // Rute baru
 $router->get('/central-logs', 'pages/central_log_viewer.php', ['auth', 'admin']); // Rute baru
+$router->get('/host-overview-cards', 'pages/host_overview_cards.php', ['auth', 'admin']); // Rute baru
 $router->get('/resource-hotspots', 'pages/resource_hotspots.php', ['auth', 'admin']); // Rute baru
 $router->get('/network-inspector', 'pages/network_inspector.php', ['auth', 'admin']); // Rute baru
+$router->get('/registry-browser', 'pages/registry_browser.php', ['auth', 'admin']); // Rute baru
 $router->get('/container-events', 'pages/container_events.php', ['auth', 'admin']); // Rute baru
 $router->get('/health-agent-workflow', 'pages/health_agent_workflow.php', ['auth', 'admin']); // Rute baru untuk diagram
 $router->get('/webhook-reports', 'pages/webhook_reports.php', ['auth', 'admin']); // Rute baru untuk laporan webhook
@@ -111,6 +113,8 @@ $router->post('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', '
 $router->get('/api/stack-changes', 'api/stack_changes_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/events', 'api/container_events_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/stats', 'api/container_stats_stream_handler.php', ['auth', 'admin']);
+$router->get('/api/registry/repositories', 'api/registry_handler.php', ['auth', 'admin']);
+$router->get('/api/registry/tags', 'api/registry_handler.php', ['auth', 'admin']);
 $router->get('/api/monitoring/hotspots', 'api/resource_hotspots_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{host_id}/stacks/{stack_name}/spec', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->post('/api/stacks/{stack_id}/edit-compose', 'api/stack_editor_handler.php', ['auth', 'admin']);
@@ -177,6 +181,7 @@ $router->get('/api/hosts/list', 'api/host_list_handler.php', ['auth', 'admin']);
 $router->post('/api/swarm/join', 'api/join_swarm_handler.php', ['auth', 'admin']);
 $router->post('/api/nodes/action', 'api/node_action_handler.php', ['auth', 'admin']);
 $router->post('/templates/new', 'api/template_handler.php', ['auth', 'admin']);
+$router->post('/api/hosts/setup-registry', 'api/host_registry_setup.php', ['auth', 'admin']);
 $router->post('/templates/{id}/edit', 'api/template_handler.php', ['auth', 'admin']);
 $router->post('/hosts/new', 'api/host_handler.php', ['auth', 'admin']);
 $router->post('/hosts/{id}/edit', 'api/host_handler.php', ['auth', 'admin']);

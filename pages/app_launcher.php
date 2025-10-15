@@ -774,8 +774,10 @@ window.pageInit = function() {
                 if (result.status === 'success' && result.data) {
                     let optionsHtml = '<option value="" disabled selected>-- Select an image --</option>';
                     result.data.forEach(img => {
-                        // Assuming result.data is an array of strings (image tags)
-                        optionsHtml += `<option value="${img}">${img}</option>`;
+                        // NEW: Handle object with name and source
+                        const sourceLabel = img.source === 'registry' ? ' (registry)' : ' (local)';
+                        const displayName = img.name + sourceLabel;
+                        optionsHtml += `<option value="${img.name}">${displayName}</option>`;
                     });
                     imageNameSelect.innerHTML = optionsHtml;
                     imageNameSelect.disabled = false;

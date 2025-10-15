@@ -43,7 +43,12 @@ $ca_cert_path = trim($_POST['ca_cert_path'] ?? '');
 $client_cert_path = trim($_POST['client_cert_path'] ?? '');
 $client_key_path = trim($_POST['client_key_path'] ?? '');
 $default_volume_path = trim($_POST['default_volume_path'] ?? '/opt/stacks');
-$registry_url = trim($_POST['registry_url'] ?? '');
+// --- NEW: Handle registry URL from dropdown or custom input ---
+$registry_url_from_select = $_POST['registry_url'] ?? '';
+$registry_url = ($registry_url_from_select === 'other') 
+    ? trim($_POST['registry_url_other'] ?? '') 
+    : trim($registry_url_from_select);
+
 $registry_username = trim($_POST['registry_username'] ?? '');
 $registry_password = $_POST['registry_password'] ?? ''; // Don't trim password
 $is_edit = !empty($id);

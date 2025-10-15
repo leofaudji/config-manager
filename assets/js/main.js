@@ -301,6 +301,41 @@ document.body.addEventListener('click', function(e) {
             .finally(() => nodeActionBtn.disabled = false); // Button will be re-rendered, no need to restore icon
     }
 
+    // --- NEW: Setup as Local Registry ---
+    const setupRegistryBtn = target.closest('.setup-registry-btn');
+    if (setupRegistryBtn) {
+        e.preventDefault();
+        const hostId = setupRegistryBtn.dataset.hostId;
+        const hostName = setupRegistryBtn.dataset.hostName;
+
+        if (!confirm(`Are you sure you want to deploy a local Docker registry on host '${hostName}'? This will pull the 'registry:2' image and run it on port 5000.`)) {
+            return;
+        }
+
+        const originalBtnContent = setupRegistryBtn.innerHTML;
+        setupRegistryBtn.disabled = true;
+        setupRegistryBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>`;
+
+        const formData = new FormData();
+        formData.append('host_id', hostId);
+
+        fetch(`${basePath}/api/hosts/setup-registry`, { method: 'POST', body: formData })
+            .then(response => response.json().then(data => ({ ok: response.ok, data })))
+            .then(({ ok, data }) => {
+                showToast(data.message, ok);
+                if (ok) {
+                    // Reload the hosts table data to show the new "Browse Registry" button
+                    const currentPage = localStorage.getItem('hosts_page') || 1;
+                    const currentLimit = localStorage.getItem('hosts_limit') || 10;
+                    loadPaginatedData('hosts', currentPage, currentLimit);
+                }
+            })
+            .catch(error => showToast('An unknown error occurred: ' + error.message, false))
+            .finally(() => {
+                // The button will be removed on successful reload, so no need to restore state if it was successful.
+            });
+    }
+
     // --- SPA Navigation Logic (as the fallback) ---
     if (link) {
         // Conditions to let the browser handle the click normally
@@ -350,6 +385,16 @@ document.body.addEventListener('change', function(e) {
         loadPaginatedData('history', 1, document.querySelector('select[name="limit_history"]').value);
     }
 });
+
+// NEW: Host group filter listener
+document.body.addEventListener('change', function(e) {
+    const groupFilterInput = e.target.closest('input[name="host-group-filter"]');
+    if (groupFilterInput) {
+        const limit = document.querySelector('select[name="limit_hosts"]').value;
+        loadPaginatedData('hosts', 1, limit);
+    }
+});
+
 
 const debouncedSearch = debounce((type, limit) => {
     loadPaginatedData(type, 1, limit, false);
@@ -526,6 +571,16 @@ function loadPaginatedData(type, page = 1, limit = 10, preserveScroll = false, e
     if (type === 'history') {
         const showArchived = document.getElementById('show-archived-checkbox')?.checked || false;
         fetchUrl += `&show_archived=${showArchived}`;
+    }
+    // NEW: Add group_by for hosts
+    if (type === 'hosts') {
+        const groupFilterContainer = document.getElementById('host-group-filter-container');
+        if (groupFilterContainer) {
+            const selectedGroup = groupFilterContainer.querySelector('input[name="host-group-filter"]:checked');
+            if (selectedGroup && selectedGroup.value) {
+                fetchUrl += `&group_by=${selectedGroup.value}`;
+            }
+        }
     }
 
     // Add extra params to URL
