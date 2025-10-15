@@ -269,7 +269,8 @@ try {
                 }
     
                 $registry_images_data = [];
-                if (!empty($host['registry_url'])) {
+                // FIX: Only attempt to fetch from registry if all credentials are provided.
+                if (!empty($host['registry_url']) && !empty($host['registry_username']) && !empty($host['registry_password'])) {
                     try {
                         $registry_url = rtrim($host['registry_url'], '/');
                         $registry_host_only = parse_url($registry_url, PHP_URL_HOST) . (parse_url($registry_url, PHP_URL_PORT) ? ':' . parse_url($registry_url, PHP_URL_PORT) : '');

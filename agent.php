@@ -335,10 +335,16 @@ function run_check_cycle() {
 
             if ($docker_health_status) {
                 // --- Alur 1: Gunakan HEALTHCHECK bawaan dari Docker ---
-                $is_healthy = ($docker_health_status === 'healthy');
+                if ($docker_health_status === 'healthy') {
+                    $is_healthy = true;
+                } elseif ($docker_health_status === 'starting') {
+                    $is_healthy = null; // Dianggap 'unknown' untuk memberi waktu
+                } else { // 'unhealthy' atau status lainnya
+                    $is_healthy = false;
+                }
                 $check_flow_log[] = [
                     'step' => 'Docker Healthcheck',
-                    'status' => $is_healthy ? 'success' : 'fail',
+                    'status' => $is_healthy === true ? 'success' : ($is_healthy === false ? 'fail' : 'skipped'),
                     'message' => "Container reported status: {$docker_health_status}"
                 ];
             } else {

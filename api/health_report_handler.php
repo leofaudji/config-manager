@@ -35,40 +35,68 @@ try {
     $host_uptime_seconds = $data['host_uptime_seconds'] ?? null;
 
     // --- Update Host Status (last_report_at and uptime) ---
-    $stmt_host = $conn->prepare("UPDATE docker_hosts SET last_report_at = NOW(), host_uptime_seconds = ? WHERE id = ?");
-    $stmt_host->bind_param("ii", $host_uptime_seconds, $host_id);
-    $stmt_host->execute();
-    $stmt_host->close();
+    if ($host_id) {
+        $stmt_host = $conn->prepare("UPDATE docker_hosts SET last_report_at = NOW(), host_uptime_seconds = ? WHERE id = ?");
+        $stmt_host->bind_param("ii", $host_uptime_seconds, $host_id);
+        $stmt_host->execute();
+        $stmt_host->close();
+    }
 
     // --- Prepare statement for updating container health ---
     $stmt_update = $conn->prepare(
-        "INSERT INTO container_health_status (container_id, host_id, container_name, status, last_checked_at, last_log)
-         VALUES (?, ?, ?, ?, NOW(), ?)
+        "INSERT INTO container_health_status (container_id, host_id, container_name, status, consecutive_failures, consecutive_successes, last_checked_at, last_log)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
          ON DUPLICATE KEY UPDATE 
             container_name = VALUES(container_name), 
             status = VALUES(status), 
-            last_checked_at = VALUES(last_checked_at),
+            consecutive_failures = VALUES(consecutive_failures),
+            consecutive_successes = VALUES(consecutive_successes),
+            last_checked_at = VALUES(last_checked_at), 
+            host_id = VALUES(host_id),
             last_log = VALUES(last_log)"
     );
+
+    // Get global thresholds from settings
+    $healthy_threshold = (int)get_setting('health_check_default_healthy_threshold', 2);
+    $unhealthy_threshold = (int)get_setting('health_check_default_unhealthy_threshold', 3);
 
     foreach ($reports as $report) {
         if (!isset($report['container_id'], $report['container_name'], $report['is_healthy'])) {
             continue; // Skip malformed reports
         }
 
-        $status = 'unknown';
-        if ($report['is_healthy'] === true) {
-            $status = 'healthy';
-        } elseif ($report['is_healthy'] === false) {
-            $status = 'unhealthy';
+        // Fetch current status from DB to apply threshold logic
+        $stmt_get_status = $conn->prepare("SELECT status, consecutive_failures, consecutive_successes FROM container_health_status WHERE container_id = ?");
+        $stmt_get_status->bind_param("s", $report['container_id']);
+        $stmt_get_status->execute();
+        $current_status = $stmt_get_status->get_result()->fetch_assoc() ?: ['status' => 'unknown', 'consecutive_failures' => 0, 'consecutive_successes' => 0];
+        $stmt_get_status->close();
+
+        $new_status = $current_status['status'];
+        $failures = (int)$current_status['consecutive_failures'];
+        $successes = (int)$current_status['consecutive_successes'];
+
+        if ($report['is_healthy'] === true) { // Check was successful
+            $successes++; $failures = 0;
+            if ($successes >= $healthy_threshold) $new_status = 'healthy';
+            else if ($new_status !== 'healthy') $new_status = 'unknown'; // Stay unknown until threshold is met
+        } elseif ($report['is_healthy'] === false) { // Check failed
+            $failures++; $successes = 0;
+            if ($failures >= $unhealthy_threshold) $new_status = 'unhealthy';
+        } elseif ($report['is_healthy'] === 'starting') { // Check is in progress
+            $new_status = 'starting'; // Explicitly set status to 'starting', counters are not reset
+        } else { // is_healthy is null (unknown)
+            $new_status = 'unknown';
         }
 
         $stmt_update->bind_param(
-            "sisss",
+            "sissiis",
             $report['container_id'],
             $host_id,
             $report['container_name'],
-            $status,
+            $new_status,
+            $failures,
+            $successes,
             $report['log_message']
         );
         $stmt_update->execute();

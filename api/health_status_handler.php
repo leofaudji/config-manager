@@ -107,11 +107,14 @@ try {
     $services_sql = "
         SELECT 
             s.id, s.name, s.health_check_type,
+            -- Get host_id from the stack's host or the group's traefik host
+            COALESCE(stack.host_id, g.traefik_host_id) as host_id,
             shs.status, shs.last_log, shs.last_checked_at,
             g.name as group_name,
             'service' as source_type
         FROM services s
         LEFT JOIN service_health_status shs ON s.id = shs.service_id
+        LEFT JOIN application_stacks stack ON s.target_stack_id = stack.id
         LEFT JOIN `groups` g ON s.group_id = g.id
         {$service_where}
     ";
@@ -139,6 +142,7 @@ try {
         $containers_sql = "
             SELECT 
                 chs.container_id as id, chs.container_name as name, 'docker' as health_check_type,
+                chs.host_id, -- Select the host_id directly from the container health status table
                 chs.status, chs.last_log, chs.last_checked_at,
                 h.name as group_name,
                 'container' as source_type

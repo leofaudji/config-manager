@@ -39,6 +39,13 @@ class AppLauncherHelper
                 // Ensure deploy section exists
                 $compose_data['services'][$service_key]['deploy'] = $compose_data['services'][$service_key]['deploy'] ?? [];
 
+                // --- FIX: Swarm does not support container_name. Unset it if it exists. ---
+                unset($compose_data['services'][$service_key]['container_name']);
+
+                // Unset standalone resource keys to prevent conflicts
+                unset($compose_data['services'][$service_key]['cpus']);
+                unset($compose_data['services'][$service_key]['mem_limit']);
+
                 // Set/replace resource limits from form
                 if ($cpu || $memory) {
                     $compose_data['services'][$service_key]['deploy']['resources']['limits'] = [];
@@ -59,6 +66,9 @@ class AppLauncherHelper
                     $compose_data['services'][$service_key]['deploy']['placement']['constraints'] = [$placement_constraint];
                 }
             } else { // Standalone host
+                // Unset Swarm deploy key to prevent conflicts
+                unset($compose_data['services'][$service_key]['deploy']);
+
                 // For standalone, resource limits are at the top level of the service
                 if ($cpu) {
                     $compose_data['services'][$service_key]['cpus'] = (float)$cpu;
@@ -139,11 +149,11 @@ class AppLauncherHelper
 
                 if ($port_to_check) {
                     $compose_data['services'][$service_key]['healthcheck'] = [
-                        'test' => ["CMD-SHELL", "nc -z 127.0.0.1 {$port_to_check} || exit 1"],
+                        'test' => ["CMD-SHELL", "curl -f http://localhost:{$port_to_check}/ || exit 1"],
                         'interval' => '30s',
-                        'timeout' => '10s',
-                        'retries' => 3,
-                        'start_period' => '30s'
+                        'timeout' => '30s', // Give the check a bit more time
+                        'retries' => 5,     // Increase retries for more tolerance
+                        'start_period' => '90s' // Give the app a full minute to start up
                     ];
                 }
             }

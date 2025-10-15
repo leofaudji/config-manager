@@ -171,6 +171,19 @@ try {
         stream_message("Swarm ingress network found.");
     }
 
+    // --- NEW: Pre-deployment check for Swarm: Ensure cm-agent-net exists ---
+    if ($is_swarm_manager) {
+        $agent_network_name = 'cm-agent-net';
+        stream_message("Ensuring '{$agent_network_name}' overlay network exists for Health Agent...");
+        try {
+            // Pass 'true' to create an attachable overlay network
+            $dockerClient->ensureNetworkExists($agent_network_name, true);
+            stream_message("Agent network '{$agent_network_name}' is ready.");
+        } catch (Exception $e) {
+            stream_message("Could not ensure agent network exists: " . $e->getMessage(), 'WARN');
+        }
+    }
+
     // --- Pre-deployment check for Swarm: Verify host port is not already in use by another service ---
     if ($is_swarm_manager && $host_port) {
         stream_message("Checking for port conflicts on Swarm ingress network...");

@@ -181,7 +181,7 @@ window.pageInit = function() {
         const searchTerm = searchInput.value.trim();
         const statusFilterValue = statusFilter.value;
         
-        let url = `${basePath}/api/health-status?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${limit}&sort=${currentSort}&order=${currentOrder}&status_filter=${statusFilterValue}`;
+        let url = `${basePath}/api/health-status?search=${encodeURIComponent(searchTerm)}&page=${page}&limit=${limit}&sort=${currentSort}&order=${currentOrder}&status_filter=${statusFilterValue}&include_host_id=true`;
         if (currentGroupFilter) {
             url += `&group_filter=${encodeURIComponent(currentGroupFilter)}`;
         }
@@ -241,12 +241,20 @@ window.pageInit = function() {
                 if (result.data && result.data.length > 0) {
                     result.data.forEach(item => {
                         let statusBadge = 'secondary';
+                        let statusText = item.status || 'unknown';
+
                         if (item.status === 'healthy') statusBadge = 'success';
                         else if (item.status === 'unhealthy') statusBadge = 'danger';
 
+                        // --- NEW: Detect 'starting' status from the log message ---
+                        if (statusText === 'unknown' && item.last_log && item.last_log.includes('starting')) {
+                            statusBadge = 'info';
+                            statusText = 'starting';
+                        }
+
                         let lastLogMessage = item.last_log || 'N/A';
                         try {
-                            const logSteps = JSON.parse(item.last_log);
+                            const logSteps = JSON.parse(item.last_log || '[]');
                             if (Array.isArray(logSteps) && logSteps.length > 0) {
                                 lastLogMessage = logSteps[logSteps.length - 1].message;
                             }
@@ -255,8 +263,12 @@ window.pageInit = function() {
                         }
 
                         html += `<tr>
-                                    <td><span class="badge bg-${statusBadge}">${item.status || 'unknown'}</span></td>
-                                    <td>${item.name}</td>
+                                    <td><span class="badge bg-${statusBadge}">${escapeHtml(statusText)}</span></td>
+                                    <td>
+                                        <a href="${basePath}/hosts/${item.host_id}/containers?search=${encodeURIComponent(item.name)}" title="View on host ${escapeHtml(item.group_name)}">
+                                            ${escapeHtml(item.name)}
+                                        </a>
+                                    </td>
                                     <td><span class="badge bg-dark">${item.group_name || 'N/A'}</span></td>
                                     <td><span class="badge bg-info">${item.health_check_type}</span></td>
                                     <td><small class="text-muted">${escapeHtml(lastLogMessage)}</small></td>

@@ -470,8 +470,11 @@ try {
                 }
 
                 $cd_command = "cd " . escapeshellarg($deployment_dir);
-                $compose_down_command = "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_filename) . " down --remove-orphans --volumes 2>&1";
-                $full_command = $env_vars . ' ' . $cd_command . ' && ' . $compose_down_command;
+                $compose_down_command = "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_filename) . " down --volumes --remove-orphans";
+                
+                // FIX: Correctly construct the shell command to ensure environment variables are applied.
+                $script_to_run = $cd_command . ' && ' . $compose_down_command;
+                $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($script_to_run) . ' 2>&1';
 
                 exec($full_command, $output, $return_var);
                 if ($return_var !== 0) {
