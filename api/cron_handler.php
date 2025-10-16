@@ -88,7 +88,10 @@ class CronManager {
 
                 if (!empty($schedule)) {
                     $log_file = rtrim($log_path, '/') . "/{$key}.log";
-                    $line = "{$schedule} " . escapeshellarg($path) . " >> " . escapeshellarg($log_file) . " 2>&1";
+                    // Build the command with a timestamp pre-pended to each line via awk
+                    $command_to_run = '{ ' . escapeshellarg($php_path) . ' ' . escapeshellarg($path) . '; } 2>&1';
+                    $command_with_timestamp = $command_to_run . " | awk '{ print \"[\" strftime(\"%Y-%m-%d %H:%M:%S\") \"] \" \$0; fflush(); }'";
+                    $line = "{$schedule} " . $command_with_timestamp . " >> " . escapeshellarg($log_file);
                     if (!$is_enabled) {
                         $line = '#' . $line;
                     }

@@ -25,7 +25,11 @@ if (str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/delete')) 
 
     if ($stmt->execute()) {
         log_activity($_SESSION['username'], 'Router Deleted', "Router ID #{$id} has been deleted.");
-        trigger_background_deployment(1); // Trigger global deployment
+        if (get_setting('auto_deploy_enabled', '1') == '1') {
+            trigger_background_deployment(1); // Trigger global deployment
+        } else {
+            set_config_dirty();
+        }
         echo json_encode(['status' => 'success', 'message' => 'Router berhasil dihapus.']);
     } else {
         http_response_code(500);
@@ -212,7 +216,11 @@ try {
     
     $conn->commit();
     log_activity($_SESSION['username'], $log_action, $log_details);
-    trigger_background_deployment($group_id); // Trigger deployment for the specific group
+    if (get_setting('auto_deploy_enabled', '1') == '1') {
+        trigger_background_deployment($group_id); // Trigger deployment for the specific group
+    } else {
+        set_config_dirty();
+    }
     echo json_encode(['status' => 'success', 'message' => $message]);
 
 } catch (Exception $e) {

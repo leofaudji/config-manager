@@ -153,6 +153,7 @@ $router->post('/api/health-report', 'api/health_report_handler.php'); // For hea
 $router->get('/api/status/config-dirty', 'api/status_handler.php', ['auth']);
 $router->post('/api/log/ingest', 'api/log_ingest_handler.php'); // For receiving logs from agents
 $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin']);
+$router->post('/api/notifications/agent-relay', 'api/notification_relay_handler.php'); // New endpoint for agent notifications
 $router->post('/api/routers/bulk-move', 'api/router_bulk_handler.php', ['auth', 'admin']);
 $router->post('/api/routers/bulk-delete', 'api/router_bulk_handler.php', ['auth', 'admin']);
 $router->get('/api/services/status', 'actions/get_service_status.php', ['auth']);

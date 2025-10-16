@@ -68,29 +68,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                 </div>
                             </td>
                         </tr>
-                        <!-- CPU Reader Row -->
-                        <tr>
-                            <td>
-                                <strong>CPU Reader</strong>
-                                <p class="small text-muted mb-0">Reads overall host CPU usage for the resource chart.</p>
-                            </td>
-                            <td><span id="cpu-reader-status-badge" class="badge text-bg-secondary">Checking...</span></td>
-                            <td><span id="cpu-reader-last-report" class="text-muted small" data-timestamp="">Never</span></td>
-                            <td class="text-end">
-                                <div class="btn-group btn-group-sm" role="group">
-                                    <button id="deploy-cpu-reader-btn" class="btn btn-outline-success" data-host-id="<?= $host_id ?>" data-action="deploy" title="Deploy/Redeploy"><i class="bi bi-cloud-arrow-down-fill"></i></button>
-                                    <button id="restart-cpu-reader-btn" class="btn btn-outline-warning" data-host-id="<?= $host_id ?>" data-action="restart" style="display: none;" title="Restart"><i class="bi bi-arrow-clockwise"></i></button>
-                                    <button id="remove-cpu-reader-btn" class="btn btn-outline-danger" data-host-id="<?= $host_id ?>" data-action="remove" style="display: none;" title="Remove"><i class="bi bi-trash-fill"></i></button>
-                                    <button id="run-cpu-reader-btn" class="btn btn-outline-primary" data-host-id="<?= $host_id ?>" data-action="run" style="display: none;" title="Run Collection Now"><i class="bi bi-play-fill"></i></button>
-                                </div>
-                                <div class="btn-group btn-group-sm ms-2" role="group">
-                                    <button class="btn btn-outline-secondary view-container-logs-btn" data-container-name="host-cpu-reader" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
-                                    <a href="<?= base_url('/cpu-reader-workflow') ?>" class="btn btn-sm btn-outline-info" target="_blank" title="View Deployment Workflow">
-                                        <i class="bi bi-diagram-3"></i>
-                                    </a>
-                                </div>
-                            </td>
-                        </tr>
+                       
                     </tbody>
                 </table>
             </div>
@@ -302,14 +280,6 @@ window.pageInit = function() {
     const runAgentBtn = document.getElementById('run-agent-btn');
     
     const cpuReaderStatusBadge = document.getElementById('cpu-reader-status-badge');
-    const logModalEl = document.getElementById('viewLogsModal');
-    const logModal = new bootstrap.Modal(logModalEl);
-    const logContent = document.getElementById('log-content-container');
-    const logModalLabel = document.getElementById('viewLogsModalLabel');
-    const deployCpuReaderBtn = document.getElementById('deploy-cpu-reader-btn');
-    const restartCpuReaderBtn = document.getElementById('restart-cpu-reader-btn');
-    const removeCpuReaderBtn = document.getElementById('remove-cpu-reader-btn');
-    const runCpuReaderBtn = document.getElementById('run-cpu-reader-btn');
 
     function timeAgo(dateString) {
         if (!dateString) return 'Never';
@@ -336,9 +306,9 @@ window.pageInit = function() {
     }
 
     function updateHelperStatusUI(status, type) {
-        const [statusBadge, deployButton, restartButton, removeButton, runButton] = type === 'agent' ? 
-            [agentStatusBadge, deployBtn, restartBtn, removeBtn, runAgentBtn] : 
-            [cpuReaderStatusBadge, deployCpuReaderBtn, restartCpuReaderBtn, removeCpuReaderBtn, runCpuReaderBtn];
+        if (type !== 'agent') return;
+
+        const [statusBadge, deployButton, restartButton, removeButton, runButton] = [agentStatusBadge, deployBtn, restartBtn, removeBtn, runAgentBtn];
 
         statusBadge.textContent = status;
         switch (status.toLowerCase()) {
@@ -378,7 +348,7 @@ window.pageInit = function() {
     }
 
     function checkHelperStatus(type) {
-        const actionPath = type === 'agent' ? 'agent-status' : 'cpu-reader-status';
+        const actionPath = 'agent-status';
         updateHelperStatusUI('Checking...', type);
         fetch(`<?= base_url('/api/hosts/') ?>${hostId}/helper/${actionPath}`)
             .then(response => response.json())
@@ -390,7 +360,7 @@ window.pageInit = function() {
                 updateHelperStatusUI(result.agent_status, type);
 
                 // Update last report time specifically for the health agent
-                const lastReportElId = type === 'agent' ? 'agent-last-report' : 'cpu-reader-last-report';
+                const lastReportElId = 'agent-last-report';
                 const lastReportEl = document.getElementById(lastReportElId);
                 if (lastReportEl && result.last_report_at) {
                     lastReportEl.dataset.timestamp = result.last_report_at; // Store raw timestamp
@@ -398,7 +368,7 @@ window.pageInit = function() {
                     lastReportEl.textContent = timeAgo(result.last_report_at);
 
                     // Set initial color based on threshold
-                    const seconds_ago = Math.round((new Date() - new Date(result.last_report_at)) / 1000);
+                    const seconds_ago = Math.round((new Date() - new Date(result.last_report_at)) / 1000); // NOSONAR
                     const threshold = (type === 'agent') ? 180 : 600; // 3 mins for health-agent, 10 mins for cpu-reader
                     if (seconds_ago > threshold) {
                         lastReportEl.className = 'text-danger small fw-bold';
@@ -420,7 +390,7 @@ window.pageInit = function() {
     function handleHelperAction(event, type) {
         const button = event.currentTarget;
         const action = button.dataset.action;
-        const actionPath = type === 'agent' ? 'agent-action' : 'cpu-reader-action';
+        const actionPath = 'agent-action';
 
         let confirmMessage = `Are you sure you want to ${action} the ${type.replace('-', ' ')} on this host?`;
         if (action === 'deploy') {
@@ -435,6 +405,10 @@ window.pageInit = function() {
         formData.append('action', action);
 
         if (action === 'deploy') {
+            const logModalEl = document.getElementById('viewLogsModal');
+            const logModal = new bootstrap.Modal(logModalEl);
+            const logContent = document.getElementById('log-content-container');
+            const logModalLabel = document.getElementById('viewLogsModalLabel');
             // --- Handle Streaming Deployment ---
             logModalLabel.textContent = `Deployment Log: ${type.replace('-', ' ')}`;
             logContent.textContent = 'Starting deployment...';
@@ -499,12 +473,7 @@ window.pageInit = function() {
     deployBtn.addEventListener('click', (e) => handleHelperAction(e, 'agent'));
     restartBtn.addEventListener('click', (e) => handleHelperAction(e, 'agent'));
     removeBtn.addEventListener('click', (e) => handleHelperAction(e, 'agent'));
-
-    deployCpuReaderBtn.addEventListener('click', (e) => handleHelperAction(e, 'cpu-reader'));
-    restartCpuReaderBtn.addEventListener('click', (e) => handleHelperAction(e, 'cpu-reader'));
-    removeCpuReaderBtn.addEventListener('click', (e) => handleHelperAction(e, 'cpu-reader'));
     runAgentBtn.addEventListener('click', (e) => handleHelperAction(e, 'agent'));
-    runCpuReaderBtn.addEventListener('click', (e) => handleHelperAction(e, 'cpu-reader'));
 
     // Periodically update all relative timestamps on the page
     setInterval(() => {
@@ -514,7 +483,7 @@ window.pageInit = function() {
             el.textContent = timeAgo(timestamp);
 
             // Also update color based on threshold
-            const seconds_ago = Math.round((new Date() - new Date(timestamp)) / 1000);
+            const seconds_ago = Math.round((new Date() - new Date(timestamp)) / 1000); // NOSONAR
             const threshold = (type === 'agent') ? 180 : 600; // 3 mins for health-agent, 10 mins for cpu-reader
             const is_stale = seconds_ago > threshold;
             el.classList.toggle('text-danger', is_stale);
@@ -524,6 +493,9 @@ window.pageInit = function() {
 
     // --- Log Viewer Logic ---
     const viewLogsModal = document.getElementById('viewLogsModal');
+    const logModalEl = document.getElementById('viewLogsModal');
+    const logModal = new bootstrap.Modal(logModalEl);
+    const logContent = document.getElementById('log-content-container');
     if (viewLogsModal) {
         const logContentContainer = document.getElementById('log-content-container');
         const logModalLabel = document.getElementById('viewLogsModalLabel');
@@ -658,7 +630,6 @@ window.pageInit = function() {
     // --- Initial Load ---
     function initialize() {
         checkHelperStatus('agent');
-        checkHelperStatus('cpu-reader');
         loadDashboardStats();
     }
 

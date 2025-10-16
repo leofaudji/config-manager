@@ -54,7 +54,11 @@ if (str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/delete')) 
 
         $conn->commit();
         log_activity($_SESSION['username'], 'Service Deleted', "Service '{$service_name}' (ID: {$id}) has been deleted.");
-        trigger_background_deployment(1); // Trigger global deployment
+        if (get_setting('auto_deploy_enabled', '1') == '1') {
+            trigger_background_deployment(1); // Trigger global deployment
+        } else {
+            set_config_dirty();
+        }
         echo json_encode(['status' => 'success', 'message' => 'Service berhasil dihapus.']);
     } catch (Exception $e) {
         $conn->rollback();
@@ -156,7 +160,11 @@ if (!$is_edit) {
 
         $conn->commit();
         log_activity($_SESSION['username'], 'Service Added', "Service baru '{$name}' telah ditambahkan.");
-        trigger_background_deployment(1); // Trigger global deployment
+        if (get_setting('auto_deploy_enabled', '1') == '1') {
+            trigger_background_deployment(1); // Trigger global deployment
+        } else {
+            set_config_dirty();
+        }
         echo json_encode(['status' => 'success', 'message' => 'Service berhasil ditambahkan.']);
 
     } catch (Exception $e) {
@@ -217,7 +225,11 @@ if (!$is_edit) {
 
         $conn->commit();
         log_activity($_SESSION['username'], 'Service Edited', "Service '{$old_service_name}' (ID: {$id}) telah diubah menjadi '{$name}'.");
-        trigger_background_deployment(1); // Trigger global deployment
+        if (get_setting('auto_deploy_enabled', '1') == '1') {
+            trigger_background_deployment(1); // Trigger global deployment
+        } else {
+            set_config_dirty();
+        }
         echo json_encode(['status' => 'success', 'message' => 'Service dan router terkait berhasil diperbarui.']);
     } catch (Exception $e) {
         $conn->rollback();

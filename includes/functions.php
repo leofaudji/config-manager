@@ -125,7 +125,18 @@ function send_notification(string $title, string $message, string $level = 'erro
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
 
     curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($ch);
     curl_close($ch);
+
+    // --- NEW: Log the outcome of the notification attempt ---
+    if ($curl_error) {
+        log_activity('SYSTEM', 'Notification Failed', "Failed to send notification '{$title}'. cURL Error: {$curl_error}");
+    } elseif ($http_code < 200 || $http_code >= 300) {
+        log_activity('SYSTEM', 'Notification Failed', "Failed to send notification '{$title}'. Server responded with HTTP {$http_code}.");
+    } else {
+        log_activity('SYSTEM', 'Notification Sent', "Successfully sent notification '{$title}'.");
+    }
 }
 
 /**
@@ -212,8 +223,11 @@ function trigger_background_deployment(int $group_id): void {
     // Build the command to run in the background
     // We pass the group_id as a command-line argument
     // Redirect both stdout and stderr to the log file. Use '>>' to append.
+    // We pipe the output through awk to prepend a timestamp to each line.
     // The `&` at the end runs the process in the background
-    $command = escapeshellcmd($php_executable) . ' ' . escapeshellarg($script_path) . ' ' . escapeshellarg('group_id=' . $group_id) . ' >> ' . escapeshellarg($log_file) . ' 2>&1 &';
+    $command = '{ ' . $php_executable . ' ' . escapeshellarg($script_path) . ' ' . escapeshellarg('group_id=' . $group_id) . '; } 2>&1';
+    $command .= " | awk '{ print \"[\" strftime(\"%Y-%m-%d %H:%M:%S\") \"] \" \$0; fflush(); }'";
+    $command .= ' >> ' . escapeshellarg($log_file) . ' &';
 
     // Execute the command
     shell_exec($command);

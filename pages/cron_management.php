@@ -69,7 +69,7 @@ $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
         </div>
     </div>
 
-    <div class="card">
+    <div class="card mb-4">
         <div class="card-header">
             <h5><i class="bi bi-heart-pulse"></i> Service Health Monitor</h5>
         </div>

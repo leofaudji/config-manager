@@ -33,8 +33,7 @@ try {
         'host_stats_history_cleanup_days' => (int)($_POST['host_stats_history_cleanup_days'] ?? 7),
         'container_stats_cleanup_days' => (int)($_POST['container_stats_cleanup_days'] ?? 1),
         'cron_log_retention_days' => (int)($_POST['cron_log_retention_days'] ?? 7),
-        'log_cleanup_days' => (int)($_POST['log_cleanup_days'] ?? 7), // Already handled by form
-        'health_check_global_enable' => isset($_POST['health_check_global_enable']) ? 1 : 0, // Handles unchecked case
+        'log_cleanup_days' => (int)($_POST['log_cleanup_days'] ?? 7),
         'git_integration_enabled' => isset($_POST['git_integration_enabled']) ? 1 : 0, // Handles unchecked case
         'health_check_default_healthy_threshold' => (int)($_POST['health_check_default_healthy_threshold'] ?? 2),
         'health_check_default_unhealthy_threshold' => (int)($_POST['health_check_default_unhealthy_threshold'] ?? 3),
@@ -45,6 +44,7 @@ try {
         'health_agent_image' => trim($_POST['health_agent_image'] ?? ''),
         'webhook_cooldown_period' => (int)($_POST['webhook_cooldown_period'] ?? 300),
     ];
+    $settings_to_update['auto_deploy_enabled'] = isset($_POST['auto_deploy_enabled']) ? 1 : 0;
     $settings_to_update['notification_enabled'] = isset($_POST['notification_enabled']) ? 1 : 0;
     $settings_to_update['notification_server_url'] = trim($_POST['notification_server_url'] ?? '');
     $settings_to_update['notification_secret_token'] = trim($_POST['notification_secret_token'] ?? '');

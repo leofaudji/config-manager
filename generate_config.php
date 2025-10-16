@@ -20,9 +20,9 @@ if ($is_ajax) {
     header('Content-Type: application/json');
 }
 try {
-    require_once 'includes/bootstrap.php';
-    require_once 'includes/GitHelper.php';
-    require_once 'includes/YamlGenerator.php';
+    require_once __DIR__ . '/includes/bootstrap.php';
+    require_once __DIR__ . '/includes/GitHelper.php';
+    require_once __DIR__ . '/includes/YamlGenerator.php';
 
     $conn = Database::getInstance()->getConnection();
     $conn->begin_transaction();
@@ -144,7 +144,7 @@ try {
     }
 
 } catch (Throwable $e) { // Catch any throwable error, not just Exceptions
-    if (isset($conn) && $conn->ping() && $conn->in_transaction) {
+    if (isset($conn) && $conn->ping()) {
         $conn->rollback();
     }
     $error_message = "Failed to generate configuration: " . $e->getMessage();

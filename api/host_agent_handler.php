@@ -48,10 +48,7 @@ $stmt->close();
 
 // --- Determine which helper container we are working with ---
 $container_name = '';
-// Check for the more specific 'cpu-reader' first to avoid incorrect matching with 'agent'.
-if (str_contains($path, 'cpu-reader')) {
-    $container_name = 'host-cpu-reader';
-} elseif (str_contains($path, 'agent')) {
+if (str_contains($path, 'agent')) {
     $container_name = 'cm-health-agent';
 }
 
@@ -67,7 +64,7 @@ try {
     // Handle status check request
     if (str_ends_with($path, '-status')) {
         try {
-            $status_column = ($container_name === 'cm-health-agent') ? 'agent_status' : 'cpu_reader_status';
+            $status_column = 'agent_status';
 
             $details = $dockerClient->inspectContainer($container_name);
             $status = ($details['State']['Running'] ?? false) ? 'Running' : 'Stopped';
@@ -87,8 +84,6 @@ try {
         $response_data = ['status' => 'success', 'agent_status' => $status];
         if ($container_name === 'cm-health-agent') {
             $response_data['last_report_at'] = $host['last_report_at'] ?? null;
-        } elseif ($container_name === 'host-cpu-reader') {
-            $response_data['last_report_at'] = $host['last_cpu_report_at'] ?? null;
         }
 
         // Update the database with the latest known status
@@ -108,7 +103,7 @@ try {
         exit;
     }
 
-    $status_column = ($container_name === 'cm-health-agent') ? 'agent_status' : 'cpu_reader_status';
+    $status_column = 'agent_status';
 
     switch ($action) { 
         case 'deploy':
@@ -211,23 +206,8 @@ try {
                 $dockerClient->execInContainer($containerId, ['/bin/sh', '-c', $injectionCommand], true);
                 stream_message("Agent script copied successfully.");
 
-                $log_message = "Health Agent deployed to host '{$host['name']}'.";
-            } elseif ($container_name === 'host-cpu-reader') {
-                // --- Deployment logic for CPU Reader ---
-                $helper_image = 'alpine:latest'; // This helper uses a minimal image.
-                stream_message("Pulling helper image '{$helper_image}'...");
-                $pull_output = $dockerClient->pullImage($helper_image);
-                stream_message("Image pull process finished.");
-
-                stream_message("Creating and starting new CPU reader container...");
-                $dockerClient->createAndStartCpuReaderContainer($container_name, $helper_image);
-                stream_message("Container '{$container_name}' started successfully.");
-                $log_message = "Host CPU Reader deployed to host '{$host['name']}'.";
-            } else {
-                throw new Exception("Unknown container type for deployment.");
+                log_activity($_SESSION['username'], 'Helper Deployed', "Health Agent deployed to host '{$host['name']}'.");
             }
-
-            log_activity($_SESSION['username'], 'Helper Deployed', $log_message);
             // Update status in DB after successful deployment
             $stmt_update = $conn->prepare("UPDATE docker_hosts SET {$status_column} = 'Running' WHERE id = ?");
             $stmt_update->bind_param("i", $host_id);
@@ -269,10 +249,6 @@ try {
                 // Skrip sudah ada di dalam image, jadi kita bisa langsung menjalankannya.
                 // Ini akan memicu satu siklus pengecekan di luar jadwal cron.
                 $dockerClient->execInContainer($container_name, ['php', '/usr/src/app/agent.php']);
-                $message = "Manual health check has been triggered successfully.";
-            } elseif ($container_name === 'host-cpu-reader') {
-                // Directly execute the check inside the helper container
-                $dockerClient->execInContainer($container_name, ['php', '/usr/src/app/collect_stats_single.php']);
                 $message = "Manual host stats collection has been triggered.";
             }
             echo json_encode(['status' => 'success', 'message' => $message]);

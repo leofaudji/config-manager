@@ -109,7 +109,6 @@ CREATE TABLE `docker_hosts` (
   `last_cpu_report_at` timestamp NULL DEFAULT NULL,
   `last_report_at` timestamp NULL DEFAULT NULL,
   `agent_status` varchar(20) DEFAULT 'Unknown',
-  `cpu_reader_status` varchar(20) DEFAULT 'Unknown',
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -313,7 +312,8 @@ INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES ('default_group_i
 ('yaml_output_path', '/var/www/html/config-manager/traefik-configs'),
 ('default_git_compose_path', 'docker-compose.yml'),
 ('active_traefik_host_id', '1'),
-('webhook_secret_token', '{$webhook_token}');
+('webhook_secret_token', '{$webhook_token}'),
+('auto_deploy_enabled', '1');
 
 -- Default user: admin, password: password, role: admin
 INSERT INTO `users` (`username`, `password`, `role`) VALUES ('admin', '{$default_password_hash}', 'admin');

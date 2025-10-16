@@ -2,6 +2,7 @@
 // File: /var/www/html/config-manager/api/health_report_handler.php
 
 require_once __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/DockerClient.php';
 
 header('Content-Type: application/json');
 
@@ -32,6 +33,7 @@ try {
     $reports = $data['reports'];
     $running_container_ids = $data['running_container_ids'] ?? [];
     $container_stats = $data['container_stats'] ?? [];
+    $host_cpu_usage_percent = $data['host_cpu_usage_percent'] ?? null;
     $host_uptime_seconds = $data['host_uptime_seconds'] ?? null;
 
     // --- Update Host Status (last_report_at and uptime) ---
@@ -118,6 +120,32 @@ try {
             $stmt_stats->execute();
         }
         $stmt_stats->close();
+    }
+
+    // --- NEW: Calculate and insert aggregated host stats ---
+    if (!empty($container_stats) && $host_id > 0) {
+        $total_container_cpu_usage = 0;
+        $total_memory_usage = 0;
+        foreach ($container_stats as $stat) {
+            $total_container_cpu_usage += (float)($stat['cpu_usage'] ?? 0);
+            $total_memory_usage += (int)($stat['memory_usage'] ?? 0);
+        }
+
+        // Get host total memory to calculate percentage
+        $stmt_host_info = $conn->prepare("SELECT docker_api_url, tls_enabled, ca_cert_path, client_cert_path, client_key_path FROM docker_hosts WHERE id = ?");
+        $stmt_host_info->bind_param("i", $host_id);
+        $stmt_host_info->execute();
+        $host_details = $stmt_host_info->get_result()->fetch_assoc();
+        $stmt_host_info->close();
+
+        $dockerClient = new DockerClient($host_details);
+        $dockerInfo = $dockerClient->getInfo();
+        $host_total_memory = $dockerInfo['MemTotal'] ?? 0;
+
+        $stmt_history = $conn->prepare("INSERT INTO host_stats_history (host_id, container_cpu_usage_percent, host_cpu_usage_percent, memory_usage_bytes, memory_limit_bytes) VALUES (?, ?, ?, ?, ?)");
+        $stmt_history->bind_param("idddi", $host_id, $total_container_cpu_usage, $host_cpu_usage_percent, $total_memory_usage, $host_total_memory);
+        $stmt_history->execute();
+        $stmt_history->close();
     }
 
     // --- Cleanup Stale Container Records ---

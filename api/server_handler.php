@@ -55,7 +55,11 @@ if (str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/delete')) 
 
         $conn->commit();
         log_activity($_SESSION['username'], 'Server Deleted', "Server '{$server_info['url']}' from service '{$server_info['service_name']}' has been deleted.");
-        trigger_background_deployment(1); // Trigger global deployment
+        if (get_setting('auto_deploy_enabled', '1') == '1') {
+            trigger_background_deployment(1); // Trigger global deployment
+        } else {
+            set_config_dirty();
+        }
         echo json_encode(['status' => 'success', 'message' => 'Server berhasil dihapus.']);
     } catch (Exception $e) {
         $conn->rollback();
@@ -91,7 +95,11 @@ if ($is_edit) {
 
 if ($stmt->execute()) {
     log_activity($_SESSION['username'], $log_action, "Server '{$url}' for service ID {$service_id}.");
-    trigger_background_deployment(1); // Trigger global deployment
+    if (get_setting('auto_deploy_enabled', '1') == '1') {
+        trigger_background_deployment(1); // Trigger global deployment
+    } else {
+        set_config_dirty();
+    }
     echo json_encode(['status' => 'success', 'message' => $message]);
 } else {
     http_response_code(500);

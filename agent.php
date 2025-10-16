@@ -190,6 +190,38 @@ class DockerClient
     }
 }
 
+/**
+ * Sends a notification to the configured external notification server.
+ * This is a minimal, self-contained version for the agent.
+ *
+ * @param string $title The title of the notification.
+ * @param string $message The main content of the notification.
+ * @param string $level The severity level (e.g., 'error', 'warning', 'info').
+ * @param array $context Additional context data to include in the payload.
+ * @return void
+ */
+function send_notification(string $title, string $message, string $level = 'error', array $context = []): void {
+    global $configManagerUrl;
+
+    // The agent doesn't have direct access to settings, so it sends to a dedicated endpoint.
+    $notification_endpoint = rtrim($configManagerUrl, '/') . '/api/notifications/agent-relay';
+
+    $payload = array_merge([
+        'title' => $title,
+        'message' => $message,
+        'level' => $level,
+        'timestamp' => date('c'), // ISO 8601 timestamp
+        'source_app' => 'Config Manager Health Agent'
+    ], $context);
+
+    // Use a simple, non-blocking way to send the notification.
+    $payload_json = escapeshellarg(json_encode($payload));
+    $url_escaped = escapeshellarg($notification_endpoint);
+    $content_type_header = escapeshellarg('Content-Type: application/json');
+
+    shell_exec("curl -s -X POST -H {$content_type_header} -d {$payload_json} {$url_escaped} > /dev/null 2>&1 &");
+}
+
 function postHealthData(string $url, string $apiKey, array $data)
 {
     $ch = curl_init($url);
@@ -577,6 +609,13 @@ function run_check_cycle() {
             // --- Auto-Healing Logic ---
             if ($is_healthy === false && $autoHealingEnabled) {
                 log_message("  -> STATUS TIDAK SEHAT TERDETEKSI! Memicu auto-healing untuk kontainer '{$container_name}'.");
+                // --- NEW: Send notification when an unhealthy container is found ---
+                send_notification(
+                    "Container Unhealthy: " . $container_name,
+                    "The container '{$container_name}' on host '{$hostId}' has been marked as unhealthy. Auto-healing has been triggered.",
+                    'error',
+                    ['container_name' => $container_name, 'host_id' => $hostId]
+                );
                 
                 // --- NEW: Swarm-aware auto-healing ---
                 $service_id = $details['Config']['Labels']['com.docker.swarm.service.id'] ?? null;
@@ -640,22 +679,40 @@ function run_check_cycle() {
         log_message("  -> WARN: Could not read {$proc_uptime_path}. Host uptime will not be reported. Ensure /proc is mounted read-only into the agent.");
     }
 
+    // --- NEW: Get Host CPU Usage ---
+    $host_cpu_usage = get_host_cpu_usage();
+    if ($host_cpu_usage !== null) {
+        log_message("  -> Host CPU Usage: " . number_format($host_cpu_usage, 2) . "%");
+    } else {
+        log_message("  -> WARN: Failed to determine host CPU usage. The 'procps' package might be missing in the agent container.");
+    }
+
     $report_payload = [
         'host_id' => (int)$hostId,
         'host_uptime_seconds' => $host_uptime_seconds,
+        'host_cpu_usage_percent' => $host_cpu_usage, // NEW: Add host CPU to payload
         'reports' => $health_reports,
         'running_container_ids' => $all_running_container_ids, // NEW: Send the complete list
         'container_stats' => $container_stats_reports // NEW: Send container stats
     ]; 
 
-    //log_message("  -> Preparing to send report with the following configuration:");
-    //log_message("    -> Target URL: {$configManagerUrl}");
-    // Mask the API key for security, showing only the first and last 4 characters.
-    //log_message("    -> API Key: " . substr($apiKey, 0, 4) . "..." . substr($apiKey, -4));
-    //log_message("    -> Auto-Healing: " . ($autoHealingEnabled ? 'AKTIF' : 'NONAKTIF'));
-
-    //log_message("  -> Sending report payload: " . json_encode($report_payload));
+    
     postHealthData($configManagerUrl . '/api/health-report', $apiKey, $report_payload);
+}
+
+/**
+ * Gets the overall host CPU usage percentage by running `top`.
+ * @return float|null The CPU usage percentage, or null on failure.
+ */
+function get_host_cpu_usage(): ?float {
+    // This awk command is robust. It looks for a line starting with '%Cpu' or 'CPU:',
+    // then finds the column containing 'id' and prints 100 minus the preceding value (the idle percentage).
+    // The `|| echo "-1"` provides a fallback if awk produces no output.
+    $cpu_command = "top -bn1 | grep -E '^(%Cpu|CPU:)' | awk '{for(i=1;i<=NF;i++) if (\$i ~ /id/) {print 100-\$(i-1); exit}}' || echo \"-1\"";
+    $cpu_output = shell_exec($cpu_command);
+    $host_cpu_usage = (float)$cpu_output;
+
+    return ($host_cpu_usage >= 0) ? $host_cpu_usage : null;
 }
 
 // --- Logika Utama Eksekusi ---
