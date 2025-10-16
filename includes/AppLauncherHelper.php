@@ -20,9 +20,9 @@ class AppLauncherHelper
         // The 'version' attribute is obsolete in modern docker-compose.
         unset($compose_data['version']);
         // Extract params for easier access
-        $replicas = $params['replicas'] ?? null;
-        $cpu = $params['cpu'] ?? null;
-        $memory = $params['memory'] ?? null;
+        $replicas = !empty($params['deploy_replicas']) ? (int)$params['deploy_replicas'] : null;
+        $cpu = !empty($params['deploy_cpu']) ? $params['deploy_cpu'] : null;
+        $memory = !empty($params['deploy_memory']) ? $params['deploy_memory'] : null;
         $network = $params['network'] ?? null;
         $volume_paths = $params['volume_paths'] ?? [];
         $host_port = $params['host_port'] ?? null;
@@ -33,7 +33,7 @@ class AppLauncherHelper
         $stack_name = $params['stack_name'] ?? '';
 
         if (!isset($compose_data['services']) || !is_array($compose_data['services'])) {
-            return;
+            throw new Exception("Invalid compose file: 'services' section is missing or not an array.");
         }
 
         $is_first_service = true;
@@ -51,15 +51,18 @@ class AppLauncherHelper
                 unset($compose_data['services'][$service_key]['cpus']);
                 unset($compose_data['services'][$service_key]['mem_limit']);
 
-                // Set/replace resource limits from form
+                // --- FIX: Only create the 'limits' section if CPU or Memory is provided ---
                 if ($cpu || $memory) {
-                    $compose_data['services'][$service_key]['deploy']['resources']['limits'] = [];
+                    // Ensure the nested structure exists before assigning values.
+                    $compose_data['services'][$service_key]['deploy']['resources'] = $compose_data['services'][$service_key]['deploy']['resources'] ?? [];
+                    $compose_data['services'][$service_key]['deploy']['resources']['limits'] = $compose_data['services'][$service_key]['deploy']['resources']['limits'] ?? [];
                     if ($cpu) {
                         // Explicitly cast to string to satisfy Docker Swarm's requirement (e.g., "1.5" not 1.5)
                         $compose_data['services'][$service_key]['deploy']['resources']['limits']['cpus'] = (string)$cpu;
                     }
                     if ($memory) $compose_data['services'][$service_key]['deploy']['resources']['limits']['memory'] = $memory;
                 }
+                
 
                 // Set/replace restart policy
                 $compose_data['services'][$service_key]['deploy']['restart_policy'] = [
@@ -74,13 +77,12 @@ class AppLauncherHelper
                 // Unset Swarm deploy key to prevent conflicts
                 unset($compose_data['services'][$service_key]['deploy']);
 
-                // For standalone, resource limits are at the top level of the service
+                // --- FIX: Apply resource limits to ALL services ---
+                // For standalone, resource limits are at the top level of the service.
                 if ($cpu) {
                     $compose_data['services'][$service_key]['cpus'] = (float)$cpu;
                 }
-                if ($memory) {
-                    $compose_data['services'][$service_key]['mem_limit'] = $memory;
-                }
+                if ($memory) $compose_data['services'][$service_key]['mem_limit'] = $memory;
 
                 // Set restart policy only if it's not already defined in the compose file.
                 if (!isset($compose_data['services'][$service_key]['restart'])) {
@@ -95,10 +97,12 @@ class AppLauncherHelper
 
             // For standalone hosts, explicitly set the container name.
             // This avoids the default "{project}_{service}_1" naming convention.
-            // This is not recommended for Swarm as it conflicts with scaling.
-            if (!$is_swarm_manager) {
-                // Always set the container name based on the stack and service key to ensure uniqueness and clarity.
+            // This is only done for single-replica services to avoid naming conflicts when scaling.
+            if (!$is_swarm_manager && ($replicas === null || $replicas <= 1)) {
                 $compose_data['services'][$service_key]['container_name'] = $stack_name . '_' . $service_key;
+            } else {
+                // If scaling on standalone, we must remove the container_name to allow Docker to generate unique names.
+                unset($compose_data['services'][$service_key]['container_name']);
             }
 
             // Also set the hostname. This is generally safe.
@@ -246,6 +250,12 @@ class AppLauncherHelper
             if ($first_service_key) {
                 // Ensure the 'ports' array exists for the first service.
                 $compose_data['services'][$first_service_key]['ports'] = $compose_data['services'][$first_service_key]['ports'] ?? [];
+
+                // --- SMART FIX: For standalone scaling, host port must be omitted. ---
+                if (!$is_swarm_manager && $replicas > 1) {
+                    $host_port = null; // Force host port to be null to allow scaling.
+                }
+
                 $ports_array = &$compose_data['services'][$first_service_key]['ports'];
                 
                 // For Swarm, we must use the long syntax for reliable ingress routing.
@@ -505,8 +515,17 @@ class AppLauncherHelper
             if ($is_swarm_manager) {
                 $main_compose_command = "docker stack deploy -c " . escapeshellarg($compose_file_name) . " " . escapeshellarg($stack_name) . " --with-registry-auth --prune 2>&1";
             } else {
-                $main_compose_command = "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1 && " .
-                                        "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes 2>&1";
+                // --- FIX: Add --scale flag for standalone replicas ---
+                $scale_command = '';
+                if ($replicas && $replicas > 1) {
+                    // Find the first service name to apply the scale command to.
+                    // FIX: Use the existing $compose_data array instead of re-parsing the string.
+                    $first_service_name = array_key_first($compose_data['services'] ?? []);
+                    if ($first_service_name) {
+                        $scale_command = "--scale " . escapeshellarg($first_service_name . '=' . $replicas);
+                    }
+                }
+                $main_compose_command = "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1 && docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes {$scale_command} 2>&1";
             }
  
             $script_to_run = $cd_command . ' && ' . $login_command . $main_compose_command;

@@ -199,19 +199,19 @@ require_once __DIR__ . '/../includes/header.php';
                                 </div>
                                 <div class="col-md-4 mb-3">
                                     <?php
-                                        $cpu_val = $details['deploy_cpu'] ?? '1';
+                                        $cpu_val = !empty($details['deploy_cpu']) ? $details['deploy_cpu'] : '1';
                                     ?>
                                     <label for="deploy_cpu_slider" class="form-label">CPU Limit: <strong id="cpu-limit-display"><?= $cpu_val ?></strong> vCPUs</label>
-                                    <input type="range" class="form-range" id="deploy_cpu_slider" min="1" max="8" step="1" value="<?= $cpu_val ?>">
+                                    <input type="range" class="form-range" id="deploy_cpu_slider" min="0.25" max="8" step="0.25" value="<?= (float)$cpu_val ?>">
                                     <input type="hidden" name="deploy_cpu" id="deploy_cpu" value="<?= $cpu_val ?>">
                                 </div>
                                 <div class="col-md-4 mb-3">
                                     <?php
-                                        $mem_val_str = $details['deploy_memory'] ?? '1024M';
+                                        $mem_val_str = !empty($details['deploy_memory']) ? $details['deploy_memory'] : '1024M';
                                         $mem_val_int = (int)filter_var($mem_val_str, FILTER_SANITIZE_NUMBER_INT);
                                     ?>
                                     <label for="deploy_memory_slider" class="form-label">Memory Limit: <strong id="memory-limit-display"><?= $mem_val_int ?></strong> MB</label>
-                                    <input type="range" class="form-range" id="deploy_memory_slider" min="1024" max="8192" step="1024" value="<?= $mem_val_int ?>">
+                                    <input type="range" class="form-range" id="deploy_memory_slider" min="256" max="8192" step="256" value="<?= $mem_val_int ?>">
                                     <input type="hidden" name="deploy_memory" id="deploy_memory" value="<?= $mem_val_str ?>">
                                 </div>
                                 <div class="col-md-4 mb-3" id="deploy-placement-group" style="display: none;">
@@ -746,7 +746,7 @@ window.pageInit = function() {
     if (cpuSlider && cpuDisplay && cpuInput) {
         cpuSlider.addEventListener('input', function() {
             const value = this.value;
-            cpuDisplay.textContent = value;
+            cpuDisplay.textContent = parseFloat(value).toFixed(2);
             cpuInput.value = value;
         });
     }
