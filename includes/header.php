@@ -381,7 +381,10 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <span class="visually-hidden">pending changes</span>
                 </span>
             </button>
-             <a href="<?= base_url('/generate') ?>" class="btn btn-success me-3"><i class="bi bi-rocket-takeoff"></i> Generate & Deploy</a>
+             <a href="<?= base_url('/groups') ?>" id="deploy-notification-btn" class="btn btn-warning me-2" style="display: none;">
+                <span class="blinking-badge-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                 Deploy Changes
+             </a>
             <?php endif; ?>
             <div id="live-clock" class="text-muted small me-3 ms-auto fw-bold">
                 <!-- Clock will be inserted here by JavaScript -->

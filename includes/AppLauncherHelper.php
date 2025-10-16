@@ -379,7 +379,7 @@ class AppLauncherHelper
 
             if (empty($host_id) || empty($stack_name)) throw new Exception("Host and Stack Name are required.");
             
-            stream_message2("Validating stack name '{$stack_name}'...");
+            stream_message("Validating stack name '{$stack_name}'...");
             if (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/', $stack_name)) throw new Exception("Invalid Stack Name.");
 
             $form_params = $post_data; // Pass all data
@@ -415,7 +415,7 @@ class AppLauncherHelper
 
             if ($source_type === 'git') {
                 if (empty($git_url)) throw new Exception("Git URL is required.");
-                stream_message2("Cloning repository '{$git_url}' (branch: {$git_branch})...");
+                stream_message("Cloning repository '{$git_url}' (branch: {$git_branch})...");
                 $repo_path = $git->cloneOrPull($git_url, $git_branch);
 
                 $final_compose_path = '';
@@ -491,7 +491,7 @@ class AppLauncherHelper
                 $env_vars .= " DOCKER_TLS_VERIFY=1 DOCKER_CERT_PATH=" . escapeshellarg($cert_path_dir);
             }
 
-            $login_command = '';
+            $login_command = ''; 
             if (!empty($host['registry_username']) && !empty($host['registry_password'])) {
                 $docker_config_dir = Config::get('DOCKER_CONFIG_PATH') ?: rtrim(sys_get_temp_dir(), '/') . '/docker_config_' . uniqid();
                 if (!is_dir($docker_config_dir) && !mkdir($docker_config_dir, 0755, true)) throw new Exception("Could not create DOCKER_CONFIG_PATH.");
@@ -512,7 +512,7 @@ class AppLauncherHelper
             $script_to_run = $cd_command . ' && ' . $login_command . $main_compose_command;
             $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($script_to_run);
 
-            stream_exec2($full_command, $return_var);
+            stream_exec($full_command, $return_var);
 
             if ($return_var !== 0) throw new Exception("Docker-compose deployment failed.");
 
@@ -559,25 +559,26 @@ class AppLauncherHelper
     }
 }
 
-// --- NEW: Global stream functions that also write to a file ---
-function stream_message2($message, $type = 'INFO') {
+// --- Global stream functions that also write to a file ---
 function stream_message($message, $type = 'INFO')
 {
     global $log_file_handle;
     $line = date('[Y-m-d H:i:s]') . " [{$type}] " . htmlspecialchars(trim($message)) . "\n";
     echo $line;
+    flush();
     if ($log_file_handle) {
         fwrite($log_file_handle, $line);
     }
 }
 
-function stream_exec2($command, &$return_var) {
 function stream_exec($command, &$return_var)
 {
     global $log_file_handle;
     $handle = popen($command . ' 2>&1', 'r');
     while (($line = fgets($handle)) !== false) {
-        echo rtrim($line) . "\n";
+        $trimmed_line = rtrim($line);
+        echo $trimmed_line . "\n";
+        flush();
         if ($log_file_handle) fwrite($log_file_handle, rtrim($line) . "\n");
     }
     $return_var = pclose($handle);

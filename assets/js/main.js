@@ -367,7 +367,7 @@ window.addEventListener('popstate', e => {
 
 document.body.addEventListener('change', function(e) {
     const limitSelector = e.target.closest('.limit-selector');
-    if (limitSelector) {
+    if (limitSelector && limitSelector.dataset.type) {
         const type = limitSelector.dataset.type;
         const limit = limitSelector.value;
         loadPaginatedData(type, 1, limit, true);
@@ -375,7 +375,7 @@ document.body.addEventListener('change', function(e) {
 
     const groupFilter = e.target.closest('#router-group-filter, #service-group-filter, #middleware-group-filter');
     if (groupFilter) {
-        const type = groupFilter.id.split('-')[0] + 's';
+        const type = groupFilter.id.split('-')[0] + 's'; // e.g., 'router-group-filter' -> 'routers'
         const limit = document.querySelector(`select[name="limit_${type}"]`).value;
         loadPaginatedData(type, 1, limit);
     }
@@ -383,6 +383,12 @@ document.body.addEventListener('change', function(e) {
     const showArchivedCheckbox = e.target.closest('#show-archived-checkbox');
     if (showArchivedCheckbox) {
         loadPaginatedData('history', 1, document.querySelector('select[name="limit_history"]').value);
+    }
+
+    const historyGroupFilter = e.target.closest('#history-group-filter');
+    if (historyGroupFilter) {
+        const limit = document.querySelector('select[name="limit_history"]').value;
+        loadPaginatedData('history', 1, limit);
     }
 });
 
@@ -571,6 +577,11 @@ function loadPaginatedData(type, page = 1, limit = 10, preserveScroll = false, e
     if (type === 'history') {
         const showArchived = document.getElementById('show-archived-checkbox')?.checked || false;
         fetchUrl += `&show_archived=${showArchived}`;
+        // --- FIX: Add group filter for history ---
+        const historyGroupFilter = document.getElementById('history-group-filter');
+        if (historyGroupFilter && historyGroupFilter.value) {
+            fetchUrl += `&group_filter=${historyGroupFilter.value}`;
+        }
     }
     // NEW: Add group_by for hosts
     if (type === 'hosts') {
@@ -766,11 +777,20 @@ function initializePageSpecificScripts() {
         clockElement.dataset.initialized = 'true'; // Prevent multiple intervals
         const updateClock = () => {
             const now = new Date();
-            // Format: DD/MM/YYYY, HH:MM:SS
-            const timeString = now.toLocaleTimeString('id-ID', { hour12: false });
-            const dateString = now.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            // The 'id-ID' locale might use dots for time separators, replace them with colons.
-            clockElement.textContent = `${dateString}, ${timeString.replace(/\./g, ':')}`;
+
+            // --- NEW: Custom date and time formatting ---
+            const day = now.getDate().toString().padStart(2, '0');
+            const month = now.toLocaleString('id-ID', { month: 'long' });
+            const year = now.getFullYear();
+
+            const timeString = now.toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            }).replace(/\./g, ':'); // Ensure colons are used
+
+            clockElement.textContent = `${day} ${month} ${year} ${timeString} WIB`;
         };
         updateClock(); // Initial call
         setInterval(updateClock, 1000); // Update every second
@@ -2020,6 +2040,27 @@ function initializePageSpecificScripts() {
     }
 }
 
+function checkTraefikConfigStatus() {
+    const deployBtn = document.getElementById('deploy-notification-btn');
+    if (!deployBtn) return;
+
+    fetch(`${basePath}/api/status/config-dirty`)
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'success' && result.dirty) {
+                deployBtn.style.display = 'inline-block';
+            } else {
+                deployBtn.style.display = 'none';
+            }
+        })
+        .catch(error => {
+            console.error('Error checking Traefik config status:', error);
+            // Sembunyikan tombol jika ada error untuk menghindari kebingungan
+            deployBtn.style.display = 'none';
+        });
+}
+
+
 document.addEventListener('DOMContentLoaded', function () {
 
     // --- Sidebar Active Link Logic ---
@@ -2036,6 +2077,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     initializePageSpecificScripts();
+
+    // --- Check for pending Traefik changes on initial load and then periodically ---
+    checkTraefikConfigStatus();
+    setInterval(checkTraefikConfigStatus, 30000); // Check every 30 seconds
 
     // Run page-specific init function for the initial page load
     if (window.pageInit && typeof window.pageInit === 'function') {

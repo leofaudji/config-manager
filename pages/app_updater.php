@@ -646,8 +646,11 @@ window.pageInit = function() {
             .then(result => {
                 if (result.status === 'success' && result.data) {
                     let optionsHtml = '<option value="" disabled selected>-- Select an image --</option>';
-                    result.data.forEach(img => {
-                        optionsHtml += `<option value="${img}">${img}</option>`;
+                    // FIX: The API returns an array of objects {name, source}, not strings.
+                    result.data.forEach(imgObj => {
+                        const sourceLabel = imgObj.source === 'registry' ? ' (registry)' : ' (local)';
+                        const displayName = imgObj.name + sourceLabel;
+                        optionsHtml += `<option value="${imgObj.name}">${displayName}</option>`;
                     });
                     imageNameSelect.innerHTML = optionsHtml;
                     imageNameSelect.disabled = false;

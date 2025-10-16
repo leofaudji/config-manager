@@ -37,6 +37,14 @@ body {
     color: var(--cf-text-color);
 }
 
+.blinking-badge-icon {
+    animation: blinker 1.5s linear infinite;
+}
+
+@keyframes blinker {
+    50% { opacity: 0.3; }
+}
+
 /* --- Sidebar --- */
 .sidebar {
     width: var(--sidebar-width);

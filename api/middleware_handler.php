@@ -48,6 +48,7 @@ if (str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/delete')) 
 
         $conn->commit();
         log_activity($_SESSION['username'], 'Middleware Deleted', "Middleware '{$mw_name}' (ID: #{$id}) has been deleted.");
+        trigger_background_deployment(1); // Trigger global deployment
         echo json_encode(['status' => 'success', 'message' => 'Middleware successfully deleted.']);
     } catch (Exception $e) {
         $conn->rollback();
@@ -111,6 +112,7 @@ try {
 
     if ($stmt->execute()) {
         log_activity($_SESSION['username'], $log_action, $log_details);
+        trigger_background_deployment(1); // Trigger global deployment
         echo json_encode(['status' => 'success', 'message' => $success_message]);
     } else {
         throw new Exception('Database operation failed: ' . $stmt->error);

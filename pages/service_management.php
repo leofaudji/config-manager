@@ -18,12 +18,6 @@ require_once __DIR__ . '/../includes/header.php';
                 <button class="btn btn-outline-secondary reset-search-btn" type="button" title="Reset"><i class="bi bi-x-lg"></i></button>
             </div>
         </form>
-        <select id="service-group-filter" class="form-select form-select-sm me-2" style="width: auto;" title="Filter by group">
-            <option value="">All Groups</option>
-            <?php while($group = $groups_result->fetch_assoc()): ?>
-                <option value="<?= $group['id'] ?>"><?= htmlspecialchars($group['name']) ?></option>
-            <?php endwhile; ?>
-        </select>
         <?php if ($_SESSION['role'] === 'admin'): ?>
         <a href="<?= base_url('/services/new') ?>" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-circle"></i> Add New Service</a>
         <?php endif; ?>

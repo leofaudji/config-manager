@@ -176,12 +176,6 @@ if ($type === 'routers') {
         $types .= 's';
     }
 
-    if (!empty($group_id)) {
-        $where_conditions[] = "s.group_id = ?";
-        $params[] = $group_id;
-        $types .= 'i';
-    }
-
     $where_clause = '';
     if (!empty($where_conditions)) {
         $where_clause = " WHERE " . implode(' AND ', $where_conditions);
@@ -216,11 +210,10 @@ if ($type === 'routers') {
     if (!empty($paginated_service_ids)) {
         // Langkah 2: Ambil semua data service dan server terkait dalam satu query menggunakan LEFT JOIN.
         $in_clause = implode(',', array_fill(0, count($paginated_service_ids), '?'));
-        $types = str_repeat('i', count($paginated_service_ids));
-        $sql = "SELECT s.id, s.name, s.pass_host_header, s.updated_at, s.load_balancer_method, g.name as group_name, sv.id as server_id, sv.url as server_url 
+        $types = str_repeat('i', count($paginated_service_ids));;
+        $sql = "SELECT s.id, s.name, s.pass_host_header, s.updated_at, s.load_balancer_method, sv.id as server_id, sv.url as server_url 
                 FROM services s 
-                LEFT JOIN servers sv ON s.id = sv.service_id 
-                LEFT JOIN `groups` g ON s.group_id = g.id
+                LEFT JOIN servers sv ON s.id = sv.service_id
                 WHERE s.id IN ($in_clause) 
                 ORDER BY s.name ASC, sv.url ASC";
         
@@ -232,7 +225,7 @@ if ($type === 'routers') {
         // Langkah 3: Proses hasil query gabungan dan bangun kembali struktur array di PHP.
         while ($row = $result->fetch_assoc()) {
             if (!isset($services_map[$row['id']])) {
-                $services_map[$row['id']] = ['id' => $row['id'], 'name' => $row['name'], 'pass_host_header' => $row['pass_host_header'], 'updated_at' => $row['updated_at'], 'load_balancer_method' => $row['load_balancer_method'], 'group_name' => $row['group_name'], 'servers' => [], 'routers' => []];
+                $services_map[$row['id']] = ['id' => $row['id'], 'name' => $row['name'], 'pass_host_header' => $row['pass_host_header'], 'updated_at' => $row['updated_at'], 'load_balancer_method' => $row['load_balancer_method'], 'servers' => [], 'routers' => []];
             }
             if ($row['server_id'] !== null) {
                 $services_map[$row['id']]['servers'][] = ['id' => $row['server_id'], 'url' => $row['server_url']];
@@ -276,11 +269,7 @@ if ($type === 'routers') {
         if (isset($service['load_balancer_method']) && $service['load_balancer_method'] !== 'roundRobin') {
             $span = ' <span class="badge bg-info fw-normal">' . htmlspecialchars($service['load_balancer_method']) . '</span>';
         }
-        $html .= '<h5 class="mb-1"><span class="service-status-indicator me-2" data-bs-toggle="tooltip" data-service-name="' . htmlspecialchars($service['name']) . '" title="Checking status..."><i class="bi bi-circle-fill text-secondary"></i></span>' . htmlspecialchars($service['name']) . $span;
-        if (!empty($service['group_name'])) {
-            $html .= ' <span class="badge bg-secondary fw-normal">' . htmlspecialchars($service['group_name']) . '</span>';
-        }
-        $html .= '</h5>';
+        $html .= '<h5 class="mb-1"><span class="service-status-indicator me-2" data-bs-toggle="tooltip" data-service-name="' . htmlspecialchars($service['name']) . '" title="Checking status..."><i class="bi bi-circle-fill text-secondary"></i></span>' . htmlspecialchars($service['name']) . $span . '</h5>';
         $html .= '<small class="text-muted ms-4">Updated: ' . htmlspecialchars($service['updated_at'] ?? 'N/A') . '</small>';
         $html .= '</div>';
         if ($is_admin) {
@@ -340,12 +329,24 @@ elseif ($type === 'history') {
         $where_types .= 's';
     }
 
+    // --- NEW: Handle group filter ---
+    $group_filter = $_GET['group_filter'] ?? '';
+    if (!empty($group_filter)) {
+        if ($group_filter === 'global') {
+            $where_conditions[] = "h.group_id IS NULL";
+        } else {
+            $where_conditions[] = "h.group_id = ?";
+            $where_params[] = $group_filter;
+            $where_types .= 'i';
+        }
+    }
+
     if (!empty($where_conditions)) {
         $where_clause = " WHERE " . implode(' AND ', $where_conditions);
     }
 
     // Get total count
-    $stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM config_history" . $where_clause);
+    $stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM config_history h" . $where_clause);
     if (!empty($where_params)) {
         $stmt_count->bind_param($where_types, ...$where_params);
     }
@@ -356,7 +357,11 @@ elseif ($type === 'history') {
     $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
 
     // Get data
-    $stmt = $conn->prepare("SELECT id, generated_by, created_at, status FROM config_history" . $where_clause . " ORDER BY created_at DESC LIMIT ? OFFSET ?");
+    $stmt = $conn->prepare("
+        SELECT h.id, h.generated_by, h.created_at, h.status, g.name as group_name 
+        FROM config_history h
+        LEFT JOIN `groups` g ON h.group_id = g.id
+        " . $where_clause . " ORDER BY h.created_at DESC LIMIT ? OFFSET ?");
     
     // Combine WHERE clause params with pagination params
     $final_params = $where_params;
@@ -379,6 +384,11 @@ elseif ($type === 'history') {
         $html .= '<td>' . $row['id'] . '</td>';
         $html .= '<td>' . $row['created_at'] . '</td>';
         $html .= '<td>' . htmlspecialchars($row['generated_by']) . '</td>';
+        if (!empty($row['group_name'])) {
+            $html .= '<td><span class="badge bg-dark">' . htmlspecialchars($row['group_name']) . '</span></td>';
+        } else {
+            $html .= '<td><span class="badge bg-secondary">Global</span></td>';
+        }
         $html .= '<td><span class="badge text-bg-' . $status_badge_class . '">' . ucfirst($row['status']) . '</span></td>';
         $html .= '<td class="text-end">';
         $html .= '<button class="btn btn-sm btn-outline-info view-history-btn" data-id="' . $row['id'] . '" data-bs-toggle="modal" data-bs-target="#viewHistoryModal">View</button>';
@@ -406,6 +416,25 @@ elseif ($type === 'users') {
 
     if (!empty($search)) {
         $where_clause = " WHERE username LIKE ?";
+        $params[] = "%{$search}%";
+        $types .= 's';
+    }
+
+    // Get total count
+    $stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM users" . $where_clause);
+    if (!empty($search)) {
+        $stmt_count->bind_param($types, ...$params);
+    }
+    $stmt_count->execute();
+    $total_items = $stmt_count->get_result()->fetch_assoc()['count'];
+    $stmt_count->close();
+
+    $where_clause = '';
+    $params = [];
+    $types = '';
+
+    if (!empty($search)) {
+        $where_clause = " WHERE name LIKE ?";
         $params[] = "%{$search}%";
         $types .= 's';
     }
@@ -822,7 +851,7 @@ elseif ($type === 'traefik-hosts') {
     $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
 
     // Get data
-    $stmt = $conn->prepare("SELECT h.*, m.name as manager_name FROM `docker_hosts` h LEFT JOIN `docker_hosts` m ON h.swarm_manager_id = m.id ORDER BY h.name ASC LIMIT ? OFFSET ?");
+    $stmt = $conn->prepare("SELECT * FROM `traefik_hosts` ORDER BY name ASC LIMIT ? OFFSET ?");
     $stmt->bind_param("ii", $limit, $offset);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -859,7 +888,22 @@ elseif ($type === 'groups') {
 
     // Get data
     $stmt = $conn->prepare("
-        SELECT g.*, th.name as traefik_host_name 
+        SELECT 
+            g.*, 
+            th.name as traefik_host_name,
+            (
+                SELECT MAX(ch.created_at) 
+                FROM config_history ch 
+                WHERE ch.group_id = g.id
+            ) as last_deployment_time,
+            (
+                SELECT MAX(updated_at) 
+                FROM (
+                    SELECT updated_at FROM routers WHERE group_id = g.id
+                    UNION ALL
+                    SELECT updated_at FROM services WHERE group_id = g.id
+                ) as updates
+            ) as last_update_time
         FROM `groups` g 
         LEFT JOIN `traefik_hosts` th ON g.traefik_host_id = th.id 
         ORDER BY g.name ASC LIMIT ? OFFSET ?
@@ -877,9 +921,16 @@ elseif ($type === 'groups') {
             $hosts_html = '<span class="badge bg-secondary">Global</span>';
         }
 
+        // --- NEW: Check if group is dirty ---
+        $is_dirty = false;
+        if ($group['last_update_time'] && (!$group['last_deployment_time'] || strtotime($group['last_update_time']) > strtotime($group['last_deployment_time']))) {
+            $is_dirty = true;
+        }
+        $dirty_indicator = $is_dirty ? '<span class="blinking-badge-icon text-warning ms-2" title="Ada perubahan yang belum di-deploy"><i class="bi bi-exclamation-triangle-fill"></i></span>' : '';
+
         $html .= '<tr>';
         $html .= '<td>' . $group['id'] . '</td>';
-        $html .= '<td>' . htmlspecialchars($group['name']) . '</td>';
+        $html .= '<td>' . htmlspecialchars($group['name']) . $dirty_indicator . '</td>';
         $html .= '<td>' . $hosts_html . '</td>';
         $html .= '<td>' . htmlspecialchars($group['description'] ?? '') . '</td>';
         $html .= '<td>' . $group['created_at'] . '</td>';

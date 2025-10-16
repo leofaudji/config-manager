@@ -175,3 +175,47 @@ function formatBytes(int $bytes, int $precision = 2): string
     $bytes /= (1 << (10 * $pow));
     return round($bytes, $precision) . ' ' . $units[$pow];
 }
+
+/**
+ * Sets a flag in the database indicating that the Traefik configuration has been modified
+ * and needs to be deployed.
+ */
+function set_config_dirty() {
+    $conn = Database::getInstance()->getConnection();
+    // Use ON DUPLICATE KEY UPDATE to handle both insert and update scenarios safely.
+    $conn->query("INSERT INTO settings (setting_key, setting_value) VALUES ('traefik_config_dirty', '1') ON DUPLICATE KEY UPDATE setting_value = '1'");
+}
+
+/**
+ * Triggers a background deployment process for a specific group.
+ * It executes the generate_config.php script as a background process.
+ *
+ * @param int $group_id The ID of the group to deploy.
+ * @return void
+ */
+function trigger_background_deployment(int $group_id): void {
+    // We don't need the dirty flag anymore with auto-deployment, but we keep the function
+    // in case we want to revert. This function will now directly trigger deployment.
+
+    // Path to the PHP executable and the script to run
+    $php_executable = PHP_BINARY; // More reliable than hardcoding '/usr/bin/php'
+    $script_path = PROJECT_ROOT . '/generate_config.php';
+
+    // --- NEW: Redirect output to a dedicated log file instead of /dev/null ---
+    $log_path = get_setting('cron_log_path', '/var/log'); // Reuse cron log path setting
+    if (!is_dir($log_path)) {
+        // Attempt to create the directory if it doesn't exist
+        @mkdir($log_path, 0755, true);
+    }
+    $log_file = rtrim($log_path, '/') . '/auto_deploy.log';
+
+    // Build the command to run in the background
+    // We pass the group_id as a command-line argument
+    // Redirect both stdout and stderr to the log file. Use '>>' to append.
+    // The `&` at the end runs the process in the background
+    $command = escapeshellcmd($php_executable) . ' ' . escapeshellarg($script_path) . ' ' . escapeshellarg('group_id=' . $group_id) . ' >> ' . escapeshellarg($log_file) . ' 2>&1 &';
+
+    // Execute the command
+    shell_exec($command);
+    log_activity($_SESSION['username'] ?? 'system', 'Auto-Deploy Triggered', "Deployment automatically triggered for group ID #{$group_id}.");
+}

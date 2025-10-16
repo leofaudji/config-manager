@@ -27,6 +27,9 @@ $cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscale
                     <i class="bi bi-clock-history"></i> Cron Job Logs
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="auto-deploy-log-tab" data-bs-toggle="tab" data-bs-target="#auto-deploy-log-pane" type="button" role="tab" aria-controls="auto-deploy-log-pane" aria-selected="false">Auto-Deploy Logs</button>
+            </li>
         </ul>
     </div>
     <div class="card-body">
@@ -102,8 +105,25 @@ $cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscale
                         </div>
                         <pre id="cron-log-content" class="bg-dark text-light p-3 rounded" style="white-space: pre-wrap; word-break: break-all; min-height: 400px; max-height: 65vh; overflow-y: auto;"></pre>
                     </div>
-                </div>
+                </div> 
             </div>
+
+        <!-- Auto-Deploy Log Pane -->
+            <div class="tab-pane fade" id="auto-deploy-log-pane" role="tabpanel" aria-labelledby="auto-deploy-log-tab">
+                <div class="card mt-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Auto-Deploy Logs</h5>
+                        <div>
+                            <button id="refresh-auto-deploy-log-btn" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                            <a href="<?= base_url('/api/logs/view?type=auto_deploy&download=true') ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download"></i> Download</a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <pre id="auto-deploy-log-content" class="bg-dark text-light p-3 rounded" style="min-height: 50vh; max-height: 70vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">Loading logs...</pre>
+                    </div>
+                </div>
+            </div>  
+
         </div>
     </div>
 </div>
@@ -228,6 +248,46 @@ window.pageInit = function() {
     if (firstCronLog) {
         firstCronLog.click();
     }
+
+    // --- Auto-Deploy Log Logic ---
+    const autoDeployLogContent = document.getElementById('auto-deploy-log-content');
+    const refreshAutoDeployBtn = document.getElementById('refresh-auto-deploy-log-btn');
+
+    function loadAutoDeployLog() {
+        if (!autoDeployLogContent) return;
+        autoDeployLogContent.textContent = 'Loading...';
+        refreshAutoDeployBtn.disabled = true;
+
+        fetch(`<?= base_url('/api/logs/view?type=auto_deploy') ?>`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    autoDeployLogContent.textContent = data.log_content;
+                } else {
+                    throw new Error(data.message || 'Failed to load log.');
+                }
+            })
+            .catch(error => {
+                autoDeployLogContent.textContent = 'Error: ' + error.message;
+            })
+            .finally(() => {
+                refreshAutoDeployBtn.disabled = false;
+            });
+    }
+
+    refreshAutoDeployBtn.addEventListener('click', loadAutoDeployLog);
+
+    // Load on tab show
+    const autoDeployTab = document.getElementById('auto-deploy-log-tab');
+    if (autoDeployTab) {
+        autoDeployTab.addEventListener('shown.bs.tab', loadAutoDeployLog);
+    }
+    
+    // Initial load if it's the active tab (though it's not by default)
+    if (autoDeployTab && autoDeployTab.classList.contains('active')) {
+        loadAutoDeployLog();
+    }
+
 };
 </script>
 

@@ -25,6 +25,7 @@ if (str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/delete')) 
 
     if ($stmt->execute()) {
         log_activity($_SESSION['username'], 'Router Deleted', "Router ID #{$id} has been deleted.");
+        trigger_background_deployment(1); // Trigger global deployment
         echo json_encode(['status' => 'success', 'message' => 'Router berhasil dihapus.']);
     } else {
         http_response_code(500);
@@ -129,8 +130,8 @@ try {
         }
         $stmt_check_svc->close();
 
-        $stmt_service = $conn->prepare("INSERT INTO services (name, pass_host_header, load_balancer_method, group_id) VALUES (?, ?, ?, ?)");
-        $stmt_service->bind_param("sisi", $new_service_name, $pass_host_header, $load_balancer_method, $group_id);
+        $stmt_service = $conn->prepare("INSERT INTO services (name, pass_host_header, load_balancer_method) VALUES (?, ?, ?)");
+        $stmt_service->bind_param("sis", $new_service_name, $pass_host_header, $load_balancer_method);
         if (!$stmt_service->execute()) throw new Exception("Gagal menyimpan service baru: " . $stmt_service->error);
         $new_service_id = $conn->insert_id;
         $stmt_service->close();
@@ -211,6 +212,7 @@ try {
     
     $conn->commit();
     log_activity($_SESSION['username'], $log_action, $log_details);
+    trigger_background_deployment($group_id); // Trigger deployment for the specific group
     echo json_encode(['status' => 'success', 'message' => $message]);
 
 } catch (Exception $e) {

@@ -1,6 +1,20 @@
 <?php
-// Check if it's an AJAX request
-$is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+// --- Determine Execution Context ---
+if (php_sapi_name() === 'cli') {
+    // Running from command line (background process)
+    parse_str($argv[1] ?? '', $_GET); // Parse the first argument (e.g., "group_id=2") into $_GET
+    $is_ajax = false; // Not an AJAX request
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start(); // Start session to get username if possible
+    }
+    $_SESSION['username'] = 'system-auto-deploy'; // Set a system user for logging
+} else {
+    // Running from web server (AJAX or direct access)
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    $is_ajax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+}
 
 if ($is_ajax) {
     header('Content-Type: application/json');
@@ -14,7 +28,7 @@ try {
     $conn->begin_transaction();
 
     // --- Determine which host to deploy for ---
-    $group_id_from_request = isset($_GET['group_id']) ? (int)$_GET['group_id'] : 0;
+    $group_id_from_request = isset($_GET['group_id']) ? (int)$_GET['group_id'] : 1; // Default to Global group if not specified
     $host_id_for_deployment = 0; // Initialize to 0
 
     if ($group_id_from_request > 0) {
@@ -28,11 +42,11 @@ try {
         if ($group_host_result && !empty($group_host_result['traefik_host_id'])) {
             $host_id_for_deployment = (int)$group_host_result['traefik_host_id'];
         } else {
-            // This is a global group or a group without a host.
-            // Throw an error to prevent accidentally deploying the wrong host's config.
-            throw new Exception("The selected group is 'Global' and not assigned to a specific host. Please use the main 'Generate & Deploy' button to deploy the active host's configuration.");
+            // This is a global group (group_id=1) or a group without a host.
+            // Use the globally active host for deployment.
+            $host_id_for_deployment = (int)get_setting('active_traefik_host_id', 1);
         }
-    } else {
+    } else { // Should not happen with the new default, but as a fallback
         // No group context, so use the globally active host.
         $host_id_for_deployment = (int)get_setting('active_traefik_host_id', 1);
     }
@@ -101,13 +115,17 @@ try {
     // 4. Save the new Traefik configuration to history as 'active'
     $new_history_id = 0; // Initialize
     if (!empty($traefik_yaml_output)) {
-        $stmt = $conn->prepare("INSERT INTO config_history (yaml_content, generated_by, status) VALUES (?, ?, 'active')");
+        $stmt = $conn->prepare("INSERT INTO config_history (yaml_content, generated_by, status, group_id) VALUES (?, ?, 'active', ?)");
         $generated_by = $_SESSION['username'] ?? 'system';
-        $stmt->bind_param("ss", $traefik_yaml_output, $generated_by);
+        $group_id_to_save = $group_id_from_request > 0 ? $group_id_from_request : null;
+        $stmt->bind_param("ssi", $traefik_yaml_output, $generated_by, $group_id_to_save);
         $stmt->execute();
         $new_history_id = $stmt->insert_id;
         $stmt->close();
     }
+
+    // 5. Clear the dirty flag as the configuration is now deployed
+    $conn->query("UPDATE settings SET setting_value = '0' WHERE setting_key = 'traefik_config_dirty'");
 
     // 5. Log this activity
     log_activity($_SESSION['username'], 'Configuration Generated & Deployed', "New active Traefik configuration (History ID #{$new_history_id}) was generated and deployed. Method: " . ($git_enabled ? 'Git' : 'File'));
@@ -130,6 +148,11 @@ try {
         $conn->rollback();
     }
     $error_message = "Failed to generate configuration: " . $e->getMessage();
+    // NEW: Log the failure if running as a background process (CLI)
+    if (php_sapi_name() === 'cli') {
+        log_activity('system-auto-deploy', 'Auto-Deploy Failed', $error_message);
+    }
+
     if ($is_ajax) {
         http_response_code(500);
         echo json_encode(['status' => 'error', 'message' => $error_message]);

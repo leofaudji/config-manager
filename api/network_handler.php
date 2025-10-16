@@ -182,6 +182,45 @@ try {
             if (json_last_error() !== JSON_ERROR_NONE) throw new Exception("Failed to decode JSON response from Docker API.");
 
             $search = trim($_GET['search'] ?? '');
+
+            // --- REFACTORED: Always prepare combined image list for dropdowns first ---
+            $local_images_data = [];
+            if (is_array($images_data)) {
+                foreach ($images_data as $image) {
+                    if (!empty($image['RepoTags']) && is_array($image['RepoTags'])) {
+                        foreach ($image['RepoTags'] as $tag) {
+                            if ($tag !== '<none>:<none>') {
+                                $local_images_data[$tag] = ['name' => $tag, 'source' => 'local'];
+                            }
+                        }
+                    }
+                }
+            }
+
+            $registry_images_data = [];
+            if (!empty($host['registry_url']) && !empty($host['registry_username']) && !empty($host['registry_password'])) {
+                try {
+                    $registry_url = rtrim($host['registry_url'], '/');
+                    $registry_host_only = parse_url($registry_url, PHP_URL_HOST) . (parse_url($registry_url, PHP_URL_PORT) ? ':' . parse_url($registry_url, PHP_URL_PORT) : '');
+                    $catalog_response = call_registry_api("{$registry_url}/v2/_catalog", $host['registry_username'], $host['registry_password']);
+                    $repositories = $catalog_response['repositories'] ?? [];
+
+                    foreach ($repositories as $repo) {
+                        $tags_response = call_registry_api("{$registry_url}/v2/" . urlencode($repo) . "/tags/list", $host['registry_username'], $host['registry_password']);
+                        $tags = $tags_response['tags'] ?? [];
+                        foreach ($tags as $tag) {
+                            $full_image_name = "{$registry_host_only}/{$repo}:{$tag}";
+                            $registry_images_data[$full_image_name] = ['name' => $full_image_name, 'source' => 'registry'];
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("Config Manager: Failed to fetch images from registry '{$host['registry_url']}': " . $e->getMessage());
+                }
+            }
+
+            // Merge, giving priority to local images if names conflict (local is more specific)
+            $combined_images = array_values(array_merge($registry_images_data, $local_images_data));
+
             if (!empty($search)) {
                 $images_data = array_filter($images_data, function($img) use ($search) {
                     if (isset($img['RepoTags']) && is_array($img['RepoTags'])) {
@@ -193,6 +232,14 @@ try {
                     }
                     // Also search by image ID
                     if (isset($img['Id']) && stripos($img['Id'], $search) !== false) {
+                        return true;
+                    }
+                    return false;
+                });
+
+                // Also filter the combined list for dropdowns
+                $combined_images = array_filter($combined_images, function($img) use ($search) {
+                    if (isset($img['name']) && stripos($img['name'], $search) !== false) {
                         return true;
                     }
                     return false;
@@ -253,46 +300,7 @@ try {
                     'limit' => $limit_get,
                     'info' => "Showing <strong>" . count($paginated_images) . "</strong> of <strong>{$total_items}</strong> images."
                 ]);
-            } else {
-                // --- CORRECTED: Combined logic for App Launcher ---
-                $local_images_data = [];
-                if (is_array($images_data)) {
-                    foreach ($images_data as $image) {
-                        if (!empty($image['RepoTags']) && is_array($image['RepoTags'])) {
-                            foreach ($image['RepoTags'] as $tag) {
-                                if ($tag !== '<none>:<none>') {
-                                    $local_images_data[$tag] = ['name' => $tag, 'source' => 'local'];
-                                }
-                            }
-                        }
-                    }
-                }
-    
-                $registry_images_data = [];
-                // FIX: Only attempt to fetch from registry if all credentials are provided.
-                if (!empty($host['registry_url']) && !empty($host['registry_username']) && !empty($host['registry_password'])) {
-                    try {
-                        $registry_url = rtrim($host['registry_url'], '/');
-                        $registry_host_only = parse_url($registry_url, PHP_URL_HOST) . (parse_url($registry_url, PHP_URL_PORT) ? ':' . parse_url($registry_url, PHP_URL_PORT) : '');
-                        // Use the generic registry handler which is more robust
-                        $catalog_response = call_registry_api("{$registry_url}/v2/_catalog", $host['registry_username'], $host['registry_password']);
-                        $repositories = $catalog_response['repositories'] ?? [];
-    
-                        foreach ($repositories as $repo) {
-                            $tags_response = call_registry_api("{$registry_url}/v2/" . urlencode($repo) . "/tags/list", $host['registry_username'], $host['registry_password']);
-                            $tags = $tags_response['tags'] ?? [];
-                            foreach ($tags as $tag) {
-                                $full_image_name = "{$registry_host_only}/{$repo}:{$tag}";
-                                $registry_images_data[$full_image_name] = ['name' => $full_image_name, 'source' => 'registry'];
-                            }
-                        }
-                    } catch (Exception $e) {
-                        error_log("Config Manager: Failed to fetch images from registry '{$host['registry_url']}': " . $e->getMessage());
-                    }
-                }
-    
-                // Merge, giving priority to registry images if names conflict
-                $combined_images = array_values(array_merge($registry_images_data, $local_images_data));
+            } else { // This is for App Launcher and Update Stack dropdowns
                 usort($combined_images, fn($a, $b) => strnatcasecmp($a['name'], $b['name']));
                 echo json_encode(['status' => 'success', 'data' => $combined_images]);
             }

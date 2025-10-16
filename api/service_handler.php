@@ -54,6 +54,7 @@ if (str_ends_with(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/delete')) 
 
         $conn->commit();
         log_activity($_SESSION['username'], 'Service Deleted', "Service '{$service_name}' (ID: {$id}) has been deleted.");
+        trigger_background_deployment(1); // Trigger global deployment
         echo json_encode(['status' => 'success', 'message' => 'Service berhasil dihapus.']);
     } catch (Exception $e) {
         $conn->rollback();
@@ -68,8 +69,6 @@ $id = $_POST['id'] ?? null;
 $name = trim($_POST['name'] ?? '');
 $pass_host_header = isset($_POST['pass_host_header']) && $_POST['pass_host_header'] == '1' ? 1 : 0;
 $load_balancer_method = $_POST['load_balancer_method'] ?? 'roundRobin';
-$group_id = $_POST['group_id'] ?? getDefaultGroupId();
-$server_input_type = $_POST['server_input_type'] ?? 'individual';
 $server_urls = [];
 
 if ($server_input_type === 'cidr') {
@@ -128,14 +127,14 @@ if (!$is_edit) {
     $conn->begin_transaction();
     try {
         $stmt = $conn->prepare(
-            "INSERT INTO services (name, pass_host_header, load_balancer_method, group_id, 
+            "INSERT INTO services (name, pass_host_header, load_balancer_method,
                                   health_check_enabled, health_check_type, target_stack_id, health_check_endpoint, 
                                   health_check_interval, health_check_timeout, unhealthy_threshold, healthy_threshold) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $stmt->bind_param(
-            "sisisisiiiii", 
-            $name, $pass_host_header, $load_balancer_method, $group_id,
+            "sisisisiii", 
+            $name, $pass_host_header, $load_balancer_method, 
             $health_check_enabled, $health_check_type, $target_stack_id, $health_check_endpoint,
             $health_check_interval, $health_check_timeout, $unhealthy_threshold, $healthy_threshold
         );
@@ -157,6 +156,7 @@ if (!$is_edit) {
 
         $conn->commit();
         log_activity($_SESSION['username'], 'Service Added', "Service baru '{$name}' telah ditambahkan.");
+        trigger_background_deployment(1); // Trigger global deployment
         echo json_encode(['status' => 'success', 'message' => 'Service berhasil ditambahkan.']);
 
     } catch (Exception $e) {
@@ -176,14 +176,14 @@ if (!$is_edit) {
 
         $stmt_update_service = $conn->prepare(
             "UPDATE services SET 
-                name = ?, pass_host_header = ?, load_balancer_method = ?, group_id = ?,
+                name = ?, pass_host_header = ?, load_balancer_method = ?, 
                 health_check_enabled = ?, health_check_type = ?, target_stack_id = ?, health_check_endpoint = ?, 
                 health_check_interval = ?, health_check_timeout = ?, unhealthy_threshold = ?, healthy_threshold = ?
              WHERE id = ?"
         );
         $stmt_update_service->bind_param(
-            "sisisisiiiiii", 
-            $name, $pass_host_header, $load_balancer_method, $group_id,
+            "sisisisiiii", 
+            $name, $pass_host_header, $load_balancer_method, 
             $health_check_enabled, $health_check_type, $target_stack_id, $health_check_endpoint,
             $health_check_interval, $health_check_timeout, $unhealthy_threshold, $healthy_threshold,
             $id
@@ -217,6 +217,7 @@ if (!$is_edit) {
 
         $conn->commit();
         log_activity($_SESSION['username'], 'Service Edited', "Service '{$old_service_name}' (ID: {$id}) telah diubah menjadi '{$name}'.");
+        trigger_background_deployment(1); // Trigger global deployment
         echo json_encode(['status' => 'success', 'message' => 'Service dan router terkait berhasil diperbarui.']);
     } catch (Exception $e) {
         $conn->rollback();

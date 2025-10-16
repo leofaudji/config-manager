@@ -221,6 +221,29 @@ try {
             echo json_encode(['status' => 'success', 'log_content' => $log_content]);
             break;
 
+        case 'auto_deploy':
+            $log_path = get_setting('cron_log_path', '/var/log'); // Reuse the same setting
+            $log_file_path = rtrim($log_path, '/') . "/auto_deploy.log";
+
+            if ($is_download_request) {
+                header('Content-Type: text/plain');
+                header('Content-Disposition: attachment; filename="auto_deploy.log"');
+                if (file_exists($log_file_path)) {
+                    readfile($log_file_path);
+                }
+                exit;
+            }
+
+            if (!file_exists($log_file_path) || !is_readable($log_file_path)) {
+                echo json_encode(['status' => 'success', 'log_content' => "Log file not found or is not readable at:\n{$log_file_path}"]);
+                exit;
+            }
+
+            $command = "tail -n 500 " . escapeshellarg($log_file_path) . " 2>&1";
+            $log_content = shell_exec($command);
+            echo json_encode(['status' => 'success', 'log_content' => $log_content ?: 'Log file is empty.']);
+            break;
+
         default:
             http_response_code(400);
             echo json_encode(['status' => 'error', 'message' => 'Invalid log type specified.']);

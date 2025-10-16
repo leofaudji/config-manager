@@ -188,14 +188,11 @@ CREATE TABLE `services` (
   `health_check_timeout` int(11) NOT NULL DEFAULT 5 COMMENT 'in seconds',
   `unhealthy_threshold` int(11) NOT NULL DEFAULT 3 COMMENT 'failures to be marked unhealthy',
   `healthy_threshold` int(11) NOT NULL DEFAULT 2 COMMENT 'successes to be marked healthy',
-  `group_id` int(11) NOT NULL DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`),
-  KEY `group_id` (`group_id`),
   KEY `fk_target_stack` (`target_stack_id`),
-  FOREIGN KEY (`group_id`) REFERENCES `groups` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `service_health_status` (
@@ -258,13 +255,10 @@ CREATE TABLE `middlewares` (
   `type` varchar(50) NOT NULL COMMENT 'e.g., headers, rateLimit, basicAuth',
   `config_json` text NOT NULL COMMENT 'Middleware parameters as JSON',
   `description` text DEFAULT NULL,
-  `group_id` int(11) NOT NULL DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `name` (`name`),
-  KEY `group_id` (`group_id`),
-  FOREIGN KEY (`group_id`) REFERENCES `groups` (`id`) ON DELETE RESTRICT
+  UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `router_middleware` (
@@ -424,6 +418,10 @@ ALTER TABLE `docker_hosts` ADD `swarm_status` VARCHAR(20) NULL DEFAULT 'unreacha
 ALTER TABLE `docker_hosts` ADD `host_uptime_seconds` BIGINT NULL DEFAULT NULL COMMENT 'Host uptime in seconds, reported by the agent.' AFTER `swarm_status`;
 
 ALTER TABLE `application_stacks` ADD `last_webhook_triggered_at` DATETIME NULL DEFAULT NULL;
+
+ALTER TABLE `config_history`
+ADD COLUMN `group_id` INT(11) NULL DEFAULT NULL AFTER `status`,
+ADD CONSTRAINT `fk_config_history_group` FOREIGN KEY (`group_id`) REFERENCES `groups`(`id`) ON DELETE SET NULL;
 
 
 ";
