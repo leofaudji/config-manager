@@ -279,6 +279,26 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="<?= base_url('assets/js/main.js') ?>"></script>
+
+<script>
+    // --- Efek Bayangan pada Header saat Scroll ---
+    (function() {
+        const topNavbar = document.querySelector('.top-navbar');
+        if (!topNavbar) return;
+
+        const handleScroll = () => {
+            if (window.scrollY > 10) {
+                topNavbar.classList.add('scrolled');
+            } else {
+                topNavbar.classList.remove('scrolled');
+            }
+        };
+
+        // Terapkan pada saat load dan saat scroll
+        handleScroll();
+        document.addEventListener('scroll', handleScroll, { passive: true });
+    })();
+</script>
 </body>
 </html> 
 <?php

@@ -478,7 +478,8 @@ function checkGitSyncStatus() {
             if (result.status === 'success' && result.changes_count > 0) {
                 syncBadge.textContent = result.changes_count;
                 syncBadge.style.display = 'block';
-                syncBadge.classList.add('blinking-badge');
+                // syncBadge.classList.add('blinking-badge'); // Pulse pada tombol lebih efektif
+                syncStacksBtn.classList.add('btn-pulse'); // Tambahkan animasi pulse ke tombol
 
                 // Store diff data and set button to open modal
                 syncStacksBtn.dataset.diff = result.diff;
@@ -487,7 +488,8 @@ function checkGitSyncStatus() {
             } else {
                 // No changes, ensure button has default (direct sync) behavior
                 syncBadge.style.display = 'none';
-                syncBadge.classList.remove('blinking-badge');
+                // syncBadge.classList.remove('blinking-badge');
+                syncStacksBtn.classList.remove('btn-pulse'); // Hapus animasi pulse dari tombol
                 syncStacksBtn.removeAttribute('data-bs-toggle');
                 syncStacksBtn.removeAttribute('data-bs-target');
                 syncStacksBtn.dataset.diff = '';

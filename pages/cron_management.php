@@ -30,6 +30,11 @@ $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
                 <label for="collect_stats_schedule" class="form-label">Schedule (Format Cron)</label>
                 <input type="text" class="form-control" id="collect_stats_schedule" name="collect_stats[schedule]" placeholder="*/5 * * * *">
                 <small class="form-text text-muted">Contoh: <code>*/5 * * * *</code> untuk berjalan setiap 5 menit. <code>0 * * * *</code> untuk berjalan setiap jam.</small>
+                <?php if (!is_executable($collect_stats_path)): ?>
+                <div class="alert alert-warning mt-2 small">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars($collect_stats_path) ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars($collect_stats_path) ?></code> on your server.
+                </div>
+                <?php endif; ?>
             </div>
             <div class="bg-light p-2 rounded">
                 <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($collect_stats_path) ?></code></small>
@@ -58,6 +63,11 @@ $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
                 <label for="autoscaler_schedule" class="form-label">Schedule (Format Cron)</label>
                 <input type="text" class="form-control" id="autoscaler_schedule" name="autoscaler[schedule]" placeholder="*/5 * * * *">
                 <small class="form-text text-muted">Direkomendasikan untuk berjalan setiap 5 menit.</small>
+                <?php if (!is_executable($autoscaler_path)): ?>
+                <div class="alert alert-warning mt-2 small">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars($autoscaler_path) ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars($autoscaler_path) ?></code> on your server.
+                </div>
+                <?php endif; ?>
             </div>
             <div class="bg-light p-2 rounded">
                 <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($autoscaler_path) ?></code></small>
@@ -86,6 +96,11 @@ $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
                 <label for="health_monitor_schedule" class="form-label">Schedule (Format Cron)</label>
                 <input type="text" class="form-control" id="health_monitor_schedule" name="health_monitor[schedule]" placeholder="* * * * *">
                 <small class="form-text text-muted">Direkomendasikan untuk berjalan setiap 1 menit.</small>
+                <?php if (!is_executable($health_monitor_path)): ?>
+                <div class="alert alert-warning mt-2 small">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars($health_monitor_path) ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars($health_monitor_path) ?></code> on your server.
+                </div>
+                <?php endif; ?>
             </div>
             <div class="bg-light p-2 rounded">
                 <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($health_monitor_path) ?></code></small>
@@ -114,6 +129,11 @@ $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
                 <label for="system_cleanup_schedule" class="form-label">Schedule (Format Cron)</label>
                 <input type="text" class="form-control" id="system_cleanup_schedule" name="system_cleanup[schedule]" placeholder="0 3 * * *">
                 <small class="form-text text-muted">Direkomendasikan untuk berjalan sekali sehari, misalnya pada jam 3 pagi (<code>0 3 * * *</code>).</small>
+                <?php if (!is_executable(PROJECT_ROOT . '/system_cleanup.php')): ?>
+                <div class="alert alert-warning mt-2 small">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars(PROJECT_ROOT . '/system_cleanup.php') ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars(PROJECT_ROOT . '/system_cleanup.php') ?></code> on your server.
+                </div>
+                <?php endif; ?>
             </div>
             <div class="bg-light p-2 rounded">
                 <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars(PROJECT_ROOT . '/system_cleanup.php') ?></code></small>

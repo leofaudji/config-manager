@@ -45,6 +45,22 @@ body {
     50% { opacity: 0.3; }
 }
 
+/* --- Animasi Pulse untuk Tombol Aksi --- */
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(var(--bs-danger-rgb), 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0);
+    }
+}
+.btn-pulse {
+    animation: pulse 2s infinite;
+}
+
 /* --- Sidebar --- */
 .sidebar {
     width: var(--sidebar-width);
@@ -71,6 +87,22 @@ body {
 body.dark-mode .sidebar .navbar-brand {
     color: #fff; /* Restore white brand text for dark mode */
 }
+
+/* --- IDE Tambahan: Animasi Putaran pada Ikon Brand --- */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.sidebar .navbar-brand:hover .bi-gear-wide-connected {
+    animation: spin 2s linear infinite;
+}
+/* --- Akhir IDE Tambahan --- */
+
 
 .sidebar-nav {
     padding-left: 0;
@@ -108,9 +140,13 @@ body.dark-mode .sidebar .navbar-brand {
 }
 
 .sidebar-nav .nav-link.active {
-    color: var(--sidebar-link-active-color);
-    background-color: var(--sidebar-link-active-bg);
-    font-weight: bold; /* Make the active link's text bold */
+    /* --- IDE 2: Indikator Link Aktif --- */
+    color: var(--bs-primary); /* Ubah warna teks menjadi warna primer */
+    background-color: transparent; /* Hapus latar belakang solid */
+    font-weight: bold;
+    /* Tambahkan garis vertikal di kiri sebagai indikator */
+    border-left: 3px solid var(--bs-primary);
+    /* --- Akhir Ide 2 --- */
 }
 
 .sidebar-nav .nav-link .bi {
@@ -197,6 +233,17 @@ body.sidebar-collapsed .sidebar .nav-link .icon-wrapper {
     position: sticky;
     top: 0;
     z-index: 999;
+    transition: box-shadow 0.3s ease-in-out; /* Transisi untuk efek bayangan yang mulus */
+}
+
+/* Gaya bayangan saat header di-scroll */
+.top-navbar.scrolled {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.12);
+}
+
+/* Gaya bayangan yang lebih terlihat untuk mode gelap */
+body.dark-mode .top-navbar.scrolled {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2), 0 2px 6px rgba(0,0,0,0.3);
 }
 
 #sidebar-toggle-btn {

@@ -280,11 +280,11 @@ require_once __DIR__ . '/../includes/header.php';
                             <div id="autoscaling-fields">
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
-                                        <label for="autoscaling_min_replicas" class="form-label">Minimum Replicas</label>
+                                        <label for="autoscaling_min_replicas" class="form-label" id="autoscaling-min-label">Minimum Replicas</label>
                                         <input type="number" class="form-control" id="autoscaling_min_replicas" name="autoscaling_min_replicas" value="<?= htmlspecialchars($stack_data['autoscaling_min_replicas'] ?? 1) ?>" min="1">
                                     </div>
                                     <div class="col-md-6 mb-3">
-                                        <label for="autoscaling_max_replicas" class="form-label">Maximum Replicas</label>
+                                        <label for="autoscaling_max_replicas" class="form-label" id="autoscaling-max-label">Maximum Replicas</label>
                                         <input type="number" class="form-control" id="autoscaling_max_replicas" name="autoscaling_max_replicas" value="<?= htmlspecialchars($stack_data['autoscaling_max_replicas'] ?? 1) ?>" min="1">
                                     </div>
                                 </div>

@@ -105,6 +105,9 @@ try {
                 $container_id = $target_container['Id'];
                 $container_details = $dockerClient->inspectContainer($container_id);
                 $current_cpu_limit_nano = $container_details['HostConfig']['CpuQuota'] ?? 0;
+                // Cek apakah kontainer ini sebelumnya di-scale oleh autoscaler
+                $is_autoscaled = isset($container_details['Config']['Labels']['com.config-manager.autoscaled']);
+
                 // Convert from nano-CPUs (per 100ms period) back to vCPU count
                 $current_cpu_limit = $current_cpu_limit_nano > 0 ? $current_cpu_limit_nano / 100000 : ($container_details['HostConfig']['NanoCpus'] / 1e9);
 
@@ -112,20 +115,24 @@ try {
 
                 $new_cpu_limit = $current_cpu_limit;
                 $scaling_step = 0.25; // How much to increase/decrease CPU by at a time
+                $action_taken = 'none';
+
                 if ($avg_cpu > $stack['autoscaling_cpu_threshold_up'] && $current_cpu_limit < $stack['autoscaling_max_replicas']) {
                     // For vertical scaling, we use max_replicas as max_cpu_cores
                     $new_cpu_limit = min($current_cpu_limit + $scaling_step, $stack['autoscaling_max_replicas']);
+                    $action_taken = 'scale_up';
                     echo colorize_log("    -> KEPUTUSAN: SCALING NAIK (Vertical). CPU Host ({$avg_cpu}%) > Threshold ({$stack['autoscaling_cpu_threshold_up']}%). Mengubah batas CPU menjadi {$new_cpu_limit} vCPU.\n", "success");
-                } elseif ($avg_cpu < $stack['autoscaling_cpu_threshold_down'] && $current_cpu_limit > $stack['autoscaling_min_replicas']) {
+                } elseif ($is_autoscaled && $avg_cpu < $stack['autoscaling_cpu_threshold_down'] && $current_cpu_limit > $stack['autoscaling_min_replicas']) {
                     // For vertical scaling, we use min_replicas as min_cpu_cores
                     $new_cpu_limit = max($current_cpu_limit - $scaling_step, $stack['autoscaling_min_replicas']);
+                    $action_taken = 'scale_down';
                     echo "    -> KEPUTUSAN: SCALING TURUN (Vertical). CPU Host ({$avg_cpu}%) < Threshold ({$stack['autoscaling_cpu_threshold_down']}%). Mengubah batas CPU menjadi {$new_cpu_limit} vCPU.\n";
                 }
 
                 // Execute the update if the limit has changed
                 if ($new_cpu_limit != $current_cpu_limit) {
                     try {
-                        $dockerClient->updateContainerResources($container_id, $new_cpu_limit);
+                        $dockerClient->updateContainerResources($container_id, $new_cpu_limit, $action_taken);
                         echo colorize_log("    -> SUKSES: Batas CPU kontainer berhasil di-update ke {$new_cpu_limit} vCPU.\n", "success");
                         log_activity('SYSTEM', 'Container Scaled (Vertical)', "Batas CPU untuk kontainer '{$target_container['Names'][0]}' diubah menjadi {$new_cpu_limit} vCPU karena utilisasi CPU host.");
                     } catch (Exception $update_e) {
