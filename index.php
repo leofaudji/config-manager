@@ -84,6 +84,7 @@ $router->get('/hosts/{id}/containers', 'pages/host_containers.php', ['auth', 'ad
 $router->get('/hosts/{id}/stacks', 'pages/host_stacks.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/stacks/new', 'pages/stack_form.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/stacks/{stack_db_id}/edit', 'pages/stack_form.php', ['auth', 'admin']);
+$router->get('/stack-changes', 'pages/stack_changes.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/stacks/{stack_db_id}/edit-compose', 'pages/stack_editor.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/stacks/{stack_db_id}/update', 'pages/app_updater.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/deploy/git', 'pages/host_deploy_git.php', ['auth', 'admin']);
@@ -114,6 +115,7 @@ $router->get('/api/stack-changes', 'api/stack_changes_handler.php', ['auth', 'ad
 $router->get('/api/hosts/{id}/events', 'api/container_events_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/stats', 'api/container_stats_stream_handler.php', ['auth', 'admin']);
 $router->get('/api/registry/repositories', 'api/registry_handler.php', ['auth', 'admin']);
+$router->post('/api/registry/test-connection', 'api/registry_handler.php', ['auth', 'admin']);
 $router->get('/api/registry/tags', 'api/registry_handler.php', ['auth', 'admin']);
 $router->get('/api/monitoring/hotspots', 'api/resource_hotspots_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{host_id}/stacks/{stack_name}/spec', 'api/host_stack_handler.php', ['auth', 'admin']);

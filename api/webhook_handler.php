@@ -2,10 +2,13 @@
 // This script does not check for login, as it's called by an external service.
 // Security is handled by a secret token.
 require_once __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/DeploymentRunner.php';
 
 // Start a session to be able to set a username for logging.
-session_start();
-
+// Check if a session is not already active before starting one.
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 // --- Security Check ---
 $provided_token = $_GET['token'] ?? '';
 $stored_token = get_setting('webhook_secret_token');
@@ -45,6 +48,7 @@ try {
         exit;
     }
 
+   
     // If we're here, it's a push to the correct branch. Trigger the deployment.
     // --- NEW: Find and redeploy all stacks linked to this repository ---
     $repo_url_from_payload = $data['repository']['clone_url'] ?? null;
@@ -52,20 +56,13 @@ try {
         throw new Exception("Could not determine repository URL from webhook payload.");
     }
 
-    // --- NEW: Prepare for internal cURL call ---
-    $app_base_url = get_setting('app_base_url');
-    // Use loopback address for internal calls for performance and security
-    $internal_app_url = str_replace(['localhost', '127.0.0.1'], 'traefik-manager', $app_base_url);
-    $deployment_endpoint = rtrim($internal_app_url, '/') . '/api/app-launcher/deploy';
-
     $conn = Database::getInstance()->getConnection();
     // Find all stacks that use this Git repository as their source
-    $stmt = $conn->prepare("SELECT s.id, s.stack_name, s.host_id, s.deployment_details, h.name as host_name FROM application_stacks s JOIN docker_hosts h ON s.host_id = h.id WHERE s.source_type = 'git' AND JSON_UNQUOTE(JSON_EXTRACT(s.deployment_details, '$.git_url')) = ?");
+    $stmt = $conn->prepare("SELECT s.id, s.stack_name, s.host_id, s.deployment_details, s.last_webhook_triggered_at, h.name as host_name FROM application_stacks s JOIN docker_hosts h ON s.host_id = h.id WHERE s.source_type = 'git' AND JSON_UNQUOTE(JSON_EXTRACT(s.deployment_details, '$.git_url')) = ?");
     $stmt->bind_param("s", $repo_url_from_payload);
     $stmt->execute();
     $stacks_to_update = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
-    $conn->close();
 
     if (empty($stacks_to_update)) {
         http_response_code(200);
@@ -75,8 +72,23 @@ try {
         exit;
     }
 
+    $cooldown_period = (int)get_setting('webhook_cooldown_period', 300); // Default 5 menit
     $updated_stacks = [];
+    $ignored_stacks = [];
+
     foreach ($stacks_to_update as $stack) {
+        // --- NEW: Cooldown Logic ---
+        if ($stack['last_webhook_triggered_at']) {
+            $last_triggered_time = strtotime($stack['last_webhook_triggered_at']);
+            $time_since_last = time() - $last_triggered_time;
+            if ($time_since_last < $cooldown_period) {
+                $wait_time = $cooldown_period - $time_since_last;
+                $ignored_stacks[] = "{$stack['stack_name']} (cooldown, tunggu {$wait_time} detik lagi)";
+                log_activity('webhook_bot', 'Webhook Ignored (Cooldown)', "Redeployment untuk stack '{$stack['stack_name']}' diabaikan karena masih dalam periode cooldown.");
+                continue; // Lewati stack ini
+            }
+        }
+
         // --- NEW: Trigger the actual deployment ---
         // We will simulate a form submission to the app_launcher_handler.
         $deployment_details = json_decode($stack['deployment_details'], true);
@@ -91,15 +103,8 @@ try {
         $post_data['stack_name'] = $stack['stack_name'];
         $post_data['update_stack'] = 'true'; // This is crucial to tell the launcher it's an update
 
-        // Use cURL to make an internal, non-blocking POST request to the deployment handler
-        $ch = curl_init($deployment_endpoint);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 5); // Don't wait for the full deployment, just trigger it.
-        curl_exec($ch);
-        curl_close($ch);
-
+        // FIX: Directly call the deployment logic instead of making a fragile internal HTTP call.
+        DeploymentRunner::runInBackground($post_data);
         log_activity('webhook_bot', 'Webhook Redeploy Triggered', "Redeployment triggered for stack '{$stack['stack_name']}' on host '{$stack['host_name']}' due to a push to '{$target_branch}'.");
         $updated_stacks[] = "{$stack['stack_name']} (on {$stack['host_name']})";
     }
@@ -110,13 +115,22 @@ try {
         $notification_message = "Push to '{$target_branch}' triggered redeployment for: " . implode(', ', $updated_stacks);
         send_notification($notification_title, $notification_message, 'info');
     }
+
+    $message = 'Webhook processed.';
+    if (!empty($updated_stacks)) {
+        $message .= ' Redeployment triggered for: ' . implode(', ', $updated_stacks) . '.';
+    }
+    if (!empty($ignored_stacks)) {
+        $message .= ' Ignored stacks (cooldown): ' . implode(', ', $ignored_stacks) . '.';
+    }
     
     // Respond with a success message
     header('Content-Type: application/json');
-    echo json_encode([
-        'status' => 'success',
-        'message' => 'Webhook processed. Redeployment triggered for the following stacks: ' . implode(', ', $updated_stacks)
-    ]);
+    echo json_encode(['status' => 'success', 'message' => $message]);
+    // Close the connection at the very end of the successful execution path.
+    if (isset($conn)) {
+        $conn->close();
+    }
 
 } catch (Exception $e) {
     http_response_code(500);

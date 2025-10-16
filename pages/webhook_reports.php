@@ -10,16 +10,22 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Webhook Activity Log</h5>
-        <form class="d-flex" id="webhook-filter-form" onsubmit="return false;">
-            <input type="text" class="form-control form-control-sm me-2" id="search-input" placeholder="Search details or IP...">
-            <select id="status-filter" class="form-select form-select-sm me-2" style="width: auto;">
-                <option value="">All Statuses</option>
-                <option value="Triggered">Triggered</option>
-                <option value="Ignored">Ignored</option>
-                <option value="Failed">Failed</option>
-            </select>
-            <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-funnel-fill"></i></button>
-        </form>
+        <div class="d-flex align-items-center">
+            <div class="form-check form-switch me-3" data-bs-toggle="tooltip" title="Automatically refresh logs every 15 seconds">
+                <input class="form-check-input" type="checkbox" role="switch" id="auto-refresh-switch">
+                <label class="form-check-label" for="auto-refresh-switch">Auto Refresh</label>
+            </div>
+            <form class="d-flex" id="webhook-filter-form" onsubmit="return false;">
+                <input type="text" class="form-control form-control-sm me-2" id="search-input" placeholder="Search details or IP...">
+                <select id="status-filter" class="form-select form-select-sm me-2" style="width: auto;">
+                    <option value="">All Statuses</option>
+                    <option value="Triggered">Triggered</option>
+                    <option value="Ignored">Ignored</option>
+                    <option value="Failed">Failed</option>
+                </select>
+                <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-funnel-fill"></i></button>
+            </form>
+        </div>
     </div>
     <div class="card-body">
         <div class="table-responsive">
@@ -52,9 +58,13 @@ window.pageInit = function() {
     const filterForm = document.getElementById('webhook-filter-form');
     const searchInput = document.getElementById('search-input');
     const statusFilter = document.getElementById('status-filter');
+    const autoRefreshSwitch = document.getElementById('auto-refresh-switch');
+    let autoRefreshInterval = null;
 
-    function loadLogs(page = 1) {
-        container.innerHTML = '<tr><td colspan="4" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div></td></tr>';
+    function loadLogs(page = 1, isAutoRefresh = false) {
+        if (!isAutoRefresh) {
+            container.innerHTML = '<tr><td colspan="4" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div></td></tr>';
+        }
 
         const searchTerm = searchInput.value.trim();
         const status = statusFilter.value;
@@ -111,7 +121,29 @@ window.pageInit = function() {
         if (e.target.matches('.page-link')) { e.preventDefault(); loadLogs(e.target.dataset.page); }
     });
 
-    loadLogs();
+    // --- Auto-refresh logic ---
+    autoRefreshSwitch.addEventListener('change', function() {
+        localStorage.setItem('webhook_reports_auto_refresh', this.checked);
+        if (this.checked) {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(() => loadLogs(1, true), 15000);
+            showToast('Auto-refresh enabled (15s).', true);
+        } else {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                showToast('Auto-refresh disabled.', true);
+            }
+        }
+    });
+
+    // Initial Load
+    const savedAutoRefresh = localStorage.getItem('webhook_reports_auto_refresh') === 'true';
+    autoRefreshSwitch.checked = savedAutoRefresh;
+    loadLogs(1);
+    if (savedAutoRefresh) {
+        autoRefreshSwitch.dispatchEvent(new Event('change'));
+    }
 };
 </script>
 

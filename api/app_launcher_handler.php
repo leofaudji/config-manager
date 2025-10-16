@@ -22,6 +22,7 @@ if (ob_get_level() > 0) {
         ob_end_flush();
     }
 }
+if (ob_get_level() > 0) { for ($i = 0; $i < ob_get_level(); $i++) { ob_end_flush(); } }
 ob_implicit_flush(1);
 
 function stream_message($message, $type = 'INFO') {
@@ -42,6 +43,8 @@ function stream_exec($command, &$return_var) {
 }
 
 try {
+    $start_time = microtime(true); // Start the timer
+
     stream_message("Deployment process initiated...");
 
     // --- Input Validation ---
@@ -531,7 +534,12 @@ try {
         throw new Exception("Docker-compose deployment failed. Check log for details.");
     }
 
+    $end_time = microtime(true); // End the timer
+    $duration = (int)round($end_time - $start_time);
+
     stream_message("Deployment command executed successfully.");
+    // Call the centralized deployment logic
+    AppLauncherHelper::executeDeployment($_POST);
     
     // --- Prepare deployment details for saving ---
     stream_message("Saving deployment configuration to database...");
@@ -612,10 +620,11 @@ try {
     }
 
     $stmt_log_change = $conn->prepare(
-        "INSERT INTO stack_change_log (host_id, stack_name, change_type, details, changed_by) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO stack_change_log (host_id, stack_name, change_type, details, duration_seconds, changed_by) VALUES (?, ?, ?, ?, ?, ?)"
     );
     $changed_by = $_SESSION['username'] ?? 'system';
-    $stmt_log_change->bind_param("issss", $host_id, $stack_name, $change_type, $log_details_for_stack_change, $changed_by);
+    // Bind the new duration parameter
+    $stmt_log_change->bind_param("isssis", $host_id, $stack_name, $change_type, $log_details_for_stack_change, $duration, $changed_by);
     $stmt_log_change->execute();
     $stmt_log_change->close();
     stream_message("Stack change logged to history.");

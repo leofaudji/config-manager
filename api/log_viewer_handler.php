@@ -146,23 +146,29 @@ try {
 
             if (!empty($search)) {
                 $where_clauses[] = "(details LIKE ? OR ip_address LIKE ?)";
-                $search_param = "%{$search}%";
-                $params[] = $search_param;
-                $params[] = $search_param;
+                // FIX: Bind the search parameter twice for both placeholders
+                $params[] = "%{$search}%";
+                $params[] = "%{$search}%";
                 $types .= 'ss';
             }
 
             if (!empty($status)) {
-                $where_clauses[] = "action LIKE ?";
-                $status_param = "%{$status}%";
-                $params[] = $status_param;
+                // FIX: The action is "Webhook {Status}", so we need to construct the string correctly.
+                $where_clauses[] = "action = ?";
+                $params[] = "Webhook {$status}";
                 $types .= 's';
             }
 
             $where_sql = "WHERE " . implode(' AND ', $where_clauses);
 
-            $total_items_result = $conn->query("SELECT COUNT(*) as count FROM activity_log {$where_sql}");
-            $total_items = $total_items_result->fetch_assoc()['count'];
+            // FIX: Use a prepared statement for the count query to apply filters correctly.
+            $stmt_count = $conn->prepare("SELECT COUNT(*) as count FROM activity_log {$where_sql}");
+            if (!empty($params)) {
+                $stmt_count->bind_param($types, ...$params);
+            }
+            $stmt_count->execute();
+            $total_items = $stmt_count->get_result()->fetch_assoc()['count'];
+            $stmt_count->close();
             $total_pages = ceil($total_items / $limit);
 
             $stmt = $conn->prepare("SELECT * FROM activity_log {$where_sql} ORDER BY id DESC LIMIT ? OFFSET ?");

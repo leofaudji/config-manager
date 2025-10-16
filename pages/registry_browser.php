@@ -72,15 +72,26 @@ window.pageInit = function() {
             .then(response => response.json())
             .then(result => {
                 if (result.status !== 'success') throw new Error(result.message);
-                let html = '';
-                if (result.data.length > 0) {
-                    result.data.forEach(repo => {
-                        html += `<a href="#" class="list-group-item list-group-item-action repo-item" data-repo="${repo}">${repo}</a>`;
-                    });
-                } else {
-                    html = '<div class="list-group-item text-center text-muted">No repositories found.</div>';
+                return result.data; // Return the data for the next .then()
+            })
+            .then(repositories => {
+                if (!repositories || repositories.length === 0) { // No repos found
+                    repoListContainer.innerHTML = '<div class="list-group-item text-center text-muted">No repositories found.</div>';
+                    tagsListContainer.innerHTML = '<div class="list-group-item text-center text-muted">Select a repository to view its tags.</div>';
+                    tagsListTitle.textContent = 'Image Tags';
+                    return;
                 }
-                repoListContainer.innerHTML = html;
+                // FIX: Use a <div> with a role of a button instead of <a href="#"> to prevent the page from jumping.
+                // The element is styled to look and act exactly like a list-group-item-action.
+                repoListContainer.innerHTML = repositories.map(repo => 
+                    `<div class="list-group-item list-group-item-action repo-item" data-repo="${repo}" style="cursor: pointer;" role="button" tabindex="0">${repo}</div>`
+                ).join('');
+                
+                // Automatically load tags for the first repository.
+                const firstRepoItem = repoListContainer.querySelector('.repo-item');
+                if (!firstRepoItem) return;
+                firstRepoItem.classList.add('active');
+                loadTags(firstRepoItem.dataset.repo);
             })
             .catch(error => {
                 repoListContainer.innerHTML = `<div class="list-group-item text-danger">Error: ${error.message}</div>`;
@@ -119,6 +130,7 @@ window.pageInit = function() {
         const repoItem = e.target.closest('.repo-item');
         if (repoItem) {
             e.preventDefault();
+            if (repoItem.classList.contains('active')) return; // Do nothing if the item is already active.
             document.querySelectorAll('.repo-item.active').forEach(el => el.classList.remove('active'));
             repoItem.classList.add('active');
             loadTags(repoItem.dataset.repo);

@@ -207,6 +207,11 @@ require_once __DIR__ . '/../includes/header.php';
                 <i class="bi bi-info-circle-fill me-2"></i>
                 Webhook akan secara otomatis men-deploy ulang semua stack yang sumbernya adalah 'Git' dan cocok dengan branch yang dikonfigurasi di bawah "Git Integration".
             </div>
+            <div class="mb-3" style="max-width: 300px;">
+                <label for="webhook_cooldown_period" class="form-label">Cooldown Period (seconds)</label>
+                <input type="number" class="form-control" id="webhook_cooldown_period" name="webhook_cooldown_period" value="<?= (int)($settings['webhook_cooldown_period'] ?? 300) ?>" min="0">
+                <small class="form-text text-muted">Abaikan pemicu webhook berikutnya untuk stack yang sama dalam interval waktu ini. 300 detik = 5 menit.</small>
+            </div>
             <button type="button" class="btn btn-outline-warning" id="regenerate-webhook-token-btn">Regenerate Webhook Token</button>
         </div>
     </div>

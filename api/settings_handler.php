@@ -43,6 +43,7 @@ try {
         'auto_healing_enabled' => isset($_POST['auto_healing_enabled']) ? 1 : 0,
         'agent_log_levels' => implode(',', $_POST['agent_log_levels'] ?? []),
         'health_agent_image' => trim($_POST['health_agent_image'] ?? ''),
+        'webhook_cooldown_period' => (int)($_POST['webhook_cooldown_period'] ?? 300),
     ];
     $settings_to_update['notification_enabled'] = isset($_POST['notification_enabled']) ? 1 : 0;
     $settings_to_update['notification_server_url'] = trim($_POST['notification_server_url'] ?? '');

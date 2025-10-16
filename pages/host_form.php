@@ -148,6 +148,10 @@ require_once __DIR__ . '/../includes/header.php';
                     <label for="registry_password" class="form-label">Password / Access Token</label>
                     <input type="password" class="form-control" id="registry_password" name="registry_password" value="<?= htmlspecialchars($host['registry_password'] ?? '') ?>">
                 </div>
+                <div class="col-md-12">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="test-registry-connection-btn"><i class="bi bi-plug-fill"></i> Test Registry Connection</button>
+                    <div id="registry-test-result" class="mt-2 small"></div>
+                </div>
             </div>
 
             <hr>
@@ -218,6 +222,52 @@ require_once __DIR__ . '/../includes/header.php';
     tlsToggle.addEventListener('change', function() {
         tlsContainer.style.display = this.checked ? 'block' : 'none';
     });
+
+    // --- NEW: Test Registry Connection Logic ---
+    const testRegistryBtn = document.getElementById('test-registry-connection-btn');
+    if (testRegistryBtn) {
+        testRegistryBtn.addEventListener('click', function() {
+            const resultContainer = document.getElementById('registry-test-result');
+            const originalBtnText = this.innerHTML;
+            
+            let url = registrySelect.value;
+            if (url === 'other') {
+                url = otherUrlInput.value.trim();
+            }
+
+            const username = document.getElementById('registry_username').value.trim();
+            const password = document.getElementById('registry_password').value.trim();
+
+            if (!url) {
+                showToast('Please select or specify a Registry URL to test.', false);
+                return;
+            }
+
+            this.disabled = true;
+            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Testing...`;
+            resultContainer.innerHTML = '';
+
+            const formData = new FormData();
+            formData.append('registry_url', url);
+            formData.append('username', username);
+            formData.append('password', password);
+
+            fetch(`${basePath}/api/registry/test-connection`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json().then(data => ({ok: response.ok, data})))
+            .then(({ok, data}) => {
+                const alertClass = ok ? 'text-success' : 'text-danger';
+                const icon = ok ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+                resultContainer.innerHTML = `<div class="${alertClass}"><i class="bi ${icon} me-2"></i>${data.message}</div>`;
+            })
+            .finally(() => {
+                this.disabled = false;
+                this.innerHTML = originalBtnText;
+            });
+        });
+    }
 })();
 </script>
 

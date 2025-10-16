@@ -42,9 +42,8 @@ require_once __DIR__ . '/../includes/header.php';
                         <th class="sortable" data-sort="status">Status</th>
                         <th class="sortable" data-sort="uptime">Host Uptime</th>
                         <th>Docker API URL</th>
-                        <th>TLS</th>
+                        <th>Registry URL</th>
                         <th class="sortable" data-sort="agent_status">Agent Status</th>
-                        <th class="sortable" data-sort="cpu_reader_status">CPU Reader</th>
                         <th>Last Updated</th>
                         <th class="text-end">Actions</th>
                     </tr>

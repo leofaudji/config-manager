@@ -784,15 +784,13 @@ elseif ($type === 'hosts') {
         $html .= '<td>' . $connection_status_badge . '</td>';
         $html .= '<td>' . $uptime_status . '</td>';
         $html .= '<td><code>' . htmlspecialchars($host['docker_api_url']) . '</code></td>';
-        
-        $tls_badge = $host['tls_enabled'] 
-            ? '<span class="badge bg-success">Enabled</span>' 
-            : '<span class="badge bg-secondary">Disabled</span>';
-        $html .= '<td>' . $tls_badge . '</td>';
+
+        $registry_display = !empty($host['registry_url'])
+            ? '<code>' . htmlspecialchars($host['registry_url']) . '</code>'
+            : '<span class="text-muted">Not Configured</span>';
+        $html .= '<td>' . $registry_display . '</td>';
 
         $html .= '<td><span class="badge bg-' . $agent_badge_class . '" data-bs-toggle="tooltip" title="' . $agent_badge_title . '">' . $agent_status . '</span></td>';
-        $html .= '<td><span class="badge bg-' . $cpu_reader_badge_class . '" data-bs-toggle="tooltip" title="' . $cpu_reader_badge_title . '">' . $cpu_reader_status . '</span></td>';
-
         $html .= '<td>' . $host['updated_at'] . '</td>';
         $html .= '<td class="text-end">';
         if ($manager_status_text === 'Worker' || str_starts_with($manager_status_text, 'Worker for:')) {

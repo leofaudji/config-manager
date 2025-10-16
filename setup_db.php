@@ -55,6 +55,7 @@ CREATE TABLE `stack_change_log` (
   `stack_name` varchar(255) NOT NULL,
   `change_type` enum('created','updated','deleted') NOT NULL,
   `details` text DEFAULT NULL,
+  `duration_seconds` int(11) DEFAULT NULL,
   `changed_by` varchar(50) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
@@ -421,6 +422,8 @@ ADD COLUMN `deploy_placement_constraint` VARCHAR(50) NULL DEFAULT NULL COMMENT '
 ALTER TABLE `docker_hosts` ADD `swarm_status` VARCHAR(20) NULL DEFAULT 'unreachable' AFTER `description`;
 
 ALTER TABLE `docker_hosts` ADD `host_uptime_seconds` BIGINT NULL DEFAULT NULL COMMENT 'Host uptime in seconds, reported by the agent.' AFTER `swarm_status`;
+
+ALTER TABLE `application_stacks` ADD `last_webhook_triggered_at` DATETIME NULL DEFAULT NULL;
 
 
 ";
