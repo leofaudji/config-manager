@@ -113,6 +113,15 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
     <script>
         const basePath = '<?= BASE_PATH ?>';
     </script>
+
+    <!-- Global Libraries for SLA Report & other potential pages -->
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.autotable.min.js"></script>
+
 </head>
 <body class="">
 <div id="loading-bar" class="loading-bar"></div>
@@ -245,6 +254,15 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link" href="<?= base_url('/sla-report') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="SLA Report">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-clipboard-data icon-default"></i>
+                        <i class="bi bi-clipboard-data-fill icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">SLA Report</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/host-overview') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Host Overview">
                     <span class="icon-wrapper">
                         <i class="bi bi-display icon-default"></i>
@@ -253,15 +271,6 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <span class="nav-link-text">Host Overview</span>
                 </a>
             </li>
-        <li class="nav-item">
-            <a class="nav-link" href="<?= base_url('/host-overview-cards') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Host Overview (Card View)">
-                <span class="icon-wrapper">
-                    <i class="bi bi-grid-3x3-gap icon-default"></i>
-                    <i class="bi bi-grid-3x3-gap-fill icon-active"></i>
-                </span>
-                <span class="nav-link-text">Card View</span>
-            </a>
-        </li>
             <li class="nav-item">
                 <a class="nav-link" href="<?= base_url('/container-events') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Container Events">
                     <span class="icon-wrapper">

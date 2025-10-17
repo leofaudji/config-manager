@@ -159,6 +159,11 @@ require_once __DIR__ . '/../includes/header.php';
                             <input type="number" class="form-control" id="health_check_default_unhealthy_threshold" name="health_check_default_unhealthy_threshold" value="<?= (int)($settings['health_check_default_unhealthy_threshold'] ?? 3) ?>" min="1">
                             <small class="form-text text-muted">Number of consecutive failures to be marked as 'unhealthy'.</small>
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="minimum_sla_percentage" class="form-label">Minimum SLA Percentage</label>
+                            <input type="number" class="form-control" id="minimum_sla_percentage" name="minimum_sla_percentage" value="<?= htmlspecialchars($settings['minimum_sla_percentage'] ?? '99.9') ?>" min="0" max="100" step="0.01">
+                            <small class="form-text text-muted">Set the target SLA percentage for color-coding in reports.</small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -332,6 +337,11 @@ require_once __DIR__ . '/../includes/header.php';
                             <label for="cron_log_retention_days" class="form-label">Cron Log Retention Period (Days)</label>
                             <input type="number" class="form-control" id="cron_log_retention_days" name="cron_log_retention_days" value="<?= (int)($settings['cron_log_retention_days'] ?? 7) ?>" min="0">
                             <small class="form-text text-muted">Delete log entries inside cron log files that are older than this many days. Set to 0 to disable.</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="sla_history_cleanup_days" class="form-label">SLA History Cleanup After (Days)</label>
+                            <input type="number" class="form-control" id="sla_history_cleanup_days" name="sla_history_cleanup_days" value="<?= (int)($settings['sla_history_cleanup_days'] ?? 90) ?>" min="1">
+                            <small class="form-text text-muted">Automatically delete container health history (SLA data) older than this value.</small>
                         </div>
                     </div>
                 </div>

@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/DockerClient.php';
+require_once __DIR__ . '/../includes/reports/SlaReportGenerator.php';
 
 header('Content-Type: application/json');
 $conn = Database::getInstance()->getConnection();
@@ -78,6 +79,9 @@ try {
     $per_host_stats = [];
     $swarm_info = null;
 
+    // --- NEW: Initialize SLA Generator ---
+    $slaReportGenerator = new SlaReportGenerator($conn);
+
     foreach ($all_hosts as $host) {
         $host_stat = [
             'id' => $host['id'],
@@ -91,7 +95,10 @@ try {
             'docker_version' => 'N/A',
             'os' => 'N/A',
             'uptime' => 'N/A',
-            'uptime_timestamp' => 0
+            'uptime_timestamp' => 0,
+            // --- NEW: Add SLA fields ---
+            'sla_percentage' => 'N/A',
+            'sla_percentage_raw' => null,
         ];
 
         try {
@@ -112,6 +119,20 @@ try {
             $agg_stats['total_containers'] += $host_stat['total_containers'];
             $agg_stats['running_containers'] += $host_stat['running_containers'];
             $agg_stats['stopped_containers'] += ($host_stat['total_containers'] - $host_stat['running_containers']);
+
+            // --- NEW: Calculate SLA for the last 30 days ---
+            $sla_params = [
+                'host_id'      => $host['id'],
+                'container_id' => 'all', // For host summary
+                'start_date'   => date('Y-m-d 00:00:00', strtotime('-30 days')),
+                'end_date'     => date('Y-m-d 23:59:59'),
+                'dates'        => [date('Y-m-d', strtotime('-30 days')), date('Y-m-d')],
+            ];
+            $sla_data = $slaReportGenerator->getSlaData($sla_params);
+            if ($sla_data['report_type'] === 'host_summary') {
+                $host_stat['sla_percentage'] = $sla_data['overall_host_sla'];
+                $host_stat['sla_percentage_raw'] = $sla_data['overall_host_sla_raw'];
+            }
 
             // --- Swarm Info Logic ---
             if ($swarm_info === null && isset($info['Swarm']['LocalNodeState']) && $info['Swarm']['LocalNodeState'] !== 'inactive') {

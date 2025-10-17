@@ -47,7 +47,6 @@ $router->get('/health-status', 'pages/health_status.php', ['auth']);
 $router->get('/changelog', 'pages/changelog.php', ['auth']);
 $router->get('/host-overview', 'pages/host_overview.php', ['auth', 'admin']); // Rute baru
 $router->get('/central-logs', 'pages/central_log_viewer.php', ['auth', 'admin']); // Rute baru
-$router->get('/host-overview-cards', 'pages/host_overview_cards.php', ['auth', 'admin']); // Rute baru
 $router->get('/resource-hotspots', 'pages/resource_hotspots.php', ['auth', 'admin']); // Rute baru
 $router->get('/network-inspector', 'pages/network_inspector.php', ['auth', 'admin']); // Rute baru
 $router->get('/registry-browser', 'pages/registry_browser.php', ['auth', 'admin']); // Rute baru
@@ -150,6 +149,10 @@ $router->post('/api/webhook/deploy', 'api/webhook_handler.php'); // No auth midd
 $router->post('/api/webhook/regenerate-token', 'api/webhook_token_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/logs', 'api/container_log_handler.php', ['auth', 'admin']);
 $router->post('/api/health-report', 'api/health_report_handler.php'); // For health agent callbacks
+$router->get('/api/containers/list', 'api/container_list_handler.php', ['auth', 'admin']); // New endpoint for SLA report dropdown
+$router->get('/api/sla-report', 'api/sla_report_handler.php', ['auth', 'admin']);
+$router->post('/api/pdf', 'api/pdf.php', ['auth', 'admin']); // New PDF export endpoint
+$router->post('/api/csv', 'api/csv.php', ['auth', 'admin']); // New CSV export endpoint
 $router->get('/api/status/config-dirty', 'api/status_handler.php', ['auth']);
 $router->post('/api/log/ingest', 'api/log_ingest_handler.php'); // For receiving logs from agents
 $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin']);
@@ -158,6 +161,7 @@ $router->post('/api/routers/bulk-move', 'api/router_bulk_handler.php', ['auth', 
 $router->post('/api/routers/bulk-delete', 'api/router_bulk_handler.php', ['auth', 'admin']);
 $router->get('/api/services/status', 'actions/get_service_status.php', ['auth']);
 $router->get('/api/services/{id}/details', 'api/service_detail_handler.php', ['auth', 'admin']);
+$router->get('/sla-report', 'pages/sla_report.php', ['auth', 'admin']);
 
 
 $router->post('/users/new', 'api/user_handler.php', ['auth', 'admin']);

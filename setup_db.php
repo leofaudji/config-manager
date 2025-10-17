@@ -47,7 +47,7 @@ $default_password_hash = password_hash('password', PASSWORD_DEFAULT);
 $webhook_token = bin2hex(random_bytes(32)); // Generate a secure random token
 
 $sql = "
-DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `container_health_status`, `service_health_status`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`,`traefik_hosts`, `container_stats`;
+DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `container_health_status`, `service_health_status`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`,`traefik_hosts`, `container_stats`,`container_health_history`;
 
 CREATE TABLE `stack_change_log` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -422,6 +422,19 @@ ALTER TABLE `application_stacks` ADD `last_webhook_triggered_at` DATETIME NULL D
 ALTER TABLE `config_history`
 ADD COLUMN `group_id` INT(11) NULL DEFAULT NULL AFTER `status`,
 ADD CONSTRAINT `fk_config_history_group` FOREIGN KEY (`group_id`) REFERENCES `groups`(`id`) ON DELETE SET NULL;
+
+CREATE TABLE `container_health_history` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `host_id` INT NOT NULL,
+  `container_id` VARCHAR(255) NOT NULL,
+  `container_name` VARCHAR(255) NOT NULL,
+  `status` VARCHAR(20) NOT NULL COMMENT 'e.g., healthy, unhealthy, unknown, stopped',
+  `start_time` DATETIME NOT NULL,
+  `end_time` DATETIME NULL,
+  `duration_seconds` INT NULL,
+  INDEX `idx_host_container_start` (`host_id`, `container_id`, `start_time`),
+  FOREIGN KEY (`host_id`) REFERENCES `docker_hosts`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
 ";

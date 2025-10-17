@@ -34,6 +34,7 @@ try {
         'container_stats_cleanup_days' => (int)($_POST['container_stats_cleanup_days'] ?? 1),
         'cron_log_retention_days' => (int)($_POST['cron_log_retention_days'] ?? 7),
         'log_cleanup_days' => (int)($_POST['log_cleanup_days'] ?? 7),
+        'sla_history_cleanup_days' => (int)($_POST['sla_history_cleanup_days'] ?? 90),
         'git_integration_enabled' => isset($_POST['git_integration_enabled']) ? 1 : 0, // Handles unchecked case
         'health_check_default_healthy_threshold' => (int)($_POST['health_check_default_healthy_threshold'] ?? 2),
         'health_check_default_unhealthy_threshold' => (int)($_POST['health_check_default_unhealthy_threshold'] ?? 3),
@@ -43,6 +44,7 @@ try {
         'agent_log_levels' => implode(',', $_POST['agent_log_levels'] ?? []),
         'health_agent_image' => trim($_POST['health_agent_image'] ?? ''),
         'webhook_cooldown_period' => (int)($_POST['webhook_cooldown_period'] ?? 300),
+        'minimum_sla_percentage' => (float)($_POST['minimum_sla_percentage'] ?? 99.9),
     ];
     $settings_to_update['auto_deploy_enabled'] = isset($_POST['auto_deploy_enabled']) ? 1 : 0;
     $settings_to_update['notification_enabled'] = isset($_POST['notification_enabled']) ? 1 : 0;

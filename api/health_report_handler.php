@@ -44,6 +44,25 @@ try {
         $stmt_host->close();
     }
 
+    // --- [SLA LOGIC - REFACTORED] Get the last recorded history status for all containers on this host in one query ---
+    // This is more efficient than querying inside the loop.
+    $stmt_get_last_histories = $conn->prepare("
+        SELECT h.container_id, h.status
+        FROM container_health_history h
+        INNER JOIN (
+            SELECT container_id, MAX(id) as max_id
+            FROM container_health_history
+            WHERE host_id = ?
+            GROUP BY container_id
+        ) hm ON h.id = hm.max_id
+    ");
+    $stmt_get_last_histories->bind_param("i", $host_id);
+    $stmt_get_last_histories->execute();
+    $last_history_statuses = $stmt_get_last_histories->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt_get_last_histories->close();
+    // Convert to a more accessible map: [container_id => status]
+    $last_history_status_map = array_column($last_history_statuses, 'status', 'container_id');
+
     // --- Prepare statement for updating container health ---
     $stmt_update = $conn->prepare(
         "INSERT INTO container_health_status (container_id, host_id, container_name, status, consecutive_failures, consecutive_successes, last_checked_at, last_log)
@@ -57,6 +76,17 @@ try {
             host_id = VALUES(host_id),
             last_log = VALUES(last_log)"
     );
+    
+    // --- [SLA LOGIC] Prepare statements for history logging ---
+    $stmt_update_history = $conn->prepare(
+        "UPDATE container_health_history SET end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW()) 
+         WHERE container_id = ? AND host_id = ? AND end_time IS NULL"
+    );
+
+    $stmt_insert_history = $conn->prepare(
+        "INSERT INTO container_health_history (host_id, container_id, container_name, status, start_time) VALUES (?, ?, ?, ?, NOW())"
+    );
+
 
     // Get global thresholds from settings
     $healthy_threshold = (int)get_setting('health_check_default_healthy_threshold', 2);
@@ -91,6 +121,24 @@ try {
             $new_status = 'unknown';
         }
 
+        // --- [SLA LOGIC - REFACTORED] ---
+        // Only create a history record if the new status is definitive (not 'unknown')
+        // and it's different from the last recorded definitive status from our pre-fetched map.
+        if ($new_status !== 'unknown') {
+            $last_history_status = $last_history_status_map[$report['container_id']] ?? 'nonexistent';
+
+            if ($new_status !== $last_history_status) {
+                // A real, definitive status change has occurred.
+                // 1. Close the previous status event in history.
+                $stmt_update_history->bind_param("si", $report['container_id'], $host_id);
+                $stmt_update_history->execute();
+                // 2. Open a new status event in history for the new definitive state.
+                $stmt_insert_history->bind_param("isss", $host_id, $report['container_id'], $report['container_name'], $new_status);
+                $stmt_insert_history->execute();
+            }
+        }
+
+
         $stmt_update->bind_param(
             "sissiis",
             $report['container_id'],
@@ -104,6 +152,8 @@ try {
         $stmt_update->execute();
     }
     $stmt_update->close();
+    $stmt_update_history->close();
+    $stmt_insert_history->close();
 
     // --- NEW: Insert container stats ---
     if (!empty($container_stats)) {
@@ -154,11 +204,40 @@ try {
         $placeholders = implode(',', array_fill(0, count($running_container_ids), '?'));
         $types = str_repeat('s', count($running_container_ids));
 
+        // --- [SLA LOGIC] Find which containers are actually being removed ---
+        $stmt_get_stale = $conn->prepare("SELECT container_id, container_name FROM container_health_status WHERE host_id = ? AND container_id NOT IN ({$placeholders})");
+        $stmt_get_stale->bind_param("i" . $types, $host_id, ...$running_container_ids);
+        $stmt_get_stale->execute();
+        $stale_containers = $stmt_get_stale->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt_get_stale->close();
+
+        // --- [SLA LOGIC] For each stale container, close its history record ---
+        $stmt_close_stale_history = $conn->prepare(
+            "UPDATE container_health_history SET end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW()) 
+             WHERE container_id = ? AND host_id = ? AND end_time IS NULL"
+        );
+        // --- [SLA LOGIC] Prepare statement to insert a 'stopped' record ---
+        $stmt_insert_stopped_history = $conn->prepare(
+            "INSERT INTO container_health_history (host_id, container_id, container_name, status, start_time) VALUES (?, ?, ?, 'stopped', NOW())"
+        );
+
+        foreach ($stale_containers as $stale_container) {
+            // 1. Close the last known status (e.g., 'healthy', 'unhealthy') for the container that is now stopped.
+            $stmt_close_stale_history->bind_param("si", $stale_container['container_id'], $host_id);
+            $stmt_close_stale_history->execute();
+
+            // 2. Create a new history record with the status 'stopped'.
+            $stmt_insert_stopped_history->bind_param("iss", $host_id, $stale_container['container_id'], $stale_container['container_name']);
+            $stmt_insert_stopped_history->execute();
+        }
+        $stmt_close_stale_history->close();
+        $stmt_insert_stopped_history->close();
+
         // The query deletes records for this host that are NOT in the list of running containers.
         $sql_delete = "DELETE FROM container_health_status WHERE host_id = ? AND container_id NOT IN ({$placeholders})";
         
         $stmt_delete = $conn->prepare($sql_delete);
-        $stmt_delete->bind_param("i" . $types, $host_id, ...$running_container_ids);
+        $stmt_delete->bind_param("i" . $types, $host_id, ...$running_container_ids); // NOSONAR
         $stmt_delete->execute();
         $deleted_count = $stmt_delete->affected_rows;
         $stmt_delete->close();

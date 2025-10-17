@@ -59,6 +59,19 @@ try {
         $stmt_container_stats->close();
         echo "SUKSES: {$deleted_container_stats} entri statistik kontainer dihapus.\n";
     }
+
+    // --- 5. Cleanup Container Health History (SLA data) ---
+    $sla_history_cleanup_days = (int)get_setting('sla_history_cleanup_days', 90);
+    if ($sla_history_cleanup_days > 0) {
+        echo "INFO: Menghapus riwayat kesehatan kontainer (SLA) lebih dari {$sla_history_cleanup_days} hari...\n";
+        $stmt_sla_history = $conn->prepare("DELETE FROM container_health_history WHERE start_time < NOW() - INTERVAL ? DAY");
+        $stmt_sla_history->bind_param("i", $sla_history_cleanup_days);
+        $stmt_sla_history->execute();
+        $deleted_sla_history = $stmt_sla_history->affected_rows;
+        $stmt_sla_history->close();
+        echo "SUKSES: {$deleted_sla_history} entri riwayat kesehatan kontainer dihapus.\n";
+    }
+
     // --- 5. Cleanup Cron Job Log File Entries ---
     $cron_log_retention_days = (int)get_setting('cron_log_retention_days', 7);
     if ($cron_log_retention_days > 0) {
