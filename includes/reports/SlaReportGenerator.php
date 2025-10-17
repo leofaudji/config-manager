@@ -75,29 +75,38 @@ class SlaReportGenerator
             $host_name = $stmt_host->get_result()->fetch_assoc()['name'] ?? 'Unknown Host';
             $stmt_host->close();
 
-            // Variables for overall host SLA calculation
-            $overall_total_downtime = 0;
-            $total_container_periods = 0;
-
-            $summary_data = $this->getSummaryData($params, $total_seconds_in_period, $downtime_statuses, $placeholders, $types);
+            // --- REFACTORED FOR SERVICE-LEVEL SLA ---
+            // The logic now treats each group of containers as a single "service".
+            $summary_data = $this->getServiceSummaryData($params, $total_seconds_in_period, $downtime_statuses);
             $container_slas = [];
+            $overall_total_downtime = 0;
+            $total_service_periods = 0;
             foreach ($summary_data as $row) {
-                $container_slas[] = [ 
+                $container_slas[] = [
                     'container_name' => $row[0],
                     'sla_percentage' => str_replace('%', '', $row[1]),
-                    'sla_percentage_raw' => (float)$row[1],
+                    'sla_percentage_raw' => (float)str_replace('%', '', $row[1]),
                     'total_downtime_human' => $row[2],
                     'downtime_incidents' => $row[3],
+                    'total_downtime_seconds' => $row[4], // Keep raw seconds for sorting
                 ];
-                $overall_total_downtime += $row[4]; // Index 4 holds raw downtime seconds
-                $total_container_periods += $total_seconds_in_period;
+                $overall_total_downtime += $row[4];
+                $total_service_periods += $total_seconds_in_period;
             }
+
+            // Sort by downtime descending, then by container name ascending
+            usort($container_slas, function ($a, $b) {
+                if ($a['total_downtime_seconds'] !== $b['total_downtime_seconds']) {
+                    return $b['total_downtime_seconds'] <=> $a['total_downtime_seconds']; // Descending
+                }
+                return $a['container_name'] <=> $b['container_name']; // Ascending
+            });
 
             // Calculate overall host SLA
             $overall_host_sla_raw = 100;
-            if ($total_container_periods > 0) {
-                $overall_uptime_seconds = $total_container_periods - $overall_total_downtime;
-                $overall_host_sla_raw = ($overall_uptime_seconds / $total_container_periods) * 100;
+            if ($total_service_periods > 0) {
+                $overall_uptime_seconds = $total_service_periods - $overall_total_downtime;
+                $overall_host_sla_raw = ($overall_uptime_seconds / $total_service_periods) * 100;
             }
 
             return [
@@ -218,6 +227,71 @@ class SlaReportGenerator
             $summary_data[] = [$this->getCleanContainerName($container['container_name']), number_format($sla_percentage, 2) . '%', $this->formatDuration($total_downtime_seconds), count($downtime_events), $total_downtime_seconds];
         }
         $stmt_downtime->close();
+        return $summary_data;
+    }
+
+    private function getServiceSummaryData(array $params, int $total_seconds_in_period, array $downtime_statuses): array
+    {
+        // 1. Get all containers on the host within the period
+        $stmt_containers = $this->conn->prepare("SELECT DISTINCT container_id, container_name FROM container_health_history WHERE host_id = ? AND start_time <= ? AND (end_time >= ? OR end_time IS NULL)");
+        $stmt_containers->bind_param("iss", $params['host_id'], $params['end_date'], $params['start_date']);
+        $stmt_containers->execute();
+        $containers = $stmt_containers->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt_containers->close();
+
+        // 2. Group containers by service name (e.g., 'stack_webapp.1.xyz' and 'stack_webapp.2.abc' both belong to 'stack_webapp')
+        $services = [];
+        foreach ($containers as $container) {
+            $service_name = preg_replace('/(\.\d+)\..*$/', '', $container['container_name']);
+            $services[$service_name][] = $container['container_id'];
+        }
+
+        $summary_data = [];
+        $placeholders = implode(',', array_fill(0, count($downtime_statuses), '?'));
+
+        foreach ($services as $service_name => $container_ids) {
+            // 3. Fetch all downtime events for all containers in this service
+            $container_placeholders = implode(',', array_fill(0, count($container_ids), '?'));
+            $sql_downtime = "SELECT start_time, end_time FROM container_health_history WHERE host_id = ? AND container_id IN ({$container_placeholders}) AND status IN ({$placeholders}) AND start_time <= ? AND (end_time >= ? OR end_time IS NULL)";
+            
+            $sql_params = array_merge([$params['host_id']], $container_ids, $downtime_statuses, [$params['end_date'], $params['start_date']]);
+            $types = 'i' . str_repeat('s', count($container_ids)) . str_repeat('s', count($downtime_statuses)) . 'ss';
+
+            $stmt_downtime = $this->conn->prepare($sql_downtime);
+            $stmt_downtime->bind_param($types, ...$sql_params);
+            $stmt_downtime->execute();
+            $downtime_events = $stmt_downtime->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt_downtime->close();
+
+            if (empty($downtime_events)) {
+                $summary_data[] = [$this->getCleanContainerName($service_name), '100.00', '0s', 0, 0];
+                continue;
+            }
+
+            // 4. Merge overlapping intervals
+            $intervals = array_map(fn($e) => [strtotime($e['start_time']), $e['end_time'] ? strtotime($e['end_time']) : strtotime($params['end_date'])], $downtime_events);
+            sort($intervals); // Sort by start time
+
+            $merged = [$intervals[0]];
+            for ($i = 1; $i < count($intervals); $i++) {
+                $last_merged = &$merged[count($merged) - 1];
+                if ($intervals[$i][0] <= $last_merged[1]) { // Overlap detected
+                    $last_merged[1] = max($last_merged[1], $intervals[$i][1]);
+                } else {
+                    $merged[] = $intervals[$i];
+                }
+            }
+
+            // 5. Calculate total downtime from merged intervals, clamped to the report period
+            $total_downtime_seconds = 0;
+            foreach ($merged as $interval) {
+                $total_downtime_seconds += max(0, min($interval[1], strtotime($params['end_date'])) - max($interval[0], strtotime($params['start_date'])));
+            }
+
+            $uptime_seconds = $total_seconds_in_period - $total_downtime_seconds;
+            $sla_percentage = ($total_seconds_in_period > 0) ? ($uptime_seconds / $total_seconds_in_period) * 100 : 100;
+            $summary_data[] = [$this->getCleanContainerName($service_name), number_format($sla_percentage, 2), $this->formatDuration($total_downtime_seconds), count($merged), $total_downtime_seconds];
+        }
         return $summary_data;
     }
 

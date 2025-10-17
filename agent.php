@@ -311,9 +311,10 @@ function run_check_cycle() {
                 $errorMsg = $details['State']['Error'] ?? '';
 
                 // If container was stopped manually (usually ExitCode 0) and not by an error, skip it.
-                if ($exitCode === 0 && empty($errorMsg)) {
-                    log_message("    - Container '{$container_name}' is stopped (manual). Skipping health check.");
-                    continue;
+                if ($exitCode === 0 && empty($errorMsg)) { 
+                    $health_reports[] = ['container_id' => $container_id, 'container_name' => $container_name, 'is_healthy' => 'stopped', 'log_message' => "Container was stopped manually."];
+                    log_message("    - Container '{$container_name}' is stopped (manual). Reporting as 'stopped'.");
+                    continue; 
                 }
 
                 // If it's not running and has an error, it's unhealthy.

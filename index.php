@@ -154,6 +154,8 @@ $router->get('/api/sla-report', 'api/sla_report_handler.php', ['auth', 'admin'])
 $router->post('/api/pdf', 'api/pdf.php', ['auth', 'admin']); // New PDF export endpoint
 $router->post('/api/csv', 'api/csv.php', ['auth', 'admin']); // New CSV export endpoint
 $router->get('/api/status/config-dirty', 'api/status_handler.php', ['auth']);
+$router->get('/api/sla-alert-status', 'api/sla_alert_status.php', ['auth']); // New endpoint for SLA alerts
+$router->get('/api/unhealthy-status', 'api/unhealthy_status.php', ['auth']); // New endpoint for unhealthy alerts
 $router->post('/api/log/ingest', 'api/log_ingest_handler.php'); // For receiving logs from agents
 $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin']);
 $router->post('/api/notifications/agent-relay', 'api/notification_relay_handler.php'); // New endpoint for agent notifications

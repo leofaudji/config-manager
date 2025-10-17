@@ -773,31 +773,6 @@ function initializePageSpecificScripts() {
     // Initial check on page load to disable if not collapsed
     manageSidebarTooltips();
 
-    // --- Live Clock in Navbar ---
-    const clockElement = document.getElementById('live-clock');
-    if (clockElement && !clockElement.dataset.initialized) {
-        clockElement.dataset.initialized = 'true'; // Prevent multiple intervals
-        const updateClock = () => {
-            const now = new Date();
-
-            // --- NEW: Custom date and time formatting ---
-            const day = now.getDate().toString().padStart(2, '0');
-            const month = now.toLocaleString('id-ID', { month: 'long' });
-            const year = now.getFullYear();
-
-            const timeString = now.toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            }).replace(/\./g, ':'); // Ensure colons are used
-
-            clockElement.textContent = `${day} ${month} ${year} ${timeString} WIB`;
-        };
-        updateClock(); // Initial call
-        setInterval(updateClock, 1000); // Update every second
-    }
-
     // --- Dashboard Widgets Logic ---
     function loadDashboardWidgets() {
         //const basePath = window.basePath || ''; // Ensure basePath is available in this scope
@@ -813,14 +788,6 @@ function initializePageSpecificScripts() {
         ];
 
         // Check if we are on the dashboard page by looking for one of the widgets
-        if (!document.getElementById(widgets[0])) {
-            // Before returning, check for the sync button and run the git status check
-            // This handles pages that are not the dashboard but have the header with the sync button.
-            if (document.getElementById('sync-stacks-btn')) {
-                checkGitSyncStatus();
-            }
-            return;
-        }
 
         // If on dashboard, also run the git status check
         checkGitSyncStatus();
@@ -2046,13 +2013,17 @@ function checkTraefikConfigStatus() {
     const deployBtn = document.getElementById('deploy-notification-btn');
     if (!deployBtn) return;
 
-    fetch(`${basePath}/api/status/config-dirty`)
+    // Pass the current auto_deploy setting to the API
+    const autoDeployEnabled = document.querySelector('input[name="auto_deploy_enabled"]:checked') ? '1' : '0';
+    fetch(`${basePath}/api/status/config-dirty?auto_deploy=${autoDeployEnabled}`)
         .then(response => response.json())
         .then(result => {
             if (result.status === 'success' && result.dirty) {
-                deployBtn.style.display = 'inline-block';
+                deployBtn.style.display = 'flex';
+                deployBtn.classList.add('btn-pulse'); // Add pulse animation
             } else {
                 deployBtn.style.display = 'none';
+                deployBtn.classList.remove('btn-pulse'); // Remove pulse animation
             }
         })
         .catch(error => {
@@ -2148,4 +2119,94 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         });
     }
+
+    // --- NEW: SLA Alert Check ---
+    function checkSlaAlertStatus() {
+        const slaAlertBtn = document.getElementById('sla-alert-btn');
+        const slaAlertBadge = document.getElementById('sla-alert-badge');
+        const slaAlertItemsContainer = document.getElementById('sla-alert-items-container');
+
+        if (!slaAlertBtn || !slaAlertBadge || !slaAlertItemsContainer) return;
+
+        fetch(`${basePath}/api/sla-alert-status`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success' && result.count > 0) {
+                    slaAlertBtn.style.display = 'flex';
+                    slaAlertBtn.classList.add('btn-pulse');
+                    slaAlertBadge.textContent = result.count;
+
+                    let itemsHtml = '';
+                    result.alerts.forEach(alert => {
+                        itemsHtml += `
+                            <li>
+                                <a class="dropdown-item d-flex justify-content-between align-items-start" href="${alert.link}" title="SLA for ${alert.name} is ${alert.sla}%">
+                                    <div>
+                                        <strong class="d-block">${alert.name}</strong>
+                                        <small class="text-muted">
+                                            <i class="bi bi-hdd-network-fill"></i> ${alert.host_name} 
+                                            <span class="badge ${alert.architecture === 'Swarm' ? 'bg-primary' : 'bg-success'}">${alert.architecture}</span>
+                                       </small>
+                                    </div>
+                                    <span class="badge bg-danger rounded-pill">${alert.sla}</span>
+                                </a>
+                            </li>
+                        `;
+                    });
+                    slaAlertItemsContainer.innerHTML = itemsHtml;
+
+                } else {
+                    slaAlertBtn.style.display = 'flex';
+                    slaAlertBtn.classList.remove('btn-pulse');
+                }
+            })
+            .catch(error => console.error('Error checking SLA alert status:', error));
+    }
+    checkSlaAlertStatus();
+    setInterval(checkSlaAlertStatus, 60000); // Check every 60 seconds
+
+    // --- NEW: Unhealthy Items Alert Check ---
+    function checkUnhealthyStatus() {
+        const unhealthyAlertBtn = document.getElementById('unhealthy-alert-btn');
+        const unhealthyAlertBadge = document.getElementById('unhealthy-alert-badge');
+        const unhealthyAlertItemsContainer = document.getElementById('unhealthy-alert-items-container');
+
+        if (!unhealthyAlertBtn) return;
+
+        fetch(`${basePath}/api/unhealthy-status`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success' && result.count > 0) {
+                    unhealthyAlertBtn.classList.add('btn-pulse');
+                    unhealthyAlertBtn.style.display = 'flex'; // Use flex to align icon
+                    unhealthyAlertBadge.textContent = result.count;
+
+                    let itemsHtml = '';
+                    result.alerts.forEach(alert => {
+                        itemsHtml += `
+                            <li>
+                                <a class="dropdown-item d-flex justify-content-between align-items-start" href="${alert.link}">
+                                    <div>
+                                        <strong class="d-block text-danger">${alert.name}</strong>
+                                        <small class="text-muted">
+                                            <i class="bi bi-hdd-network-fill"></i> ${alert.location}
+                                        </small>
+                                    </div>
+                                    <span class="badge bg-secondary rounded-pill">${alert.type}</span>
+                                </a>
+                            </li>
+                        `;
+                    });
+                    unhealthyAlertItemsContainer.innerHTML = itemsHtml;
+                } else {
+                    unhealthyAlertBtn.style.display = 'flex'; // Keep button visible
+                    unhealthyAlertBtn.classList.remove('btn-pulse');
+                    unhealthyAlertBadge.style.display = 'none'; // Hide badge
+                }
+            })
+            .catch(error => console.error('Error checking unhealthy status:', error));
+    }
+    checkUnhealthyStatus();
+    setInterval(checkUnhealthyStatus, 30000); // Check every 15 seconds
+
 });

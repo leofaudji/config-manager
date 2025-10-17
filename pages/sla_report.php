@@ -252,8 +252,12 @@ window.pageInit = function() {
                 if (result.status === 'success' && Array.isArray(result.data)) { // NOSONAR
                     let optionsHtml = '<option value="all" selected>-- All Containers (Summary) --</option>';
                     optionsHtml += '<option disabled>-----------------</option>';
-                    result.data.forEach(container => {
-                        optionsHtml += `<option value="${container.Id}">${escapeHtml(container.Names[0].substring(1))}</option>`;
+                    result.data.forEach(item => {
+                        // Add a prefix to distinguish services from containers in the UI
+                        const prefix = item.Type === 'service' ? '[S] ' : '[C] ';
+                        optionsHtml += `<option value="${item.Id}" data-type="${item.Type}">
+                                            ${prefix}${escapeHtml(item.Name)}
+                                        </option>`;
                     });
                     containerSelect.innerHTML = optionsHtml;
 

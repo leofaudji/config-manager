@@ -58,7 +58,13 @@ class PDF extends FPDF
     {
         $this->SetY(-15);
         $this->SetFont('Arial', 'I', 8);
-        $this->Cell(0, 10, 'Page ' . $this->PageNo() . '/{nb}', 0, 0, 'C');
+        // Get username from session
+        $printed_by = $_SESSION['username'] ?? 'system';
+        // Format: Printed by: admin on 2023-10-30 15:30:00 | Page 1/{nb}
+        $left_text = 'Printed by: ' . $printed_by . ' on ' . date('Y-m-d H:i:s');
+        $right_text = 'Page ' . $this->PageNo() . '/{nb}';
+        $this->Cell(0, 10, $left_text, 0, 0, 'L');
+        $this->Cell(0, 10, $right_text, 0, 0, 'R');
     }
 
     // Colored table
@@ -67,7 +73,7 @@ class PDF extends FPDF
         $this->SetFillColor(23, 162, 184); // Bootstrap Info color
         $this->SetTextColor(255);
         $this->SetDrawColor(128, 0, 0);
-        $this->SetLineWidth(.3);
+        $this->SetLineWidth(.3); 
         $this->SetFont('', 'B');
         for ($i = 0; $i < count($header); $i++)
             $this->Cell($widths[$i], 7, $header[$i], 1, 0, 'C', true);
@@ -80,7 +86,7 @@ class PDF extends FPDF
         $fill = false;
         foreach ($data as $row) {
             for ($i = 0; $i < count($row); $i++) {
-                $this->Cell($widths[$i], 6, $row[$i], 'LR', 0, $aligns[$i] ?? 'L', $fill);
+                $this->Cell($widths[$i], 7, $row[$i], 'LR', 0, $aligns[$i] ?? 'L', $fill);
             }
             $this->Ln();
             $fill = !$fill;

@@ -116,7 +116,9 @@ try {
             $failures++; $successes = 0;
             if ($failures >= $unhealthy_threshold) $new_status = 'unhealthy';
         } elseif ($report['is_healthy'] === 'starting') { // Check is in progress
-            $new_status = 'starting'; // Explicitly set status to 'starting', counters are not reset
+            $new_status = 'starting';
+        } elseif ($report['is_healthy'] === 'stopped') { // NEW: Container was manually stopped
+            $new_status = 'stopped';
         } else { // is_healthy is null (unknown)
             $new_status = 'unknown';
         }
@@ -124,7 +126,7 @@ try {
         // --- [SLA LOGIC - REFACTORED] ---
         // Only create a history record if the new status is definitive (not 'unknown')
         // and it's different from the last recorded definitive status from our pre-fetched map.
-        if ($new_status !== 'unknown') {
+        if ($new_status !== 'unknown' && $new_status !== 'starting') {
             $last_history_status = $last_history_status_map[$report['container_id']] ?? 'nonexistent';
 
             if ($new_status !== $last_history_status) {
@@ -210,28 +212,8 @@ try {
         $stmt_get_stale->execute();
         $stale_containers = $stmt_get_stale->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt_get_stale->close();
-
-        // --- [SLA LOGIC] For each stale container, close its history record ---
-        $stmt_close_stale_history = $conn->prepare(
-            "UPDATE container_health_history SET end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW()) 
-             WHERE container_id = ? AND host_id = ? AND end_time IS NULL"
-        );
-        // --- [SLA LOGIC] Prepare statement to insert a 'stopped' record ---
-        $stmt_insert_stopped_history = $conn->prepare(
-            "INSERT INTO container_health_history (host_id, container_id, container_name, status, start_time) VALUES (?, ?, ?, 'stopped', NOW())"
-        );
-
-        foreach ($stale_containers as $stale_container) {
-            // 1. Close the last known status (e.g., 'healthy', 'unhealthy') for the container that is now stopped.
-            $stmt_close_stale_history->bind_param("si", $stale_container['container_id'], $host_id);
-            $stmt_close_stale_history->execute();
-
-            // 2. Create a new history record with the status 'stopped'.
-            $stmt_insert_stopped_history->bind_param("iss", $host_id, $stale_container['container_id'], $stale_container['container_name']);
-            $stmt_insert_stopped_history->execute();
-        }
-        $stmt_close_stale_history->close();
-        $stmt_insert_stopped_history->close();
+        // The logic for creating 'stopped' records is now handled by the agent reporting 'stopped' status.
+        // We only need to delete the status from the current health status table.
 
         // The query deletes records for this host that are NOT in the list of running containers.
         $sql_delete = "DELETE FROM container_health_status WHERE host_id = ? AND container_id NOT IN ({$placeholders})";
@@ -242,7 +224,7 @@ try {
         $deleted_count = $stmt_delete->affected_rows;
         $stmt_delete->close();
 
-        log_activity('SYSTEM', 'DB Cleanup', "Removed {$deleted_count} stale container record(s) for host ID {$host_id}.");
+        //log_activity('SYSTEM', 'DB Cleanup', "Removed {$deleted_count} stale container record(s) for host ID {$host_id}.");
     }
 
     $conn->commit();

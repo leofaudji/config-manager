@@ -109,6 +109,16 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 opacity: 0.2;
             }
         }
+
+        .btn-pulse {
+            animation: pulse-animation 1.5s infinite;
+        }
+
+        @keyframes pulse-animation {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
     </style>
     <script>
         const basePath = '<?= BASE_PATH ?>';
@@ -383,25 +393,69 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
         </button>
         <div class="d-flex align-items-center">
             <?php if ($_SESSION['role'] === 'admin'): ?>
-             <button type="button" class="btn btn-dark me-2 position-relative" id="sync-stacks-btn">
-                <i class="bi bi-git"></i> Sync Stacks to Git
+             <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="sync-stacks-btn" title="Sync Stacks to Git" style="width: 44px; height: 44px;">
+                <i class="bi bi-git fs-4"></i>
                 <span id="sync-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;">
-                    0
+                    
                     <span class="visually-hidden">pending changes</span>
                 </span>
             </button>
-             <a href="<?= base_url('/groups') ?>" id="deploy-notification-btn" class="btn btn-warning me-2" style="display: none;">
-                <span class="blinking-badge-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
-                 Deploy Changes
-             </a>
+            <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="unhealthy-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Unhealthy Items Alert">
+                <i class="bi bi-heartbreak-fill text-danger fs-4"></i>
+                <span id="unhealthy-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-dark">
+                    
+                    <span class="visually-hidden">Unhealthy items</span>
+                </span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="unhealthy-alert-btn" id="unhealthy-alert-dropdown">
+                <li><h6 class="dropdown-header">Unhealthy Services / Containers</h6></li>
+                <li><hr class="dropdown-divider"></li>
+                <div id="unhealthy-alert-items-container" style="max-height: 400px; overflow-y: auto;">
+                    <!-- Alert items will be injected here -->
+                </div>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-center" href="<?= base_url('/health-status') ?>">View Health Status</a></li>
+            </ul>
+            <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="sla-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="SLA Violation Alert">
+                <i class="bi bi-shield-exclamation text-warning fs-4"></i>
+                <span id="sla-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    
+                    <span class="visually-hidden">SLA violations</span>
+                </span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="sla-alert-btn" id="sla-alert-dropdown">
+                <li><h6 class="dropdown-header">Items Below Minimum SLA Target</h6></li>
+                <li><hr class="dropdown-divider"></li>
+                <div id="sla-alert-items-container" style="max-height: 400px; overflow-y: auto;">
+                    <!-- Alert items will be injected here -->
+                </div>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-center" href="<?= base_url('/sla-report') ?>">View Full Report</a></li>
+            </ul>
+            <a href="<?= base_url('/groups') ?>" id="deploy-notification-btn" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" style="display: none; width: 44px; height: 44px;" title="Pending Changes to Deploy">
+                <i class="bi bi-cloud-upload-fill text-primary fs-4"></i>
+            </a>
             <?php endif; ?>
-            <div id="live-clock" class="text-muted small me-3 ms-auto fw-bold">
-                <!-- Clock will be inserted here by JavaScript -->
-            </div>
-            <div class="nav-item dropdown ms-3">
-                <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-person-circle"></i> <?= htmlspecialchars($_SESSION['username']) ?></a>
-                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
-                    <li><a class="dropdown-item" href="<?= base_url('/my-profile/change-password') ?>"><i class="bi bi-key-fill me-2"></i>Change My Password</a></li>
+            <div class="nav-item dropdown">
+                <a href="#" class="btn btn-light rounded-circle d-flex align-items-center justify-content-center" id="appMenuDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Menu" style="width: 44px; height: 44px;">
+                    <i class="bi bi-grid-3x3-gap-fill fs-4"></i>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="appMenuDropdown" style="min-width: 280px;">
+                    <li><h6 class="dropdown-header">Hi, <?= htmlspecialchars($_SESSION['username']) ?>!</h6></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/my-profile/change-password') ?>"><i class="bi bi-key-fill me-2 text-muted"></i>Change Password</a></li>
+                    <li><hr class="dropdown-divider"></li>
+
+                    <li><h6 class="dropdown-header">Quick Actions</h6></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/app-launcher') ?>"><i class="bi bi-rocket-launch-fill me-2 text-muted"></i>Launch New App</a></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/routers/new') ?>"><i class="bi bi-plus-circle-fill me-2 text-muted"></i>Add New Router</a></li>
+                    <li><hr class="dropdown-divider"></li>
+
+                    <li><h6 class="dropdown-header">System & Management</h6></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/settings') ?>"><i class="bi bi-sliders me-2 text-muted"></i>General Settings</a></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/users') ?>"><i class="bi bi-people-fill me-2 text-muted"></i>User Management</a></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/logs') ?>"><i class="bi bi-journals me-2 text-muted"></i>Activity Logs</a></li>
+                    <li><hr class="dropdown-divider"></li>
+
                     <li><hr class="dropdown-divider"></li>
                     <li><a class="dropdown-item no-spa" href="<?= base_url('/logout') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
                 </ul>

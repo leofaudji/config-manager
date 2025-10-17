@@ -32,9 +32,35 @@ try {
     $stmt->close();
 
     $dockerClient = new DockerClient($host);
-    $containers = $dockerClient->listContainers();
+    $info = $dockerClient->getInfo();
+    $is_swarm_node = (isset($info['Swarm']['LocalNodeState']) && $info['Swarm']['LocalNodeState'] !== 'inactive');
 
-    echo json_encode(['status' => 'success', 'data' => $containers]);
+    $items = [];
+    if ($is_swarm_node) {
+        // For Swarm, list services
+        $services = $dockerClient->listServices();
+        foreach ($services as $service) {
+            $items[] = [
+                'Id' => $service['ID'],
+                // Use Spec.Name which is the user-defined name
+                'Name' => $service['Spec']['Name'],
+                'Type' => 'service'
+            ];
+        }
+    } else {
+        // For Standalone, list containers
+        $containers = $dockerClient->listContainers();
+        foreach ($containers as $container) {
+            $items[] = [
+                'Id' => $container['Id'],
+                // Clean up the container name
+                'Name' => ltrim($container['Names'][0] ?? $container['Id'], '/'),
+                'Type' => 'container'
+            ];
+        }
+    }
+
+    echo json_encode(['status' => 'success', 'data' => $items]);
 
 } catch (Exception $e) {
     http_response_code($e instanceof RuntimeException ? 404 : 500);

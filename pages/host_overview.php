@@ -116,13 +116,7 @@ window.pageInit = function() {
                 if (result.status !== 'success' || !result.data.per_host_stats) {
                     throw new Error(result.message || 'Failed to load host data.');
                 }
-                hostDataCache = result.data.per_host_stats;
-                renderData();
-            })
-            .catch(error => {
-                tableContainer.innerHTML = `<tr><td colspan="9" class="text-center text-danger">Error: ${error.message}</td></tr>`;
-                cardContainer.innerHTML = `<div class="col-12"><div class="alert alert-danger">Failed to load host data: ${error.message}</div></div>`;
-            })
+                hostDataCache = result.data.per_host_stats;                renderData();            })            .catch(error => {                tableContainer.innerHTML = `<tr><td colspan="9" class="text-center text-danger">Error: ${error.message}</td></tr>`;                cardContainer.innerHTML = `<div class="col-12"><div class="alert alert-danger">Failed to load host data: ${error.message}</div></div>`;            })
             .finally(() => {
                 refreshBtn.disabled = false;
                 refreshBtn.innerHTML = originalBtnContent;
@@ -274,46 +268,21 @@ window.pageInit = function() {
         }
     }
 
-    // --- NEW: Event listener for direct SLA PDF export from table ---
-    tableContainer.addEventListener('click', function(e) {
-        const exportLink = e.target.closest('.export-host-sla-pdf');
-        if (exportLink) {
-            e.preventDefault();
-            const hostId = exportLink.dataset.hostId;
-            const originalContent = exportLink.innerHTML;
-            exportLink.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span>`;
-
-            const formData = new FormData();
-            formData.append('report_type', 'sla_report');
-            formData.append('host_id', hostId);
-            formData.append('container_id', 'all'); // For summary report
-            formData.append('date_range', `${moment().subtract(29, 'days').format('YYYY-MM-DD')} - ${moment().format('YYYY-MM-DD')}`);
-
-            fetch('<?= base_url('/api/pdf') ?>', { method: 'POST', body: formData })
-                .then(res => res.blob())
-                .then(blob => {
-                    const url = window.URL.createObjectURL(blob);
-                    window.open(url, '_blank');
-                })
-                .catch(err => showToast('Error exporting PDF: ' + err.message, false))
-                .finally(() => exportLink.innerHTML = originalContent);
-        }
-    });
-
-    // --- NEW: Add the same listener for the card view ---
+    // Attach the same handler to both views
+    tableContainer.addEventListener('click', handleSlaExportClick);
     cardContainer.addEventListener('click', handleSlaExportClick);
 
     refreshBtn.addEventListener('click', loadHostData);
 
     // Sorting logic
     tableView.querySelectorAll('thead th.sortable').forEach(headerCell => {
-        headerCell.addEventListener('click', (e) => {
+        headerCell.addEventListener('click', () => {
             const sortKey = headerCell.dataset.sort;
             const isAsc = headerCell.classList.contains('asc');
             const newOrder = isAsc ? 'desc' : 'asc';
 
             tableView.querySelectorAll('thead th.sortable').forEach(th => th.classList.remove('asc', 'desc'));
-            e.currentTarget.classList.add(newOrder);
+            headerCell.classList.add(newOrder);
 
             const rows = Array.from(container.querySelectorAll('tr'));
             rows.sort((a, b) => {
