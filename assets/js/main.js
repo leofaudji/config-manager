@@ -136,6 +136,12 @@ async function loadPage(url, pushState = true, noAnimation = false) {
             history.pushState({ path: url }, '', url);
         }
 
+        // --- NEW: Save last visited page to localStorage ---
+        const nonPersistentPages = ['/login', '/logout'];
+        if (!nonPersistentPages.some(page => url.includes(page))) {
+            localStorage.setItem('last_visited_page', url);
+        }
+
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = html;
         
@@ -772,6 +778,88 @@ function initializePageSpecificScripts() {
 
     // Initial check on page load to disable if not collapsed
     manageSidebarTooltips();
+
+    // --- NEW: Sidebar Search Filter Logic ---
+    const searchInput = document.getElementById('sidebar-search-input');
+    const searchClearBtn = document.getElementById('sidebar-search-clear');
+    if (searchInput && searchClearBtn && !searchInput.dataset.listenerAttached) {
+        searchInput.dataset.listenerAttached = 'true';
+
+        const handleSearch = () => {
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            const navItems = document.querySelectorAll('.sidebar-nav > .nav-item');
+
+            // Show/hide clear button
+            searchClearBtn.style.display = searchTerm ? 'block' : 'none';
+
+            navItems.forEach(item => {
+                const isSubmenuParent = item.querySelector('.sidebar-submenu');
+
+                if (isSubmenuParent) {
+                    let hasVisibleChild = false;
+                    const subItems = item.querySelectorAll('.sidebar-submenu .nav-item');
+
+                    subItems.forEach(subItem => {
+                        const linkText = subItem.textContent.toLowerCase();
+                        if (linkText.includes(searchTerm)) {
+                            subItem.style.display = 'block';
+                            hasVisibleChild = true;
+                        } else {
+                            subItem.style.display = 'none';
+                        }
+                    });
+
+                    const parentLinkText = item.querySelector('.nav-link .nav-link-text').textContent.toLowerCase();
+                    if (hasVisibleChild || parentLinkText.includes(searchTerm)) {
+                        item.style.display = 'block';
+                        // If searching, automatically expand the parent menu
+                        if (searchTerm && hasVisibleChild) {
+                            const collapseEl = item.querySelector('.collapse');
+                            if (collapseEl && !collapseEl.classList.contains('show')) {
+                                bootstrap.Collapse.getOrCreateInstance(collapseEl).show();
+                            }
+                        }
+                    } else {
+                        item.style.display = 'none';
+                    }
+                } else { // It's a standalone menu item
+                    const linkText = item.textContent.toLowerCase();
+                    if (linkText.includes(searchTerm)) {
+                        item.style.display = 'block';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                }
+            });
+        };
+
+        searchInput.addEventListener('input', handleSearch);
+        searchClearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            handleSearch();
+            searchInput.focus();
+        });
+    }
+
+    // --- NEW: Collapsible Sidebar Menu State Logic ---
+    const sidebarSubmenus = document.querySelectorAll('.sidebar .collapse');
+    sidebarSubmenus.forEach(submenu => {
+        submenu.addEventListener('shown.bs.collapse', event => {
+            const openMenus = JSON.parse(localStorage.getItem('sidebar_open_menus') || '[]');
+            if (!openMenus.includes(event.target.id)) {
+                openMenus.push(event.target.id);
+            }
+            localStorage.setItem('sidebar_open_menus', JSON.stringify(openMenus));
+            document.cookie = `sidebar_open_menus=${JSON.stringify(openMenus)};path=/`;
+        });
+
+        submenu.addEventListener('hidden.bs.collapse', event => {
+            let openMenus = JSON.parse(localStorage.getItem('sidebar_open_menus') || '[]');
+            openMenus = openMenus.filter(id => id !== event.target.id);
+            localStorage.setItem('sidebar_open_menus', JSON.stringify(openMenus));
+            document.cookie = `sidebar_open_menus=${JSON.stringify(openMenus)};path=/`;
+        });
+    });
 
     // --- Dashboard Widgets Logic ---
     function loadDashboardWidgets() {
@@ -2009,35 +2097,158 @@ function initializePageSpecificScripts() {
     }
 }
 
-function checkTraefikConfigStatus() {
+function updateDeployNotification(isDirty) {
     const deployBtn = document.getElementById('deploy-notification-btn');
     if (!deployBtn) return;
 
-    // Pass the current auto_deploy setting to the API
-    const autoDeployEnabled = document.querySelector('input[name="auto_deploy_enabled"]:checked') ? '1' : '0';
-    fetch(`${basePath}/api/status/config-dirty?auto_deploy=${autoDeployEnabled}`)
-        .then(response => response.json())
-        .then(result => {
-            if (result.status === 'success' && result.dirty) {
-                deployBtn.style.display = 'flex';
-                deployBtn.classList.add('btn-pulse'); // Add pulse animation
-            } else {
-                deployBtn.style.display = 'none';
-                deployBtn.classList.remove('btn-pulse'); // Remove pulse animation
-            }
-        })
-        .catch(error => {
-            console.error('Error checking Traefik config status:', error);
-            // Sembunyikan tombol jika ada error untuk menghindari kebingungan
-            deployBtn.style.display = 'none';
-        });
+    if (isDirty) {
+        deployBtn.style.display = 'flex';
+        deployBtn.classList.add('btn-pulse');
+    } else {
+        deployBtn.style.display = 'none';
+        deployBtn.classList.remove('btn-pulse');
+    }
 }
 
 
 document.addEventListener('DOMContentLoaded', function () {
 
+    // --- NEW: Redirect to last visited page on load ---
+    // This runs once when the app is first loaded after login.
+    const lastVisitedPage = localStorage.getItem('last_visited_page');
+    const isDashboard = window.location.pathname === (basePath + '/') || window.location.pathname === basePath;
+
+    if (lastVisitedPage && isDashboard && lastVisitedPage !== window.location.href) {
+        // Use a small timeout to ensure the rest of the app initializes before navigating
+        setTimeout(() => {
+            console.log(`Redirecting to last visited page: ${lastVisitedPage}`);
+            loadPage(lastVisitedPage, true);
+        }, 100);
+    }
+
+    // --- NEW: Clear last visited page on logout ---
+    document.body.addEventListener('click', function(e) {
+        if (e.target.closest('#logout-link')) {
+            localStorage.removeItem('last_visited_page');
+            localStorage.removeItem('sidebar_open_menus'); // Also clear sidebar state
+        }
+    });
+
     // --- Sidebar Active Link Logic ---
     updateActiveLink(window.location.href);
+    
+    // --- Consolidated Global Status Updater ---
+    function updateGlobalStatus() {
+        fetch(`${basePath}/api/sidebar/status`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.status !== 'success') return;
+                const data = result.data;
+
+                // 1. Update Sidebar Badges
+                const unhealthyBadge = document.getElementById('sidebar-unhealthy-badge');
+                if (unhealthyBadge) {
+                    if (data.unhealthy_items.count > 0) {
+                        unhealthyBadge.textContent = data.unhealthy_items.count;
+                        unhealthyBadge.style.display = 'inline-block';
+                    } else {
+                        unhealthyBadge.style.display = 'none';
+                    }
+                }
+                const downHostsBadge = document.getElementById('sidebar-down-hosts-badge');
+                if (downHostsBadge) {
+                    if (data.down_hosts_count > 0) {
+                        downHostsBadge.textContent = data.down_hosts_count;
+                        downHostsBadge.style.display = 'inline-block';
+                    } else {
+                        downHostsBadge.style.display = 'none';
+                    }
+                }
+                const pendingChangesBadge = document.getElementById('sidebar-pending-changes-badge');
+                if (pendingChangesBadge) {
+                    if (data.config_dirty) {
+                        pendingChangesBadge.style.display = 'inline-block';
+                    } else {
+                        pendingChangesBadge.style.display = 'none';
+                    }
+                }
+
+                // 2. Update Unhealthy Items Alert Dropdown
+                const unhealthyAlertBtn = document.getElementById('unhealthy-alert-btn');
+                const unhealthyAlertBadge = document.getElementById('unhealthy-alert-badge');
+                const unhealthyAlertItemsContainer = document.getElementById('unhealthy-alert-items-container');
+                if (unhealthyAlertBtn && unhealthyAlertBadge && unhealthyAlertItemsContainer) {
+                    if (data.unhealthy_items.count > 0) {
+                        unhealthyAlertBtn.classList.add('btn-pulse');
+                        unhealthyAlertBtn.style.display = 'flex';
+                        unhealthyAlertBadge.textContent = data.unhealthy_items.count;
+                        unhealthyAlertBadge.style.display = 'inline-block';
+
+                        let itemsHtml = '';
+                        data.unhealthy_items.alerts.forEach(alert => {
+                            const link = `${basePath}/hosts/${alert.host_id}/containers?search=${encodeURIComponent(alert.container_name)}`;
+                            itemsHtml += `
+                                <li>
+                                    <a class="dropdown-item d-flex justify-content-between align-items-start" href="${link}">
+                                        <div>
+                                            <strong class="d-block text-danger">${alert.container_name}</strong>
+                                            <small class="text-muted"><i class="bi bi-hdd-network-fill"></i> ${alert.host_name}</small>
+                                        </div>
+                                        <span class="badge bg-secondary rounded-pill">${alert.health_check_type}</span>
+                                    </a>
+                                </li>`;
+                        });
+                        unhealthyAlertItemsContainer.innerHTML = itemsHtml;
+                    } else {
+                        unhealthyAlertBtn.classList.remove('btn-pulse');
+                        unhealthyAlertBadge.style.display = 'none';
+                        unhealthyAlertItemsContainer.innerHTML = '<li><span class="dropdown-item text-muted">All items are healthy.</span></li>';
+                    }
+                }
+
+                // 3. Update SLA Violations Alert Dropdown
+                const slaAlertBtn = document.getElementById('sla-alert-btn');
+                const slaAlertBadge = document.getElementById('sla-alert-badge');
+                const slaAlertItemsContainer = document.getElementById('sla-alert-items-container');
+                if (slaAlertBtn && slaAlertBadge && slaAlertItemsContainer) {
+                    if (data.sla_violations.count > 0) {
+                        slaAlertBtn.classList.add('btn-pulse');
+                        slaAlertBadge.textContent = data.sla_violations.count;
+                        slaAlertBadge.style.display = 'inline-block';
+
+                        let itemsHtml = '';
+                        data.sla_violations.alerts.forEach(alert => {
+                            const link = `${basePath}/sla-report`; // Link to the main report page
+                            const architecture = alert.swarm_status === 'manager' || alert.swarm_status === 'worker' ? 'Swarm' : 'Standalone';
+                            const archBadge = architecture === 'Swarm' ? 'bg-primary' : 'bg-success';
+                            itemsHtml += `
+                                <li title="SLA: ${alert.sla_percentage}%">
+                                    <a class="dropdown-item d-flex justify-content-between align-items-start" href="${link}">
+                                        <div>
+                                            <strong class="d-block">${alert.container_name}</strong>
+                                            <small class="text-muted">
+                                                <i class="bi bi-hdd-network-fill"></i> ${alert.host_name}
+                                                <span class="badge ${archBadge}">${architecture}</span>
+                                            </small>
+                                        </div>
+                                        <span class="badge bg-danger rounded-pill">${alert.sla_percentage}%</span>
+                                    </a>
+                                </li>`;
+                        });
+                        slaAlertItemsContainer.innerHTML = itemsHtml;
+                    } else {
+                        slaAlertBtn.classList.remove('btn-pulse');
+                        slaAlertBadge.style.display = 'none';
+                        slaAlertItemsContainer.innerHTML = '<li><span class="dropdown-item text-muted">No recent downtime.</span></li>';
+                    }
+                }
+
+                // 4. Update Deploy Notification Button
+                updateDeployNotification(data.config_dirty);
+
+            })
+            .catch(error => console.error('Error fetching global status:', error));
+    }
 
     // Add animation listener for SPA transitions
     if (mainContent) {
@@ -2050,10 +2261,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     initializePageSpecificScripts();
-
-    // --- Check for pending Traefik changes on initial load and then periodically ---
-    checkTraefikConfigStatus();
-    setInterval(checkTraefikConfigStatus, 30000); // Check every 30 seconds
 
     // Run page-specific init function for the initial page load
     if (window.pageInit && typeof window.pageInit === 'function') {
@@ -2120,93 +2327,8 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // --- NEW: SLA Alert Check ---
-    function checkSlaAlertStatus() {
-        const slaAlertBtn = document.getElementById('sla-alert-btn');
-        const slaAlertBadge = document.getElementById('sla-alert-badge');
-        const slaAlertItemsContainer = document.getElementById('sla-alert-items-container');
-
-        if (!slaAlertBtn || !slaAlertBadge || !slaAlertItemsContainer) return;
-
-        fetch(`${basePath}/api/sla-alert-status`)
-            .then(response => response.json())
-            .then(result => {
-                if (result.status === 'success' && result.count > 0) {
-                    slaAlertBtn.style.display = 'flex';
-                    slaAlertBtn.classList.add('btn-pulse');
-                    slaAlertBadge.textContent = result.count;
-
-                    let itemsHtml = '';
-                    result.alerts.forEach(alert => {
-                        itemsHtml += `
-                            <li>
-                                <a class="dropdown-item d-flex justify-content-between align-items-start" href="${alert.link}" title="SLA for ${alert.name} is ${alert.sla}%">
-                                    <div>
-                                        <strong class="d-block">${alert.name}</strong>
-                                        <small class="text-muted">
-                                            <i class="bi bi-hdd-network-fill"></i> ${alert.host_name} 
-                                            <span class="badge ${alert.architecture === 'Swarm' ? 'bg-primary' : 'bg-success'}">${alert.architecture}</span>
-                                       </small>
-                                    </div>
-                                    <span class="badge bg-danger rounded-pill">${alert.sla}</span>
-                                </a>
-                            </li>
-                        `;
-                    });
-                    slaAlertItemsContainer.innerHTML = itemsHtml;
-
-                } else {
-                    slaAlertBtn.style.display = 'flex';
-                    slaAlertBtn.classList.remove('btn-pulse');
-                }
-            })
-            .catch(error => console.error('Error checking SLA alert status:', error));
-    }
-    checkSlaAlertStatus();
-    setInterval(checkSlaAlertStatus, 60000); // Check every 60 seconds
-
-    // --- NEW: Unhealthy Items Alert Check ---
-    function checkUnhealthyStatus() {
-        const unhealthyAlertBtn = document.getElementById('unhealthy-alert-btn');
-        const unhealthyAlertBadge = document.getElementById('unhealthy-alert-badge');
-        const unhealthyAlertItemsContainer = document.getElementById('unhealthy-alert-items-container');
-
-        if (!unhealthyAlertBtn) return;
-
-        fetch(`${basePath}/api/unhealthy-status`)
-            .then(response => response.json())
-            .then(result => {
-                if (result.status === 'success' && result.count > 0) {
-                    unhealthyAlertBtn.classList.add('btn-pulse');
-                    unhealthyAlertBtn.style.display = 'flex'; // Use flex to align icon
-                    unhealthyAlertBadge.textContent = result.count;
-
-                    let itemsHtml = '';
-                    result.alerts.forEach(alert => {
-                        itemsHtml += `
-                            <li>
-                                <a class="dropdown-item d-flex justify-content-between align-items-start" href="${alert.link}">
-                                    <div>
-                                        <strong class="d-block text-danger">${alert.name}</strong>
-                                        <small class="text-muted">
-                                            <i class="bi bi-hdd-network-fill"></i> ${alert.location}
-                                        </small>
-                                    </div>
-                                    <span class="badge bg-secondary rounded-pill">${alert.type}</span>
-                                </a>
-                            </li>
-                        `;
-                    });
-                    unhealthyAlertItemsContainer.innerHTML = itemsHtml;
-                } else {
-                    unhealthyAlertBtn.style.display = 'flex'; // Keep button visible
-                    unhealthyAlertBtn.classList.remove('btn-pulse');
-                    unhealthyAlertBadge.style.display = 'none'; // Hide badge
-                }
-            })
-            .catch(error => console.error('Error checking unhealthy status:', error));
-    }
-    checkUnhealthyStatus();
-    setInterval(checkUnhealthyStatus, 30000); // Check every 15 seconds
+    // --- Start the single, consolidated status poller ---
+    updateGlobalStatus();
+    setInterval(updateGlobalStatus, 30000); // Check every 30 seconds
 
 });

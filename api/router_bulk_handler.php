@@ -72,6 +72,13 @@ try {
     }
 
     $conn->commit();
+
+    // Trigger deployment or set dirty flag after successful transaction
+    if (get_setting('auto_deploy_enabled', '1') == '1') {
+        trigger_background_deployment(1); // Trigger global deployment
+    } else {
+        set_config_dirty();
+    }
     echo json_encode(['status' => 'success', 'message' => $message]);
 
 } catch (Exception $e) {

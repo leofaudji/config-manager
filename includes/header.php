@@ -144,8 +144,23 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
     }
 </script>
 <div class="sidebar">
-    <a class="navbar-brand" href="<?= base_url('/') ?>"><i class="bi bi-gear-wide-connected"></i> <span class="brand-text">Config Manager</span></a>
+    <a class="navbar-brand" href="<?= base_url('/') ?>">
+        <img src="<?= base_url('/assets/img/logo-assistindo.png') ?>" alt="Assistindo Logo" class="brand-logo">
+        <span class="brand-text">Config Manager</span>
+    </a>
+    <div class="sidebar-search-wrapper">
+        <i class="bi bi-search search-icon"></i>
+        <input type="text" id="sidebar-search-input" class="form-control form-control-sm" placeholder="Search menu..." autocomplete="off">
+        <button id="sidebar-search-clear" class="btn btn-sm" style="display: none;" title="Clear search"><i class="bi bi-x-lg"></i></button>
+    </div>
     <ul class="sidebar-nav">
+        <?php
+            // Define request_path here to be available for active link logic
+            $request_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+            if (BASE_PATH && strpos($request_path, BASE_PATH) === 0) {
+                $request_path = substr($request_path, strlen(BASE_PATH));
+            }
+        ?>
         <li class="nav-item">
             <a class="nav-link" href="<?= base_url('/') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Dashboard">
                 <span class="icon-wrapper">
@@ -157,232 +172,117 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
         </li>
 
         <?php if ($_SESSION['role'] === 'admin'): ?>
-            <li class="sidebar-header">Traefik</li>
+            <?php
+            $open_menus_cookie = isset($_COOKIE['sidebar_open_menus']) ? json_decode($_COOKIE['sidebar_open_menus'], true) : [];
+            $container_mgmt_active = str_starts_with($request_path, '/hosts') || str_starts_with($request_path, '/app-launcher') || str_starts_with($request_path, '/stack-changes') || str_starts_with($request_path, '/templates');
+            $container_mgmt_expanded = $container_mgmt_active || in_array('container-submenu', $open_menus_cookie);
+            ?>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/routers') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Routers">
+                <a class="nav-link <?= !$container_mgmt_expanded ? 'collapsed' : '' ?>" href="#" data-bs-toggle="collapse" data-bs-target="#container-submenu" aria-expanded="<?= $container_mgmt_expanded ? 'true' : 'false' ?>">
                     <span class="icon-wrapper">
-                        <i class="bi bi-sign-turn-right icon-default"></i>
-                        <i class="bi bi-sign-turn-right-fill icon-active"></i>
+                        <i class="bi bi-box-seam icon-default"></i>
+                        <i class="bi bi-box-seam-fill icon-active"></i>
                     </span>
-                    <span class="nav-link-text">Routers</span>
+                    <span class="nav-link-text">Container Management</span>
+                    <i class="bi bi-chevron-right submenu-arrow"></i>
                 </a>
+                <div class="collapse <?= $container_mgmt_expanded ? 'show' : '' ?>" id="container-submenu">
+                    <ul class="sidebar-submenu">
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/hosts') ?>">Hosts</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/app-launcher') ?>">App Launcher</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/templates') ?>">Config Templates</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/stack-changes') ?>">Stack Changes</a></li>
+                    </ul>
+                </div>
             </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/services') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Services">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-hdd-stack icon-default"></i>
-                        <i class="bi bi-hdd-stack-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Services</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/middlewares') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Middlewares">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-puzzle icon-default"></i>
-                        <i class="bi bi-puzzle-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Middlewares</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/history') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Deployment History">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-clock-history icon-default"></i>
-                        <i class="bi bi-clock-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Deployment History</span>
-                </a>
-            </li>
-        <li class="nav-item">
-            <a class="nav-link" href="<?= base_url('/groups') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Groups">
-                <span class="icon-wrapper">
-                    <i class="bi bi-collection icon-default"></i>
-                    <i class="bi bi-collection-fill icon-active"></i>
-                </span>
-                <span class="nav-link-text">Groups</span>
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link" href="<?= base_url('/traefik-hosts') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Traefik Hosts">
-                <span class="icon-wrapper">
-                    <i class="bi bi-hdd-rack icon-default"></i>
-                    <i class="bi bi-hdd-rack-fill icon-active"></i>
-                </span>
-                <span class="nav-link-text">Traefik Hosts</span>
-            </a>
-        </li>
 
+            <?php
+            $traefik_active = str_starts_with($request_path, '/routers') || str_starts_with($request_path, '/services') || str_starts_with($request_path, '/middlewares') || str_starts_with($request_path, '/history') || str_starts_with($request_path, '/groups') || str_starts_with($request_path, '/traefik-hosts');
+            $traefik_expanded = $traefik_active || in_array('traefik-submenu', $open_menus_cookie);
+            ?>
+            <li class="nav-item">
+                <a class="nav-link <?= !$traefik_expanded ? 'collapsed' : '' ?>" href="#" data-bs-toggle="collapse" data-bs-target="#traefik-submenu" aria-expanded="<?= $traefik_expanded ? 'true' : 'false' ?>">
+                    <span class="icon-wrapper">
+                        <i class="bi bi-bezier2 icon-default"></i>
+                        <i class="bi bi-bezier2 icon-active"></i>
+                    </span>
+                    <span class="nav-link-text">Traefik</span>
+                    <i class="bi bi-chevron-right submenu-arrow"></i>
+                </a>
+                <div class="collapse <?= $traefik_expanded ? 'show' : '' ?>" id="traefik-submenu">
+                    <ul class="sidebar-submenu">
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/routers') ?>">Routers</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/services') ?>">Services</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/middlewares') ?>">Middlewares</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/groups') ?>">Groups</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/traefik-hosts') ?>">Traefik Hosts</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/history') ?>">Deployment History</a></li>
+                    </ul>
+                </div>
+            </li>
 
-            <li class="sidebar-header">Container Management</li>
+            <?php
+            $monitoring_active = str_starts_with($request_path, '/health-status') || str_starts_with($request_path, '/sla-report') || str_starts_with($request_path, '/host-overview') || str_starts_with($request_path, '/container-events') || str_starts_with($request_path, '/central-logs') || str_starts_with($request_path, '/resource-hotspots') || str_starts_with($request_path, '/network-inspector') || str_starts_with($request_path, '/stats');
+            $monitoring_expanded = $monitoring_active || in_array('monitoring-submenu', $open_menus_cookie);
+            ?>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/hosts') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Hosts">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-hdd-network icon-default"></i>
-                        <i class="bi bi-hdd-network-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Hosts</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/app-launcher') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="App Launcher">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-rocket-takeoff icon-default"></i>
-                        <i class="bi bi-rocket-takeoff-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">App Launcher</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/stack-changes') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Stack Changes">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-calendar-week icon-default"></i>
-                        <i class="bi bi-calendar-week-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Stack Changes</span>
-                </a>
-            </li>
-        <li class="nav-item">
-            <a class="nav-link" href="<?= base_url('/templates') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Config Templates">
-                <span class="icon-wrapper">
-                    <i class="bi bi-file-earmark-code icon-default"></i>
-                    <i class="bi bi-file-earmark-code-fill icon-active"></i>
-                </span>
-                <span class="nav-link-text">Config Templates</span>
-            </a>
-        </li>
-
-
-        <li class="sidebar-header">Monitoring</li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/health-status') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Service Health Status">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-heart-pulse icon-default"></i>
-                        <i class="bi bi-heart-pulse-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Service Health</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/sla-report') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="SLA Report">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-clipboard-data icon-default"></i>
-                        <i class="bi bi-clipboard-data-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">SLA Report</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/host-overview') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Host Overview">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-display icon-default"></i>
-                        <i class="bi bi-display-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Host Overview</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/container-events') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Container Events">
+                <a class="nav-link <?= !$monitoring_expanded ? 'collapsed' : '' ?>" href="#" data-bs-toggle="collapse" data-bs-target="#monitoring-submenu" aria-expanded="<?= $monitoring_expanded ? 'true' : 'false' ?>">
                     <span class="icon-wrapper">
                         <i class="bi bi-activity icon-default"></i>
                         <i class="bi bi-activity icon-active"></i>
                     </span>
-                    <span class="nav-link-text">Container Events</span>
+                    <span class="nav-link-text">Monitoring</span>
+                    <i class="bi bi-chevron-right submenu-arrow"></i>
                 </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/central-logs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Centralized Log Viewer">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-journals icon-default"></i>
-                        <i class="bi bi-journals icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Centralized Logs</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/resource-hotspots') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Resource Hotspots">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-fire icon-default"></i>
-                        <i class="bi bi-fire icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Resource Hotspots</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/network-inspector') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Network Inspector">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-diagram-3-fill icon-default"></i>
-                        <i class="bi bi-diagram-3-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Network Inspector</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/stats') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Statistics">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-bar-chart-line icon-default"></i>
-                        <i class="bi bi-bar-chart-line-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Statistics</span>
-                </a>
+                <div class="collapse <?= $monitoring_expanded ? 'show' : '' ?>" id="monitoring-submenu">
+                    <ul class="sidebar-submenu">
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/health-status') ?>">Service Health</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/sla-report') ?>">SLA Report</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/host-overview') ?>">Host Overview</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/container-events') ?>">Container Events</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/central-logs') ?>">Centralized Logs</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/resource-hotspots') ?>">Resource Hotspots</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/network-inspector') ?>">Network Inspector</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/stats') ?>">Statistics</a></li>
+                    </ul>
+                </div>
             </li>
 
-            <li class="sidebar-header">System</li>
+            <?php
+            $system_active = str_starts_with($request_path, '/users') || str_starts_with($request_path, '/logs') || str_starts_with($request_path, '/health-check') || str_starts_with($request_path, '/webhook-reports') || str_starts_with($request_path, '/settings') || str_starts_with($request_path, '/cron-jobs');
+            $system_expanded = $system_active || in_array('system-submenu', $open_menus_cookie);
+            ?>
             <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/users') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Users">
+                <a class="nav-link <?= !$system_expanded ? 'collapsed' : '' ?>" href="#" data-bs-toggle="collapse" data-bs-target="#system-submenu" aria-expanded="<?= $system_expanded ? 'true' : 'false' ?>">
                     <span class="icon-wrapper">
-                        <i class="bi bi-people icon-default"></i>
-                        <i class="bi bi-people-fill icon-active"></i>
+                        <i class="bi bi-shield-shaded icon-default"></i>
+                        <i class="bi bi-shield-shaded icon-active"></i>
                     </span>
-                    <span class="nav-link-text">Users</span>
+                    <span class="nav-link-text">System</span>
+                    <i class="bi bi-chevron-right submenu-arrow"></i>
                 </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/logs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Log Viewer">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-journals icon-default"></i>
-                        <i class="bi bi-journals icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Log Viewer</span>
-                </a>
-            </li>
-        <li class="nav-item">
-            <a class="nav-link" href="<?= base_url('/health-check') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Health Check">
-                <span class="icon-wrapper">
-                    <i class="bi bi-heart-pulse icon-default"></i>
-                    <i class="bi bi-heart-pulse-fill icon-active"></i>
-                </span>
-                <span class="nav-link-text">Health Check</span>
-            </a>
-        </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/webhook-reports') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Webhook Reports">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-github icon-default"></i>
-                        <i class="bi bi-github icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Webhook Reports</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/settings') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="General Settings">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-sliders icon-default"></i>
-                        <i class="bi bi-sliders2 icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">General Settings</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="<?= base_url('/cron-jobs') ?>" data-bs-toggle="tooltip" data-bs-placement="right" title="Cron Job Management">
-                    <span class="icon-wrapper">
-                        <i class="bi bi-clock-history icon-default"></i>
-                        <i class="bi bi-clock-fill icon-active"></i>
-                    </span>
-                    <span class="nav-link-text">Cron Jobs</span>
-                </a>
+                <div class="collapse <?= $system_expanded ? 'show' : '' ?>" id="system-submenu">
+                    <ul class="sidebar-submenu">
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/users') ?>">Users</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/logs') ?>">Log Viewer</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/health-check') ?>">Health Check</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/webhook-reports') ?>">Webhook Reports</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/cron-jobs') ?>">Cron Jobs</a></li>
+                    </ul>
+                </div>
             </li>
         <?php endif; ?>
+    </ul>
+    <ul class="sidebar-nav mt-auto mb-0 sidebar-footer">
+        <li class="nav-item sidebar-footer-item">
+             <a class="nav-link" href="<?= base_url('/settings') ?>">
+                <span class="icon-wrapper">
+                    <i class="bi bi-sliders2 icon-default"></i>
+                    <i class="bi bi-sliders2 icon-active"></i>
+                </span>
+                <span class="nav-link-text">General Settings</span>
+            </a>
+        </li>
     </ul>
 </div>
 
@@ -459,7 +359,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
                     <li><h6 class="dropdown-header">Hi, <?= htmlspecialchars($_SESSION['username']) ?>!</h6></li>
                     <li><a class="dropdown-item" href="<?= base_url('/my-profile/change-password') ?>"><i class="bi bi-key-fill me-2 text-muted"></i>Change Password</a></li>
-                    <li><a class="dropdown-item no-spa" href="<?= base_url('/logout') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                    <li><a class="dropdown-item no-spa" id="logout-link" href="<?= base_url('/logout') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
                 </ul>
             </div>
         </div>

@@ -208,5 +208,8 @@ $router->get('/history/{id}/content', 'actions/get_history_content.php', ['auth'
 $router->get('/history/{id}/download', 'actions/download_history.php', ['auth', 'admin']);
 $router->post('/history/{id}/archive', 'actions/archive_history.php', ['auth', 'admin']);
 
+// Muat rute-rute API
+require_once PROJECT_ROOT . '/includes/api_routes.php';
+
 // Jalankan router
 $router->dispatch();
