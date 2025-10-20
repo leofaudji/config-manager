@@ -405,6 +405,16 @@ body.dark-mode .text-muted {
     color: var(--cf-blue);
 }
 
+/* --- Clickable Table Row --- */
+.clickable-row {
+    cursor: pointer;
+}
+/* Use a more specific selector to override Bootstrap's striped table styles */
+.table-hover > tbody > tr.clickable-row:hover > * {
+    --bs-table-accent-bg: var(--cf-table-striped-bg);
+}
+
+
 /* --- Custom Scrollbar Styling --- */
 .sidebar::-webkit-scrollbar {
     width: 8px; /* Lebar scrollbar */

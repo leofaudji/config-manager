@@ -12,11 +12,14 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     exit;
 } 
 
-$host_id = filter_input(INPUT_GET, 'host_id', FILTER_VALIDATE_INT);
+$host_id_raw = $_GET['host_id'] ?? null;
+$host_id = ($host_id_raw === 'all') ? 'all' : filter_var($host_id_raw, FILTER_VALIDATE_INT);
 $container_id = filter_input(INPUT_GET, 'container_id', FILTER_SANITIZE_STRING); // Can be a specific ID or 'all'
 $date_range = filter_input(INPUT_GET, 'date_range', FILTER_SANITIZE_STRING);
+$show_only_downtime = filter_input(INPUT_GET, 'show_only_downtime', FILTER_VALIDATE_BOOLEAN);
 
-if (!$host_id || !$container_id || !$date_range) {
+// If host_id is 'all', container_id is not required for validation.
+if (!$host_id || (!$container_id && $host_id !== 'all') || !$date_range) {
     http_response_code(400);
     echo json_encode(['status' => 'error', 'message' => 'Host ID, Container ID, and Date Range are required.']);
     exit;
@@ -41,6 +44,7 @@ try {
         'container_id' => $container_id,
         'start_date'   => date('Y-m-d 00:00:00', strtotime($start_date_str)),
         'end_date'     => date('Y-m-d 23:59:59', strtotime($end_date_str)),
+        'show_only_downtime' => $show_only_downtime,
         'dates'        => $dates,
     ];
     $data = $reportGenerator->getSlaData($params);

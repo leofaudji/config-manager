@@ -10,12 +10,14 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 }
 
 // --- Input Validation ---
-$host_id = filter_input(INPUT_POST, 'host_id', FILTER_VALIDATE_INT);
+$host_id_raw = $_POST['host_id'] ?? null;
+$host_id = ($host_id_raw === 'all') ? 'all' : filter_var($host_id_raw, FILTER_VALIDATE_INT);
 $container_id = filter_input(INPUT_POST, 'container_id', FILTER_SANITIZE_STRING);
 $date_range = filter_input(INPUT_POST, 'date_range', FILTER_SANITIZE_STRING); 
 $report_type = filter_input(INPUT_POST, 'report_type', FILTER_SANITIZE_STRING);
 
-if (!$report_type || !$host_id || !$container_id || !$date_range) {
+// If host_id is 'all', container_id is not required for validation.
+if (!$report_type || !$host_id || (!$container_id && $host_id !== 'all') || !$date_range) {
     http_response_code(400);
     die('Report Type, Host ID, Container ID, and Date Range are required.');
 }

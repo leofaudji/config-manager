@@ -48,6 +48,7 @@ try {
     ];
     $settings_to_update['auto_deploy_enabled'] = isset($_POST['auto_deploy_enabled']) ? 1 : 0;
     $settings_to_update['notification_enabled'] = isset($_POST['notification_enabled']) ? 1 : 0;
+    $settings_to_update['notification_host_down_enabled'] = isset($_POST['notification_host_down_enabled']) ? 1 : 0;
     $settings_to_update['notification_server_url'] = trim($_POST['notification_server_url'] ?? '');
     $settings_to_update['notification_secret_token'] = trim($_POST['notification_secret_token'] ?? '');
 

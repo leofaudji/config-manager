@@ -252,6 +252,11 @@ require_once __DIR__ . '/../includes/header.php';
                         <label class="form-check-label" for="notification_enabled">Enable Notifications</label>
                     </div>
                     <div id="notification-settings-container" class="<?= ($settings['notification_enabled'] ?? 0) == 1 ? '' : 'd-none' ?>">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="notification_host_down_enabled" name="notification_host_down_enabled" <?= ($settings['notification_host_down_enabled'] ?? 1) == 1 ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="notification_host_down_enabled">Enable Host Down/Recovered Notifications</label>
+                            <small class="form-text text-muted d-block">Send a notification when a host is detected as down or has recovered.</small>
+                        </div>
                         <div class="mb-3">
                             <label for="notification_server_url" class="form-label">Notification Server URL</label>
                             <input type="url" class="form-control" id="notification_server_url" name="notification_server_url" value="<?= htmlspecialchars($settings['notification_server_url'] ?? '') ?>" placeholder="https://your-ntfy-server.com/topic">

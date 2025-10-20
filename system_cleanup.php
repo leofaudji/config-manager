@@ -16,6 +16,11 @@ echo "Memulai System Cleanup pada " . date('Y-m-d H:i:s') . "\n";
 
 $conn = Database::getInstance()->getConnection();
 
+// Helper function to log activity if not running from CLI
+function cleanup_log_activity($user, $action, $details) {
+    if (function_exists('log_activity')) log_activity($user, $action, $details);
+}
+
 try {
     // --- 1. Cleanup Archived History ---
     $history_cleanup_days = (int)get_setting('history_cleanup_days', 30);
@@ -25,8 +30,8 @@ try {
     $stmt_history->execute();
     $deleted_history = $stmt_history->affected_rows;
     $stmt_history->close();
-    echo "SUKSES: {$deleted_history} entri riwayat konfigurasi dihapus.\n";
-    log_activity('SYSTEM', 'History Cleanup', "Cron job removed {$deleted_history} archived history entries older than {$history_cleanup_days} days.");
+    echo "SUKSES: {$deleted_history} entri riwayat konfigurasi yang diarsipkan dihapus.\n";
+    //log_activity('SYSTEM', 'History Cleanup', "Cron job removed {$deleted_history} archived history entries older than {$history_cleanup_days} days.");
 
     // --- 2. Cleanup Activity Logs ---
     $log_cleanup_days = (int)get_setting('log_cleanup_days', 7);
@@ -70,6 +75,74 @@ try {
         $deleted_sla_history = $stmt_sla_history->affected_rows;
         $stmt_sla_history->close();
         echo "SUKSES: {$deleted_sla_history} entri riwayat kesehatan kontainer dihapus.\n";
+    }
+
+    // --- NEW: 6. Handle Stale/Down Hosts to ensure SLA accuracy ---
+    $host_down_threshold_minutes = (int)get_setting('host_down_threshold_minutes', 5);
+    echo "INFO: Mencari host yang tidak melapor selama lebih dari {$host_down_threshold_minutes} menit...\n";
+
+    $cutoff_time = date('Y-m-d H:i:s', strtotime("-{$host_down_threshold_minutes} minutes"));
+    $stmt_down_hosts = $conn->prepare("SELECT id, name FROM docker_hosts WHERE last_report_at < ? AND is_down_notified = 0");
+    $stmt_down_hosts->bind_param("s", $cutoff_time);
+    $stmt_down_hosts->execute();
+    $newly_down_hosts = $stmt_down_hosts->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt_down_hosts->close();
+
+    if (empty($newly_down_hosts)) {
+        echo "INFO: Tidak ada host yang down ditemukan.\n";
+    } else {
+        $stmt_get_open_events = $conn->prepare("
+            SELECT h.container_id, h.container_name, h.status
+            FROM container_health_history h
+            INNER JOIN (
+                SELECT container_id, MAX(id) as max_id
+                FROM container_health_history
+                WHERE host_id = ?
+                GROUP BY container_id
+            ) hm ON h.id = hm.max_id
+            WHERE h.end_time IS NULL AND h.status != 'unhealthy'
+        ");
+
+        $stmt_close_event = $conn->prepare("UPDATE container_health_history SET end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW()) WHERE container_id = ? AND end_time IS NULL");
+        $stmt_create_unhealthy_event = $conn->prepare("INSERT INTO container_health_history (host_id, container_id, container_name, status, start_time) VALUES (?, ?, ?, 'unhealthy', NOW())");
+        $stmt_mark_notified = $conn->prepare("UPDATE docker_hosts SET is_down_notified = 1 WHERE id = ?");
+
+        foreach ($newly_down_hosts as $host) {
+            echo "  -> Host '{$host['name']}' (ID: {$host['id']}) dianggap down. Memproses kontainer...\n";
+            cleanup_log_activity('SYSTEM', 'Host Down Detected', "Host '{$host['name']}' is considered down. Creating synthetic downtime for SLA.");
+
+            // Send notification only if enabled
+            if ((bool)get_setting('notification_host_down_enabled', true)) {
+                send_notification(
+                    "Host Down: {$host['name']}",
+                    "Host '{$host['name']}' is not reporting and is considered down. Synthetic downtime records are being created for SLA accuracy.",
+                    'error',
+                    ['host_id' => $host['id'], 'host_name' => $host['name']]
+                );
+            }
+
+            // Mark as notified to prevent spam
+            $stmt_mark_notified->bind_param("i", $host['id']);
+            $stmt_mark_notified->execute();
+
+            $stmt_get_open_events->bind_param("i", $host['id']);
+            $stmt_get_open_events->execute();
+            $open_events = $stmt_get_open_events->get_result()->fetch_all(MYSQLI_ASSOC);
+
+            foreach ($open_events as $event) {
+                echo "    - Menandai '{$event['container_name']}' sebagai unhealthy.\n";
+                // 1. Close the last open event
+                $stmt_close_event->bind_param("s", $event['container_id']);
+                $stmt_close_event->execute();
+                // 2. Create a new 'unhealthy' event
+                $stmt_create_unhealthy_event->bind_param("iss", $host['id'], $event['container_id'], $event['container_name']);
+                $stmt_create_unhealthy_event->execute();
+            }
+        }
+        $stmt_get_open_events->close();
+        $stmt_close_event->close();
+        $stmt_create_unhealthy_event->close();
+        $stmt_mark_notified->close();
     }
 
     // --- 5. Cleanup Cron Job Log File Entries ---

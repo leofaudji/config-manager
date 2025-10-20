@@ -441,22 +441,24 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <i class="bi bi-grid-3x3-gap-fill fs-4"></i>
                 </a>
                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="appMenuDropdown" style="min-width: 280px;">
-                    <li><h6 class="dropdown-header">Hi, <?= htmlspecialchars($_SESSION['username']) ?>!</h6></li>
-                    <li><a class="dropdown-item" href="<?= base_url('/my-profile/change-password') ?>"><i class="bi bi-key-fill me-2 text-muted"></i>Change Password</a></li>
-                    <li><hr class="dropdown-divider"></li>
-
                     <li><h6 class="dropdown-header">Quick Actions</h6></li>
                     <li><a class="dropdown-item" href="<?= base_url('/app-launcher') ?>"><i class="bi bi-rocket-launch-fill me-2 text-muted"></i>Launch New App</a></li>
                     <li><a class="dropdown-item" href="<?= base_url('/routers/new') ?>"><i class="bi bi-plus-circle-fill me-2 text-muted"></i>Add New Router</a></li>
                     <li><hr class="dropdown-divider"></li>
 
-                    <li><h6 class="dropdown-header">System & Management</h6></li>
-                    <li><a class="dropdown-item" href="<?= base_url('/settings') ?>"><i class="bi bi-sliders me-2 text-muted"></i>General Settings</a></li>
-                    <li><a class="dropdown-item" href="<?= base_url('/users') ?>"><i class="bi bi-people-fill me-2 text-muted"></i>User Management</a></li>
+                    <li><h6 class="dropdown-header">Monitoring</h6></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/sla-report') ?>"><i class="bi bi-clipboard-data-fill me-2 text-muted"></i>SLA Report</a></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/central-logs') ?>"><i class="bi bi-journals me-2 text-muted"></i>Centralized Logs</a></li>
                     <li><a class="dropdown-item" href="<?= base_url('/logs') ?>"><i class="bi bi-journals me-2 text-muted"></i>Activity Logs</a></li>
                     <li><hr class="dropdown-divider"></li>
 
+                    <li><h6 class="dropdown-header">System & Management</h6></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/settings') ?>"><i class="bi bi-sliders me-2 text-muted"></i>General Settings</a></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/users') ?>"><i class="bi bi-people-fill me-2 text-muted"></i>User Management</a></li>
                     <li><hr class="dropdown-divider"></li>
+
+                    <li><h6 class="dropdown-header">Hi, <?= htmlspecialchars($_SESSION['username']) ?>!</h6></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/my-profile/change-password') ?>"><i class="bi bi-key-fill me-2 text-muted"></i>Change Password</a></li>
                     <li><a class="dropdown-item no-spa" href="<?= base_url('/logout') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
                 </ul>
             </div>

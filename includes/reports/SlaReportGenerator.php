@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../DockerClient.php';
+
 class SlaReportGenerator
 {
     private $conn;
@@ -17,9 +19,54 @@ class SlaReportGenerator
         $downtime_statuses = ['unhealthy', 'stopped'];
         $placeholders = implode(',', array_fill(0, count($downtime_statuses), '?'));
         $types = str_repeat('s', count($downtime_statuses));
-
+ 
+        if ($params['host_id'] === 'all') {
+            return $this->getGlobalSummaryData($params, $total_seconds_in_period, $downtime_statuses);
+        }
         if ($params['container_id'] && $params['container_id'] !== 'all') {
             // --- SCENARIO 1: DETAILED REPORT FOR A SINGLE CONTAINER ---
+            $stmt_host = $this->conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
+            $stmt_host->bind_param("i", $params['host_id']);
+            $stmt_host->execute();
+            $host_db_details = $stmt_host->get_result()->fetch_assoc();
+            $stmt_host->close();
+
+            if (!$host_db_details) {
+                throw new Exception("Host with ID {$params['host_id']} not found.");
+            }
+            $host_name = $host_db_details['name'];
+
+            $host_specs = [];
+            try {
+                $dockerClient = new DockerClient($host_db_details);
+                $info = $dockerClient->getInfo();
+                $host_specs = [
+                    'os' => $info['OperatingSystem'] ?? 'N/A',
+                    'cpus' => $info['NCPU'] ?? 'N/A',
+                    'memory' => isset($info['MemTotal']) ? $this->formatBytes($info['MemTotal']) : 'N/A',
+                    'docker_version' => $info['ServerVersion'] ?? 'N/A',
+                ];
+            } catch (Exception $e) {
+                // Could not connect, fill with N/A
+                $host_specs = ['os' => 'N/A', 'cpus' => 'N/A', 'memory' => 'N/A', 'docker_version' => 'N/A'];
+            }
+
+            // --- NEW: Get Container-specific specifications ---
+            $container_specs = [];
+            try {
+                $container_details = $dockerClient->inspectContainer($params['container_id']);
+                $container_specs = [
+                    'image' => $container_details['Config']['Image'] ?? 'N/A',
+                    'cpu_limit' => isset($container_details['HostConfig']['NanoCpus']) ? $this->formatCpus($container_details['HostConfig']['NanoCpus']) : 'Unlimited',
+                    'memory_limit' => isset($container_details['HostConfig']['Memory']) && $container_details['HostConfig']['Memory'] > 0 ? $this->formatBytes($container_details['HostConfig']['Memory']) : 'Unlimited',
+                    'ports' => $this->formatPorts($container_details['NetworkSettings']['Ports'] ?? []),
+                    'networks' => $this->formatNetworks($container_details['NetworkSettings']['Networks'] ?? []),
+                ];
+            } catch (Exception $e) {
+                // Container might not exist anymore, but its history does.
+                $container_specs = ['image' => 'N/A', 'cpu_limit' => 'N/A', 'memory_limit' => 'N/A', 'ports' => 'N/A', 'networks' => 'N/A'];
+            }
+
             $stmt_name = $this->conn->prepare("SELECT container_name FROM container_health_history WHERE container_id = ? ORDER BY start_time DESC LIMIT 1");
             $stmt_name->bind_param("s", $params['container_id']);
             $stmt_name->execute();
@@ -55,6 +102,9 @@ class SlaReportGenerator
 
             return [
                 'report_type' => 'single_container',
+                'host_name' => $host_name,
+                'host_specs' => $host_specs,
+                'container_specs' => $container_specs,
                 'container_name' => $this->getCleanContainerName($container_name),
                 'summary' => [
                     'start_date' => date('Y-m-d', strtotime($params['start_date'])),
@@ -69,11 +119,31 @@ class SlaReportGenerator
             ];
         } else {
             // --- SCENARIO 2: SUMMARY REPORT FOR ALL CONTAINERS ON A HOST ---
-            $stmt_host = $this->conn->prepare("SELECT name FROM docker_hosts WHERE id = ?");
+            $stmt_host = $this->conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
             $stmt_host->bind_param("i", $params['host_id']);
             $stmt_host->execute();
-            $host_name = $stmt_host->get_result()->fetch_assoc()['name'] ?? 'Unknown Host';
+            $host_db_details = $stmt_host->get_result()->fetch_assoc();
             $stmt_host->close();
+
+            if (!$host_db_details) {
+                throw new Exception("Host with ID {$params['host_id']} not found.");
+            }
+            $host_name = $host_db_details['name'];
+
+            $host_specs = [];
+            try {
+                $dockerClient = new DockerClient($host_db_details);
+                $info = $dockerClient->getInfo();
+                $host_specs = [
+                    'os' => $info['OperatingSystem'] ?? 'N/A',
+                    'cpus' => $info['NCPU'] ?? 'N/A',
+                    'memory' => isset($info['MemTotal']) ? $this->formatBytes($info['MemTotal']) : 'N/A',
+                    'docker_version' => $info['ServerVersion'] ?? 'N/A',
+                ];
+            } catch (Exception $e) {
+                // Could not connect, fill with N/A
+                $host_specs = ['os' => 'N/A', 'cpus' => 'N/A', 'memory' => 'N/A', 'docker_version' => 'N/A'];
+            }
 
             // --- REFACTORED FOR SERVICE-LEVEL SLA ---
             // The logic now treats each group of containers as a single "service".
@@ -83,6 +153,7 @@ class SlaReportGenerator
             $total_service_periods = 0;
             foreach ($summary_data as $row) {
                 $container_slas[] = [
+                    'container_id' => $row[5], // Add container/service identifier
                     'container_name' => $row[0],
                     'sla_percentage' => str_replace('%', '', $row[1]),
                     'sla_percentage_raw' => (float)str_replace('%', '', $row[1]),
@@ -102,6 +173,11 @@ class SlaReportGenerator
                 return $a['container_name'] <=> $b['container_name']; // Ascending
             });
 
+            // If the filter is active, remove containers with 100% SLA
+            if (!empty($params['show_only_downtime'])) {
+                $container_slas = array_filter($container_slas, fn($c) => $c['sla_percentage_raw'] < 100);
+            }
+
             // Calculate overall host SLA
             $overall_host_sla_raw = 100;
             if ($total_service_periods > 0) {
@@ -112,12 +188,68 @@ class SlaReportGenerator
             return [
                 'report_type' => 'host_summary',
                 'host_name' => $host_name, 
+                'host_specs' => $host_specs,
                 'container_slas' => $container_slas,
                 'overall_host_sla' => number_format($overall_host_sla_raw, 2),
                 'overall_host_sla_raw' => $overall_host_sla_raw,
                 'overall_total_downtime_human' => $this->formatDuration($overall_total_downtime),
             ];
         }
+    }
+
+    private function getGlobalSummaryData(array $params, int $total_seconds_in_period, array $downtime_statuses): array
+    {
+        $stmt_hosts = $this->conn->prepare("SELECT * FROM docker_hosts ORDER BY name ASC");
+        $stmt_hosts->execute();
+        $all_hosts = $stmt_hosts->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt_hosts->close();
+
+        $global_summary = [];
+        foreach ($all_hosts as $host) {
+            $host_specs = [];
+            try {
+                $dockerClient = new DockerClient($host);
+                $info = $dockerClient->getInfo();
+                $host_specs = [
+                    'os' => $info['OperatingSystem'] ?? 'N/A',
+                    'cpus' => $info['NCPU'] ?? 'N/A',
+                    'memory' => isset($info['MemTotal']) ? $this->formatBytes($info['MemTotal']) : 'N/A',
+                ];
+            } catch (Exception $e) {
+                // Could not connect, fill with N/A
+                $host_specs = ['os' => 'Unreachable', 'cpus' => 'N/A', 'memory' => 'N/A'];
+            }
+
+            $host_params = array_merge($params, ['host_id' => $host['id']]);
+            $summary_data = $this->getServiceSummaryData($host_params, $total_seconds_in_period, $downtime_statuses);
+
+            $overall_total_downtime = 0;
+            $total_service_periods = 0;
+            foreach ($summary_data as $row) {
+                $overall_total_downtime += $row[4];
+                $total_service_periods += $total_seconds_in_period;
+            }
+
+            $overall_host_sla_raw = 100;
+            if ($total_service_periods > 0) {
+                $overall_uptime_seconds = $total_service_periods - $overall_total_downtime;
+                $overall_host_sla_raw = ($overall_uptime_seconds / $total_service_periods) * 100;
+            }
+
+            $global_summary[] = [
+                'host_id' => $host['id'],
+                'host_name' => $host['name'],
+                'host_specs' => $host_specs,
+                'overall_host_sla' => number_format($overall_host_sla_raw, 2),
+                'overall_host_sla_raw' => $overall_host_sla_raw,
+                'overall_total_downtime_human' => $this->formatDuration($overall_total_downtime),
+            ];
+        }
+
+        return [
+            'report_type' => 'global_summary',
+            'host_slas' => $global_summary,
+        ];
     }
 
     public function generatePdf(array $params): void
@@ -135,26 +267,71 @@ class SlaReportGenerator
             $pdf->Cell(0, 10, 'SLA Report for: ' . $data['container_name'], 0, 1, 'C');
             $pdf->SetFont('Arial', '', 10);
             $pdf->Cell(0, 6, 'Period: ' . $params['dates'][0] . ' to ' . $params['dates'][1], 0, 1, 'C');
+            $pdf->SetFont('Arial', 'I', 10);
+            $pdf->Cell(0, 6, 'Host: ' . $data['host_name'], 0, 1, 'C');
             $pdf->Ln(3);
+            
+            // --- Two-column layout for Specs and Summary ---
+            $startY = $pdf->GetY();
+            // Get margins indirectly. GetX() after AddPage() is at the left margin.
+            $lMargin = $pdf->GetX(); 
+            $pageWidth = $pdf->GetPageWidth(); 
+            $printableWidth = $pageWidth - ($lMargin * 2);
+            $column1Width = $printableWidth * 0.6; // 60% for specs
+            $column2Width = $printableWidth * 0.4; // 40% for summary
 
-            $pdf->SetFont('Arial', 'B', 12);
-            $pdf->Cell(0, 8, 'Summary', 0, 1);
+            // Column 1: Host Specifications
+            $pdf->SetFont('Arial', 'B', 11);
+            $pdf->Cell($column1Width, 7, 'Container Specifications', 0, 1);
             $pdf->SetFont('Arial', '', 10);
-            $pdf->Cell(50, 6, 'SLA Percentage:', 0, 0);
-            $pdf->Cell(0, 6, $data['summary']['sla_percentage'] . '%', 0, 1);
-            $pdf->Cell(50, 6, 'Total Downtime:', 0, 0);
-            $pdf->Cell(0, 6, $data['summary']['total_downtime_human'], 0, 1);
-            $pdf->Cell(50, 6, 'Downtime Incidents:', 0, 0);
-            $pdf->Cell(0, 6, $data['summary']['downtime_incidents'], 0, 1);
-            $pdf->Ln(3);
+            $pdf->Cell(35, 6, 'Image:', 0, 0);
+            $pdf->MultiCell($column1Width - 35, 6, $data['container_specs']['image'], 0, 'L');
+            $pdf->Cell(35, 6, 'CPU Limit:', 0, 0);
+            $pdf->Cell($column1Width - 35, 6, $data['container_specs']['cpu_limit'], 0, 1);
+            $pdf->Cell(35, 6, 'Memory Limit:', 0, 0);
+            $pdf->Cell($column1Width - 35, 6, $data['container_specs']['memory_limit'], 0, 1);
+            $pdf->Cell(35, 6, 'Published Ports:', 0, 0);
+            $pdf->MultiCell($column1Width - 35, 6, $data['container_specs']['ports'], 0, 'L');
+            $pdf->Cell(35, 6, 'Networks:', 0, 0);
+            $pdf->MultiCell($column1Width - 35, 6, $data['container_specs']['networks'], 0, 'L');
+            $endY1 = $pdf->GetY();
 
+            // Column 2: Summary
+            $pdf->SetXY($lMargin + $column1Width, $startY);
+            $pdf->SetFont('Arial', 'B', 12);
+            $pdf->Cell($column2Width, 8, 'Summary', 0, 1, 'L');
+            $pdf->SetX($lMargin + $column1Width);
+            $pdf->SetFont('Arial', '', 10);
+            $pdf->Cell(40, 6, 'SLA Percentage:', 0, 0);
+            $pdf->Cell($column2Width - 40, 6, $data['summary']['sla_percentage'] . '%', 0, 1);
+            $pdf->SetX($lMargin + $column1Width);
+            $pdf->Cell(40, 6, 'Total Downtime:', 0, 0);
+            $pdf->Cell($column2Width - 40, 6, $data['summary']['total_downtime_human'], 0, 1);
+            $pdf->SetX($lMargin + $column1Width);
+            $pdf->Cell(40, 6, 'Downtime Incidents:', 0, 0);
+            $pdf->Cell($column2Width - 40, 6, $data['summary']['downtime_incidents'], 0, 1);
+            $endY2 = $pdf->GetY();
+
+            // Move cursor below the taller of the two columns
+            $pdf->SetY(max($endY1, $endY2) + 5);
+
+            // --- End of two-column layout ---
             $pdf->SetFont('Arial', 'B', 12);
             $pdf->Cell(0, 8, 'Downtime Details', 0, 1);
             $downtime_details_for_pdf = array_map(fn($d) => [$d['start_time'], $d['end_time'] ?? 'Ongoing', $d['duration_human'], $d['status']], $data['downtime_details']);
             $pdf->FancyTable(['Start Time', 'End Time', 'Duration', 'Status'], $downtime_details_for_pdf, [60, 60, 35, 35], ['C', 'C', 'R', 'C']);
 
             $filename = "sla_report_{$data['container_name']}.pdf";
-        } else {
+        } elseif ($data['report_type'] === 'global_summary') {
+            $pdf->SetFont('Arial', 'B', 16);
+            $pdf->Cell(0, 10, 'Global SLA Summary', 0, 1, 'C');
+            $pdf->SetFont('Arial', '', 10);
+            $pdf->Cell(0, 6, 'Period: ' . $params['dates'][0] . ' to ' . $params['dates'][1], 0, 1, 'C');
+            $pdf->Ln(3);
+            $host_slas_for_pdf = array_map(fn($h) => [$h['host_name'], $h['host_specs']['os'], $h['host_specs']['cpus'], $h['host_specs']['memory'], $h['overall_host_sla'] . '%', $h['overall_total_downtime_human']], $data['host_slas']);
+            $pdf->FancyTable(['Host Name', 'Operating System', 'CPUs', 'Memory', 'SLA', 'Downtime'], $host_slas_for_pdf, [45, 45, 15, 25, 20, 35], ['L', 'L', 'C', 'R', 'R', 'R']);
+            $filename = "sla_global_summary.pdf";
+        } elseif ($data['report_type'] === 'host_summary') {
             // --- SUMMARY REPORT ---
             $pdf->SetFont('Arial', 'B', 16);
             $pdf->Cell(0, 10, 'SLA Summary for: ' . $data['host_name'], 0, 1, 'C');
@@ -162,10 +339,26 @@ class SlaReportGenerator
             $pdf->Cell(0, 6, 'Period: ' . $params['dates'][0] . ' to ' . $params['dates'][1], 0, 1, 'C');
             $pdf->Ln(3);
 
+            // Host Specifications
+            $pdf->SetFont('Arial', 'B', 12);
+            $pdf->Cell(0, 8, 'Host Specifications', 0, 1);
+            $pdf->SetFont('Arial', '', 10);
+            $pdf->Cell(50, 6, 'Operating System:', 0, 0);
+            $pdf->Cell(0, 6, $data['host_specs']['os'], 0, 1);
+            $pdf->Cell(50, 6, 'Docker Version:', 0, 0);
+            $pdf->Cell(0, 6, $data['host_specs']['docker_version'], 0, 1);
+            $pdf->Cell(50, 6, 'CPUs:', 0, 0);
+            $pdf->Cell(0, 6, $data['host_specs']['cpus'], 0, 1);
+            $pdf->Cell(50, 6, 'Total Memory:', 0, 0);
+            $pdf->Cell(0, 6, $data['host_specs']['memory'], 0, 1);
+            $pdf->Ln(3);
+ 
             $container_slas_for_pdf = array_map(fn($c) => [$c['container_name'], $c['sla_percentage'] . '%', $c['total_downtime_human'], $c['downtime_incidents']], $data['container_slas']);
             $pdf->FancyTable(['Container Name', 'SLA', 'Total Downtime', 'Incidents'], $container_slas_for_pdf, [70, 30, 45, 45], ['L', 'R', 'R', 'R']);
             $filename = "sla_summary_{$data['host_name']}.pdf";
-        }
+        } else {
+            throw new Exception("Unknown report type '{$data['report_type']}' for PDF generation.");
+        } 
 
         $pdf->Output('I', $filename);
     }
@@ -186,7 +379,18 @@ class SlaReportGenerator
                 fputcsv($output, [$row['start_time'], $row['end_time'] ?? 'Ongoing', $row['duration_human'], $row['status']]);
             }
             fclose($output);
-        } else {
+        } elseif ($data['report_type'] === 'global_summary') {
+            $filename = "sla_global_summary.csv";
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            $output = fopen('php://output', 'w');
+            fputcsv($output, ['Host Name', 'OS', 'CPUs', 'Memory', 'Overall SLA', 'Total Aggregated Downtime']);
+
+            foreach ($data['host_slas'] as $row) {
+                fputcsv($output, [$row['host_name'], $row['host_specs']['os'], $row['host_specs']['cpus'], $row['host_specs']['memory'], $row['overall_host_sla'] . '%', $row['overall_total_downtime_human']]);
+            }
+            fclose($output);
+        } elseif ($data['report_type'] === 'host_summary') {
             // --- SUMMARY REPORT ---
             $filename = "sla_summary_{$data['host_name']}.csv";
             header('Content-Type: text/csv');
@@ -198,7 +402,9 @@ class SlaReportGenerator
                 fputcsv($output, [$row['container_name'], $row['sla_percentage'] . '%', $row['total_downtime_human'], $row['downtime_incidents']]);
             }
             fclose($output);
-        }
+        } else {
+            throw new Exception("Unknown report type '{$data['report_type']}' for CSV generation.");
+        } 
     }
 
     private function getSummaryData(array $params, int $total_seconds_in_period, array $downtime_statuses, string $placeholders, string $types): array
@@ -243,7 +449,7 @@ class SlaReportGenerator
         $services = [];
         foreach ($containers as $container) {
             $service_name = preg_replace('/(\.\d+)\..*$/', '', $container['container_name']);
-            $services[$service_name][] = $container['container_id'];
+            $services[$service_name]['ids'][] = $container['container_id'];
         }
 
         $summary_data = [];
@@ -251,11 +457,13 @@ class SlaReportGenerator
 
         foreach ($services as $service_name => $container_ids) {
             // 3. Fetch all downtime events for all containers in this service
-            $container_placeholders = implode(',', array_fill(0, count($container_ids), '?'));
+            $ids = $container_ids['ids'];
+            $identifier = count($ids) > 1 ? 'service:' . $service_name : $ids[0];
+            $container_placeholders = implode(',', array_fill(0, count($ids), '?'));
             $sql_downtime = "SELECT start_time, end_time FROM container_health_history WHERE host_id = ? AND container_id IN ({$container_placeholders}) AND status IN ({$placeholders}) AND start_time <= ? AND (end_time >= ? OR end_time IS NULL)";
             
-            $sql_params = array_merge([$params['host_id']], $container_ids, $downtime_statuses, [$params['end_date'], $params['start_date']]);
-            $types = 'i' . str_repeat('s', count($container_ids)) . str_repeat('s', count($downtime_statuses)) . 'ss';
+            $sql_params = array_merge([$params['host_id']], $ids, $downtime_statuses, [$params['end_date'], $params['start_date']]);
+            $types = 'i' . str_repeat('s', count($ids)) . str_repeat('s', count($downtime_statuses)) . 'ss';
 
             $stmt_downtime = $this->conn->prepare($sql_downtime);
             $stmt_downtime->bind_param($types, ...$sql_params);
@@ -264,7 +472,7 @@ class SlaReportGenerator
             $stmt_downtime->close();
 
             if (empty($downtime_events)) {
-                $summary_data[] = [$this->getCleanContainerName($service_name), '100.00', '0s', 0, 0];
+                $summary_data[] = [$this->getCleanContainerName($service_name), '100.00', '0s', 0, 0, $identifier];
                 continue;
             }
 
@@ -290,7 +498,7 @@ class SlaReportGenerator
 
             $uptime_seconds = $total_seconds_in_period - $total_downtime_seconds;
             $sla_percentage = ($total_seconds_in_period > 0) ? ($uptime_seconds / $total_seconds_in_period) * 100 : 100;
-            $summary_data[] = [$this->getCleanContainerName($service_name), number_format($sla_percentage, 2), $this->formatDuration($total_downtime_seconds), count($merged), $total_downtime_seconds];
+            $summary_data[] = [$this->getCleanContainerName($service_name), number_format($sla_percentage, 2), $this->formatDuration($total_downtime_seconds), count($merged), $total_downtime_seconds, $identifier];
         }
         return $summary_data;
     }
@@ -317,6 +525,69 @@ class SlaReportGenerator
             }
         }
         return implode(' ', $parts);
+    }
+
+    private function formatBytes($bytes, $precision = 2) {
+        if ($bytes <= 0) return '0 Bytes';
+        $base = log($bytes, 1024);
+        $suffixes = array('Bytes', 'KB', 'MB', 'GB', 'TB');
+
+        if (!isset($suffixes[floor($base)])) {
+            return $bytes . ' Bytes';
+        }
+
+        return round(pow(1024, $base - floor($base)), $precision) .' '. $suffixes[floor($base)];
+    }
+
+    private function formatPorts(array $portsData): string
+    {
+        if (empty($portsData)) {
+            return 'None';
+        }
+
+        $formattedPorts = [];
+        foreach ($portsData as $containerPort => $hostBindings) {
+            if (is_array($hostBindings) && !empty($hostBindings)) {
+                foreach ($hostBindings as $binding) {
+                    if (isset($binding['HostPort']) && !empty($binding['HostPort'])) {
+                        $formattedPorts[] = "{$binding['HostPort']}:{$containerPort}";
+                    }
+                }
+            }
+        }
+
+        if (empty($formattedPorts)) {
+            return 'None (only exposed)';
+        }
+        return implode(', ', $formattedPorts);
+    }
+
+    private function formatNetworks(array $networksData): string
+    {
+        if (empty($networksData)) {
+            return 'None';
+        }
+
+        $formattedNetworks = [];
+        foreach ($networksData as $networkName => $networkDetails) {
+            $ipAddress = $networkDetails['IPAddress'] ?? '';
+            if ($ipAddress) {
+                $formattedNetworks[] = "{$networkName} ({$ipAddress})";
+            } else {
+                $formattedNetworks[] = $networkName;
+            }
+        }
+
+        return implode(', ', $formattedNetworks);
+    }
+
+    private function formatCpus($nanoCpus) {
+        if (empty($nanoCpus) || $nanoCpus <= 0) {
+            return 'Unlimited';
+        }
+        // 1 CPU = 1,000,000,000 nanoCPUs
+        $cpus = $nanoCpus / 1000000000;
+        return number_format($cpus, 2) . ' vCPU';
     }
 
     private function getCleanContainerName(string $raw_name): string

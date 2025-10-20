@@ -11,12 +11,29 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 }
 
 // --- Input Validation ---
-$host_id = filter_input(INPUT_POST, 'host_id', FILTER_VALIDATE_INT);
-$container_id = filter_input(INPUT_POST, 'container_id', FILTER_SANITIZE_STRING);
+$host_id_raw = $_POST['host_id'] ?? null;
+$host_id = ($host_id_raw === 'all') ? 'all' : filter_var($host_id_raw, FILTER_VALIDATE_INT);
+
+// Special handling for container_id which can be 'service:service_name'
+$raw_container_id = $_POST['container_id'] ?? null;
+if (strpos($raw_container_id, 'service:') === 0) {
+    // This is a service identifier, sanitize it carefully
+    $service_name = substr($raw_container_id, strlen('service:'));
+    // Allow alphanumeric, underscore, hyphen, dot
+    if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $service_name)) {
+        http_response_code(400);
+        die('Invalid service name format.');
+    }
+    $container_id = $raw_container_id; // Keep the full 'service:...' string
+} else {
+    $container_id = filter_input(INPUT_POST, 'container_id', FILTER_SANITIZE_STRING);
+}
 $date_range = filter_input(INPUT_POST, 'date_range', FILTER_SANITIZE_STRING); 
 $report_type = filter_input(INPUT_POST, 'report_type', FILTER_SANITIZE_STRING);
+$show_only_downtime = filter_input(INPUT_POST, 'show_only_downtime', FILTER_VALIDATE_BOOLEAN);
 
-if (!$report_type || !$host_id || !$container_id || !$date_range) {
+// If host_id is 'all', container_id is not required for validation.
+if (!$report_type || !$host_id || (!$container_id && $host_id !== 'all') || !$date_range) {
     http_response_code(400);
     die('Report Type, Host ID, Container ID, and Date Range are required.');
 }
@@ -114,6 +131,7 @@ try {
         'container_id' => $container_id,
         'start_date'   => date('Y-m-d 00:00:00', strtotime($dates[0])),
         'end_date'     => date('Y-m-d 23:59:59', strtotime($dates[1])),
+        'show_only_downtime' => $show_only_downtime,
         'dates'        => $dates, // Pass original date strings for display
     ];
 

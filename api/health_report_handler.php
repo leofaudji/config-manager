@@ -26,23 +26,53 @@ if (json_last_error() !== JSON_ERROR_NONE || !isset($data['host_id']) || !isset(
 }
 
 $conn = Database::getInstance()->getConnection();
-$conn->begin_transaction();
+
+// --- Check if host was previously marked as down ---
+$host_id = (int)$data['host_id'];
+$stmt_check_down = $conn->prepare("SELECT name, is_down_notified FROM docker_hosts WHERE id = ?");
+$stmt_check_down->bind_param("i", $host_id);
+$stmt_check_down->execute();
+$host_info = $stmt_check_down->get_result()->fetch_assoc();
+$stmt_check_down->close();
+
+$was_down = $host_info && $host_info['is_down_notified'];
+
+// --- Update Host's Last Report Time & Reset Down Flag ---
+// This is the primary indicator that the host is online.
+// We also reset the 'is_down_notified' flag here.
+$host_uptime_seconds = $data['host_uptime_seconds'] ?? null;
+$stmt_update_host = $conn->prepare(
+    "UPDATE docker_hosts SET last_report_at = NOW(), agent_status = 'Running', is_down_notified = 0, host_uptime_seconds = ? WHERE id = ?"
+);
+$stmt_update_host->bind_param("ii", $host_uptime_seconds, $host_id);
+$stmt_update_host->execute();
+
+if ($stmt_update_host->affected_rows === 0) {
+    // This might happen if the agent reports for a host ID that doesn't exist in the DB.
+    http_response_code(404);
+    die(json_encode(['status' => 'error', 'message' => 'Host ID not found or no update was necessary.']));
+}
+$stmt_update_host->close();
+
+// --- Send Recovery Notification if it was previously down ---
+if ($was_down && (bool)get_setting('notification_host_down_enabled', true)) {
+    // Send notification only if enabled
+    if ((bool)get_setting('notification_host_down_enabled', true)) {
+        send_notification(
+            "Host Recovered: {$host_info['name']}",
+            "Host '{$host_info['name']}' is back online and reporting health status.",
+            'success',
+            ['host_id' => $host_id, 'host_name' => $host_info['name']]
+        );
+    }
+}
 
 try {
-    $host_id = (int)$data['host_id'];
+    $conn->begin_transaction();
     $reports = $data['reports'];
     $running_container_ids = $data['running_container_ids'] ?? [];
     $container_stats = $data['container_stats'] ?? [];
     $host_cpu_usage_percent = $data['host_cpu_usage_percent'] ?? null;
-    $host_uptime_seconds = $data['host_uptime_seconds'] ?? null;
-
-    // --- Update Host Status (last_report_at and uptime) ---
-    if ($host_id) {
-        $stmt_host = $conn->prepare("UPDATE docker_hosts SET last_report_at = NOW(), host_uptime_seconds = ? WHERE id = ?");
-        $stmt_host->bind_param("ii", $host_uptime_seconds, $host_id);
-        $stmt_host->execute();
-        $stmt_host->close();
-    }
 
     // --- [SLA LOGIC - REFACTORED] Get the last recorded history status for all containers on this host in one query ---
     // This is more efficient than querying inside the loop.
@@ -228,12 +258,12 @@ try {
     }
 
     $conn->commit();
-    echo json_encode(['status' => 'success', 'message' => 'Report processed.']);
+    echo json_encode(['status' => 'success', 'message' => 'Health report processed successfully.']);
 
 } catch (Exception $e) {
     $conn->rollback();
     http_response_code(500);
-    log_activity('SYSTEM', 'Health Report Error', "Failed to process health report: " . $e->getMessage());
+    log_activity('SYSTEM', 'Health Report Error', 'Error processing health report for host ' . $host_id . ': ' . $e->getMessage(), $host_id);
     echo json_encode(['status' => 'error', 'message' => 'Server error: ' . $e->getMessage()]);
 }
 

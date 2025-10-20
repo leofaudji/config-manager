@@ -21,20 +21,28 @@ $hosts_result = $conn->query("SELECT id, name FROM docker_hosts ORDER BY name AS
                     <label for="host_id" class="form-label">Host</label>
                     <select class="form-select" id="host_id" name="host_id" required>
                         <option value="" selected disabled>-- Select a Host --</option>
+                        <option value="all">-- All Hosts (Global Summary) --</option>
+                        <option disabled>-----------------</option>
                         <?php while ($host = $hosts_result->fetch_assoc()): ?>
                             <option value="<?= $host['id'] ?>"><?= htmlspecialchars($host['name']) ?></option>
                         <?php endwhile; ?>
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label for="container_id" class="form-label">Container</label>
                     <select class="form-select" id="container_id" name="container_id" disabled>
                         <option value="">-- Select a host first --</option>
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="date_range" class="form-label">Date Range</label>
                     <input type="text" class="form-control" id="date_range" name="date_range" required>
+                </div>
+                <div class="col-md-2 d-flex align-items-end pb-1">
+                     <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="show_only_downtime" name="show_only_downtime" value="1">
+                        <label class="form-check-label" for="show_only_downtime">Only with downtime</label>
+                    </div>
                 </div>
                 <div class="col-md-2">
                     <div class="btn-group w-100">
@@ -168,6 +176,43 @@ $hosts_result = $conn->query("SELECT id, name FROM docker_hosts ORDER BY name AS
     </div>
 </div>
 
+<!-- Output for Global Summary Report -->
+<div id="global-summary-output" class="mt-4" style="display: none;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 id="global-summary-report-title"></h3>
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="#" id="export-global-summary-csv-btn"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Export Summary as CSV</a></li>
+                <li><a class="dropdown-item" href="#" id="export-global-summary-pdf-btn"><i class="bi bi-file-earmark-pdf me-2"></i>Export Summary as PDF</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            SLA Summary per Host
+        </div>
+        <div class="card-body">
+            <table class="table table-striped table-hover" id="global-sla-table">
+                <thead>
+                    <tr>
+                        <th>Host Name</th>
+                        <th>Overall SLA</th>
+                        <th>OS</th>
+                        <th>CPUs</th>
+                        <th>Memory</th>
+                        <th>Total Aggregated Downtime</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <script>
 window.pageInit = function() {
     // Karena skrip sekarang dimuat secara global di header, kita bisa langsung inisialisasi.
@@ -178,6 +223,7 @@ window.pageInit = function() {
     const reportOutput = document.getElementById('report-output');
     const singleContainerOutput = document.getElementById('single-container-output');
     const hostSummaryOutput = document.getElementById('host-summary-output');
+    const globalSummaryOutput = document.getElementById('global-summary-output');
     let reportData = {}; // Holds data for export functions
     const resetFiltersBtn = document.getElementById('reset-filters-btn');
 
@@ -199,6 +245,7 @@ window.pageInit = function() {
     function saveFilters() {
         localStorage.setItem('sla_report_host_id', hostSelect.value);
         localStorage.setItem('sla_report_container_id', containerSelect.value);
+        localStorage.setItem('sla_report_show_only_downtime', document.getElementById('show_only_downtime').checked);
         localStorage.setItem('sla_report_date_range', $('input[name="date_range"]').val());
     }
 
@@ -206,11 +253,16 @@ window.pageInit = function() {
         const savedHostId = localStorage.getItem('sla_report_host_id');
         const savedContainerId = localStorage.getItem('sla_report_container_id');
         const savedDateRange = localStorage.getItem('sla_report_date_range');
+        const savedShowOnlyDowntime = localStorage.getItem('sla_report_show_only_downtime');
 
         if (savedDateRange) {
             const dates = savedDateRange.split(' - ');
             $('input[name="date_range"]').data('daterangepicker').setStartDate(dates[0]);
             $('input[name="date_range"]').data('daterangepicker').setEndDate(dates[1]);
+        }
+
+        if (savedShowOnlyDowntime === 'true') {
+            document.getElementById('show_only_downtime').checked = true;
         }
 
         if (savedHostId) {
@@ -225,6 +277,7 @@ window.pageInit = function() {
 
         localStorage.removeItem('sla_report_host_id');
         localStorage.removeItem('sla_report_container_id');
+        localStorage.removeItem('sla_report_show_only_downtime');
         localStorage.removeItem('sla_report_date_range');
 
         form.reset();
@@ -233,6 +286,7 @@ window.pageInit = function() {
         containerSelect.disabled = true;
         singleContainerOutput.style.display = 'none';
         hostSummaryOutput.style.display = 'none';
+        globalSummaryOutput.style.display = 'none';
 
         // Reset date picker to default (This Month)
         $('input[name="date_range"]').data('daterangepicker').setStartDate(moment().startOf('month'));
@@ -243,7 +297,14 @@ window.pageInit = function() {
         const hostId = this.value;
         containerSelect.disabled = true;
         containerSelect.innerHTML = '<option>Loading containers...</option>';
-        if (!hostId) return;
+        if (!hostId) {
+            containerSelect.innerHTML = '<option value="">-- Select a host first --</option>';
+            return;
+        }
+        if (hostId === 'all') {
+            containerSelect.innerHTML = '<option value="all" selected>-- Global Summary --</option>';
+            return;
+        }
 
         fetch(`<?= base_url('/api/containers/list?host_id=') ?>${hostId}`)
             .then(response => response.json())
@@ -298,11 +359,14 @@ window.pageInit = function() {
                 // Hide both outputs first
                 singleContainerOutput.style.display = 'none';
                 hostSummaryOutput.style.display = 'none';
+                globalSummaryOutput.style.display = 'none';
 
                 if (data.data.report_type === 'single_container') {
                     displaySingleContainerReport(data.data);
                 } else if (data.data.report_type === 'host_summary') {
                     displayHostSummaryReport(data.data);
+                } else if (data.data.report_type === 'global_summary') {
+                    displayGlobalSummaryReport(data.data);
                 }
             })
             .catch(error => showToast(`Error generating report: ${error.message}`, false))
@@ -383,7 +447,7 @@ window.pageInit = function() {
                     if (container.sla_percentage_raw < minimumSla) slaBadgeClass = 'bg-danger';
                     else if (container.sla_percentage_raw < 99.9) slaBadgeClass = 'bg-warning'; // Keep a 'warning' threshold
 
-                    const row = `<tr>
+                    const row = `<tr class="clickable-row" data-container-id="${container.container_id}" title="Click to view detailed PDF report for ${container.container_name}">
                         <td>${container.container_name}</td>
                         <td><span class="badge ${slaBadgeClass}">${container.sla_percentage}%</span></td>
                         <td>${container.total_downtime_human}</td>
@@ -396,6 +460,38 @@ window.pageInit = function() {
             }
             hostSummaryOutput.style.display = 'block';
         }
+
+        function displayGlobalSummaryReport(data) {
+            reportData = data; // Store for export
+
+            document.getElementById('global-summary-report-title').textContent = `Global SLA Summary`;
+            const tableBody = document.querySelector('#global-sla-table tbody');
+            tableBody.innerHTML = '';
+
+            if (data.host_slas.length > 0) {
+                data.host_slas.forEach(host => {
+                    const minimumSla = parseFloat(<?= json_encode(get_setting('minimum_sla_percentage', '99.9')) ?>);
+                    let slaBadgeClass = 'bg-success';
+                    if (host.overall_host_sla_raw < minimumSla) slaBadgeClass = 'bg-danger';
+                    else if (host.overall_host_sla_raw < 99.9) slaBadgeClass = 'bg-warning';
+
+                    const row = `<tr class="clickable-row" data-host-id="${host.host_id}" title="Click to view detailed summary for ${host.host_name}">
+                        <td>${host.host_name}</td>
+                        <td><span class="badge ${slaBadgeClass}">${host.overall_host_sla}%</span></td>
+                        <td><small>${host.host_specs.os}</small></td>
+                        <td><small>${host.host_specs.cpus}</small></td>
+                        <td><small>${host.host_specs.memory}</small></td>
+                        <td>${host.overall_total_downtime_human}</td>
+                    </tr>`;
+                    tableBody.innerHTML += row;
+                });
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="3" class="text-center">No hosts with health history found in the selected period.</td></tr>';
+            }
+            globalSummaryOutput.style.display = 'block';
+        }
+
+
 
         // Helper function to prevent XSS
         function escapeHtml(unsafe) {
@@ -458,6 +554,54 @@ window.pageInit = function() {
         document.getElementById('export-pdf-btn').addEventListener('click', () => handleExport('pdf'));
         document.getElementById('export-summary-csv-btn').addEventListener('click', () => handleExport('csv'));
         document.getElementById('export-summary-pdf-btn').addEventListener('click', () => handleExport('pdf'));
+        document.getElementById('export-global-summary-csv-btn').addEventListener('click', () => handleExport('csv'));
+        document.getElementById('export-global-summary-pdf-btn').addEventListener('click', () => handleExport('pdf'));
+
+        // Event listener for clicking rows in the host summary table
+        const hostSlaTableBody = document.querySelector('#host-sla-table tbody');
+        hostSlaTableBody.addEventListener('click', function(event) {
+            const row = event.target.closest('tr');
+            if (!row || !row.dataset.containerId) return;
+
+            const containerId = row.dataset.containerId;
+            const hostId = hostSelect.value;
+            const dateRange = $('input[name="date_range"]').val();
+
+            // Show loading indicator on the row
+            const originalContent = row.innerHTML;
+            row.innerHTML = `<td colspan="4" class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating PDF...</td>`;
+
+            const formData = new FormData();
+            formData.append('report_type', 'sla_report');
+            formData.append('host_id', hostId);
+            formData.append('container_id', containerId);
+            formData.append('date_range', dateRange);
+
+            fetch('<?= base_url('/api/pdf') ?>', { method: 'POST', body: formData })
+                .then(res => {
+                    if (!res.ok) throw new Error('Failed to generate PDF.');
+                    return res.blob();
+                })
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                })
+                .catch(err => showToast('Error exporting PDF: ' + err.message, false))
+                .finally(() => row.innerHTML = originalContent); // Restore row content
+        });
+
+        // Event listener for clicking rows in the GLOBAL summary table
+        const globalSlaTableBody = document.querySelector('#global-sla-table tbody');
+        globalSlaTableBody.addEventListener('click', function(event) {
+            const row = event.target.closest('tr');
+            if (!row || !row.dataset.hostId) return;
+
+            const hostId = row.dataset.hostId;
+            // Set the form values and submit it to generate the detailed report for that host
+            hostSelect.value = hostId;
+            containerSelect.innerHTML = `<option value="all" selected>-- All Containers (Summary) --</option>`;
+            form.dispatchEvent(new Event('submit'));
+        });
 };
 </script>
 

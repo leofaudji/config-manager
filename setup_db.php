@@ -436,6 +436,10 @@ CREATE TABLE `container_health_history` (
   FOREIGN KEY (`host_id`) REFERENCES `docker_hosts`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+ALTER TABLE `docker_hosts`
+ADD COLUMN `is_down_notified` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Flag to prevent repeated down notifications'
+AFTER `agent_status`;
+
 
 ";
 
