@@ -158,10 +158,10 @@ window.pageInit = function() {
 
     let lastUnhealthySet = new Set();
     const alertSound = new Audio('https://cdn.jsdelivr.net/gh/scottschiller/SoundManager2@master/demo/audio/alert-01.mp3');
+    let audioUnlocked = false;
     let currentPage = 1;
     let currentLimit = 15;
     let currentSort = 'status';
-    let autoRefreshInterval = null;
     let currentOrder = 'asc';
     let currentGroupFilter = '';
 
@@ -415,8 +415,8 @@ window.pageInit = function() {
     autoRefreshSwitch.addEventListener('change', function() {
         localStorage.setItem('health_status_auto_refresh', this.checked);
         if (this.checked) {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval); // Clear previous interval if any
-            autoRefreshInterval = setInterval(() => loadHealthStatus(currentPage, currentLimit, true), 15000); // Pass true for smooth refresh
+            if (window.currentPageInterval) clearInterval(window.currentPageInterval); // Clear previous interval if any
+            window.currentPageInterval = setInterval(() => loadHealthStatus(currentPage, currentLimit, true), 15000); // Pass true for smooth refresh
             // --- Unlock audio on user interaction ---
             if (!audioUnlocked) {
                 alertSound.volume = 0;
@@ -427,9 +427,9 @@ window.pageInit = function() {
             }
             showToast('Auto-refresh enabled (15s).', true);
         } else {
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
+            if (window.currentPageInterval) {
+                clearInterval(window.currentPageInterval);
+                window.currentPageInterval = null;
                 showToast('Auto-refresh disabled.', true);
             }
         }

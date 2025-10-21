@@ -7,6 +7,12 @@ $cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscale
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2"><i class="bi bi-journals"></i> Log Viewer</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="form-check form-switch me-3" data-bs-toggle="tooltip" title="Automatically refresh logs every 15 seconds">
+            <input class="form-check-input" type="checkbox" role="switch" id="auto-refresh-switch">
+            <label class="form-check-label" for="auto-refresh-switch">Auto Refresh</label>
+        </div>
+    </div>
 </div>
 
 <div class="card">
@@ -20,6 +26,11 @@ $cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscale
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="agent-log-tab" data-bs-toggle="tab" data-bs-target="#agent-log-pane" type="button" role="tab" aria-controls="agent-log-pane" aria-selected="false">
                     <i class="bi bi-heart-pulse"></i> Health Agent Logs
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="system-log-tab" data-bs-toggle="tab" data-bs-target="#system-log-pane" type="button" role="tab" aria-controls="system-log-pane" aria-selected="false">
+                    <i class="bi bi-robot"></i> System Logs
                 </button>
             </li>
             <li class="nav-item" role="presentation">
@@ -86,6 +97,32 @@ $cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscale
                 </div>
             </div>
 
+            <!-- System Log Pane -->
+            <div class="tab-pane fade" id="system-log-pane" role="tabpanel" aria-labelledby="system-log-tab" tabindex="0">
+                <div class="table-responsive" style="max-height: 65vh;">
+                    <table class="table table-striped table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Action</th>
+                                <th>Details</th>
+                                <th>Associated Host</th>
+                            </tr>
+                        </thead>
+                        <tbody id="system-log-container">
+                            <!-- Data will be loaded by AJAX -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted small" id="system-log-info"></div>
+                    <div class="d-flex align-items-center">
+                        <a href="<?= base_url('/api/logs/view?type=system&download=true') ?>" class="btn btn-sm btn-outline-secondary me-2 no-spa download-log-btn" download="system_log.txt"><i class="bi bi-download"></i> Download Full Log</a>
+                        <nav id="system-log-pagination"></nav>
+                    </div>
+                </div>
+            </div>
+
             <!-- Cron Job Log Pane -->
             <div class="tab-pane fade" id="cron-log-pane" role="tabpanel" aria-labelledby="cron-log-tab" tabindex="0">
                 <div class="row">
@@ -133,6 +170,8 @@ window.pageInit = function() {
     const logTabs = document.getElementById('logTabs');
     let currentActivityPage = 1;
     let currentAgentPage = 1;
+    let currentSystemPage = 1;
+    const autoRefreshSwitch = document.getElementById('auto-refresh-switch');
 
     function loadActivityLogs(page = 1) {
         currentActivityPage = page;
@@ -158,6 +197,19 @@ window.pageInit = function() {
                 renderPagination('agent-log-pagination', data.total_pages, data.current_page, loadAgentLogs);
             })
             .catch(error => console.error('Error loading agent logs:', error));
+    }
+
+    function loadSystemLogs(page = 1) {
+        currentSystemPage = page;
+        const url = `<?= base_url('/api/logs/view?type=system&page=') ?>${page}`;
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('system-log-container').innerHTML = data.html;
+                document.getElementById('system-log-info').innerHTML = data.info;
+                renderPagination('system-log-pagination', data.total_pages, data.current_page, loadSystemLogs);
+            })
+            .catch(error => console.error('Error loading system logs:', error));
     }
 
     function loadCronLog(scriptName) {
@@ -211,6 +263,39 @@ window.pageInit = function() {
         container.appendChild(ul);
     }
 
+    function handleAutoRefresh() {
+        if (window.currentPageInterval) {
+            clearInterval(window.currentPageInterval);
+            window.currentPageInterval = null;
+        }
+
+        if (autoRefreshSwitch.checked) {
+            const activeTabLoader = getActiveTabLoader();
+            if (activeTabLoader) {
+                window.currentPageInterval = setInterval(activeTabLoader, 15000); // Refresh every 15 seconds
+                showToast('Auto-refresh enabled (15s).', true);
+            }
+        } else {
+            showToast('Auto-refresh disabled.', true);
+        }
+    }
+
+    function getActiveTabLoader() {
+        const activeTab = logTabs.querySelector('.nav-link.active');
+        if (!activeTab) return null;
+
+        switch (activeTab.id) {
+            case 'activity-log-tab': return () => loadActivityLogs(currentActivityPage);
+            case 'agent-log-tab': return () => loadAgentLogs(currentAgentPage);
+            case 'system-log-tab': return () => loadSystemLogs(currentSystemPage);
+            case 'cron-log-tab':
+                const activeCronScript = document.querySelector('.cron-log-select.active');
+                return activeCronScript ? () => loadCronLog(activeCronScript.dataset.script) : null;
+            case 'auto-deploy-log-tab': return loadAutoDeployLog;
+            default: return null;
+        }
+    }
+
     // Add a listener for all download buttons to show a toast
     document.body.addEventListener('click', function(e) {
         const downloadBtn = e.target.closest('.download-log-btn');
@@ -225,7 +310,11 @@ window.pageInit = function() {
             loadActivityLogs(currentActivityPage);
         } else if (event.target.id === 'agent-log-tab') {
             loadAgentLogs(currentAgentPage);
+        } else if (event.target.id === 'system-log-tab') {
+            loadSystemLogs(currentSystemPage);
         }
+        // Restart auto-refresh for the new active tab
+        handleAutoRefresh();
     });
 
     // Event listeners for cron log selection
@@ -236,6 +325,8 @@ window.pageInit = function() {
             this.classList.add('active');
             const scriptName = this.dataset.script;
             loadCronLog(scriptName);
+            // Restart auto-refresh for the new active log file
+            handleAutoRefresh();
         });
     });
 

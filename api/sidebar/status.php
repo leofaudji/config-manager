@@ -4,6 +4,7 @@
 require_once __DIR__ . '/../../includes/bootstrap.php';
 require_once __DIR__ . '/../../includes/YamlGenerator.php';
 require_once __DIR__ . '/../../includes/reports/SlaReportGenerator.php';
+require_once __DIR__ . '/../../includes/GitHelper.php';
 
 header('Content-Type: application/json');
 
@@ -51,8 +52,17 @@ try {
     ];
 
     // 2. Get Down Hosts Count
-    $down_hosts_result = $conn->query("SELECT COUNT(*) as count FROM docker_hosts WHERE is_down_notified = 1");
-    $response_data['down_hosts_count'] = (int)($down_hosts_result->fetch_assoc()['count'] ?? 0);
+    $host_down_threshold_minutes = (int)get_setting('host_down_threshold_minutes', 5);
+    $cutoff_time = date('Y-m-d H:i:s', strtotime("-{$host_down_threshold_minutes} minutes"));
+    $stmt_down_hosts = $conn->prepare("
+        SELECT COUNT(*) as count 
+        FROM docker_hosts 
+        WHERE is_down_notified = 1 AND last_report_at < ?
+    ");
+    $stmt_down_hosts->bind_param("s", $cutoff_time);
+    $stmt_down_hosts->execute();
+    $response_data['down_hosts_count'] = (int)($stmt_down_hosts->get_result()->fetch_assoc()['count'] ?? 0);
+    $stmt_down_hosts->close();
 
     // 3. Check for Pending Traefik Changes
     $auto_deploy_enabled = (bool)get_setting('auto_deploy_enabled', true);
@@ -125,6 +135,61 @@ try {
         'alerts' => array_slice($sla_alerts, 0, 20) // Limit to 20 items for UI performance
     ];
 
+    // 5. Git Diff Status for Stack Sync
+    $git_sync_status = [
+        'changes_count' => 0,
+        'diff' => ''
+    ];
+    $repo_path = null;
+    try {
+        $git_enabled = (bool)get_setting('git_integration_enabled', false);
+        if ($git_enabled) {
+            $git = new GitHelper();
+            $base_compose_path = get_setting('default_compose_path');
+            
+            if (!empty($base_compose_path) && is_dir($base_compose_path)) {
+                $repo_path = $git->setupRepository();
+                $stacks_result = $conn->query("SELECT s.stack_name, s.compose_file_path, h.name as host_name FROM application_stacks s JOIN docker_hosts h ON s.host_id = h.id");
+
+                while ($stack = $stacks_result->fetch_assoc()) {
+                    $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $stack['host_name']);
+                    $source_compose_file = rtrim($base_compose_path, '/') . "/{$safe_host_name}/{$stack['stack_name']}/{$stack['compose_file_path']}";
+
+                    if (file_exists($source_compose_file)) {
+                        $destination_dir_in_repo = "{$repo_path}/{$safe_host_name}/{$stack['stack_name']}";
+                        if (!is_dir($destination_dir_in_repo)) @mkdir($destination_dir_in_repo, 0755, true);
+                        copy($source_compose_file, "{$destination_dir_in_repo}/{$stack['compose_file_path']}");
+                    }
+                }
+
+                $git->execute("add -A", $repo_path);
+                $diff_output = $git->getDiff($repo_path, true);
+                $changes_count = count(array_filter(explode("\n", $git->getStatus($repo_path))));
+
+                $git_sync_status['changes_count'] = $changes_count;
+                $git_sync_status['diff'] = $changes_count > 0 ? $diff_output : '';
+            }
+        }
+    } catch (Exception $e) {
+        // Ignore Git errors in this context to not break the entire status update. Log it instead.
+        error_log("Sidebar Status - Git Diff Check Error: " . $e->getMessage());
+    } finally {
+        if (isset($git) && isset($repo_path) && !$git->isPersistentPath($repo_path)) $git->cleanup($repo_path);
+    }
+    $response_data['git_sync_status'] = $git_sync_status;
+
+    // 6. Get Open Incidents
+    $incident_stmt = $conn->prepare("
+        SELECT id, incident_type, target_name, status 
+        FROM incident_reports 
+        WHERE status IN ('Open', 'Investigating') 
+        ORDER BY start_time DESC 
+        LIMIT 20
+    ");
+    $incident_stmt->execute();
+    $open_incidents = $incident_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $incident_stmt->close();
+    $response_data['open_incidents'] = ['count' => count($open_incidents), 'alerts' => $open_incidents];
 
     echo json_encode(['status' => 'success', 'data' => $response_data]);
 

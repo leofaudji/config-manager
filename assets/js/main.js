@@ -100,6 +100,12 @@ function updateActiveLink(url) {
 async function loadPage(url, pushState = true, noAnimation = false) {
     if (!mainContent) return;
 
+    // --- NEW: Cleanup logic for page-specific intervals ---
+    if (window.currentPageInterval) {
+        clearInterval(window.currentPageInterval);
+        window.currentPageInterval = null;
+    }
+
     const loadingBar = document.getElementById('loading-bar');
     if (loadingBar && !noAnimation) {
         // Only show loading bar for non-tab navigation
@@ -745,10 +751,12 @@ function initializePageSpecificScripts() {
     const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
 
     function manageSidebarTooltips() {
-        if (!sidebar) return;
+        if (!sidebar) {
+            return;
+        }
         const isCollapsed = document.body.classList.contains('sidebar-collapsed');
         const sidebarLinks = sidebar.querySelectorAll('.sidebar-nav .nav-link[data-bs-toggle="tooltip"]');
-
+ 
         sidebarLinks.forEach(link => {
             const tooltip = bootstrap.Tooltip.getInstance(link);
             if (tooltip) {
@@ -759,7 +767,7 @@ function initializePageSpecificScripts() {
                 }
             }
         });
-    }
+    } 
 
     if (sidebarToggleBtn && sidebar) {
         sidebarToggleBtn.addEventListener('click', () => {
@@ -864,27 +872,17 @@ function initializePageSpecificScripts() {
     // --- Dashboard Widgets Logic ---
     function loadDashboardWidgets() {
         //const basePath = window.basePath || ''; // Ensure basePath is available in this scope
-        let containerStatusChart = null; // Variable to hold the chart instance
-        const widgets = [
-            'total-routers-widget',
-            'total-services-widget',
-            'total-middlewares-widget',
-            'total-hosts-widget',
-            'total-users-widget',
-            'health-check-widget',
-            'agg-total-containers-widget'
-        ];
-
         // Check if we are on the dashboard page by looking for one of the widgets
-
+        if (!document.getElementById('high-level-overview')) {
+            return; // Exit if not on the dashboard
+        }
+ 
         // If on dashboard, also run the git status check
         checkGitSyncStatus();
-
+ 
         // Show loading state for the table
         const perHostContainer = document.getElementById('per-host-stats-container');
-        if (perHostContainer) perHostContainer.classList.add('table-loading');
-
-        return fetch(`${basePath}/api/dashboard-stats`)
+        fetch(`${basePath}/api/dashboard-stats`)
             .then(response => response.json())
             .then(result => {
                 if (result.status === 'success') {
@@ -903,7 +901,7 @@ function initializePageSpecificScripts() {
                         if (data.recent_activity.length > 0) {
                             let activityHtml = '';
                             data.recent_activity.forEach(log => {
-                                const logDate = new Date(log.created_at.replace(' ', 'T') + 'Z'); // Make it UTC
+                                const logDate = new Date(log.created_at.replace(' ', 'T')); // Parse as local time (which is now GMT+7 from server)
                                 const now = new Date();
                                 const seconds = Math.round((now - logDate) / 1000);
                                 let timeAgo;
@@ -1140,10 +1138,6 @@ function initializePageSpecificScripts() {
             })
             .catch(error => {
                 console.error('Error loading dashboard widgets:', error);
-                widgets.forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.textContent = 'Error';
-                });
             })
             .finally(() => {
                 if (perHostContainer) perHostContainer.classList.remove('table-loading');
@@ -1151,6 +1145,7 @@ function initializePageSpecificScripts() {
     }
 
     loadDashboardWidgets();
+    
 
     // --- Refresh Button Logic ---
     const refreshBtn = document.getElementById('refresh-host-stats-btn');
@@ -2172,6 +2167,29 @@ document.addEventListener('DOMContentLoaded', function () {
                         pendingChangesBadge.style.display = 'none';
                     }
                 }
+                const slaBadge = document.getElementById('sidebar-sla-badge');
+                const slaReportLink = document.getElementById('sla-report-link');
+                if (slaBadge && slaReportLink) {
+                    if (data.sla_violations.count > 0) {
+                        slaBadge.textContent = data.sla_violations.count;
+                        slaBadge.style.display = 'inline-block';
+                        // NEW: Update the link to pre-filter the report
+                        slaReportLink.href = `${basePath}/sla-report?filter=violations`;
+                    } else {
+                        slaBadge.style.display = 'none';
+                        slaReportLink.href = `${basePath}/sla-report`; // Revert to default link
+                    }
+                }
+
+                const incidentBadge = document.getElementById('sidebar-incident-badge');
+                if (incidentBadge && data.open_incidents) {
+                    if (data.open_incidents.count > 0) {
+                        incidentBadge.textContent = data.open_incidents.count;
+                        incidentBadge.style.display = 'inline-block';
+                    } else {
+                        incidentBadge.style.display = 'none';
+                    }
+                }
 
                 // 2. Update Unhealthy Items Alert Dropdown
                 const unhealthyAlertBtn = document.getElementById('unhealthy-alert-btn');
@@ -2240,6 +2258,65 @@ document.addEventListener('DOMContentLoaded', function () {
                         slaAlertBtn.classList.remove('btn-pulse');
                         slaAlertBadge.style.display = 'none';
                         slaAlertItemsContainer.innerHTML = '<li><span class="dropdown-item text-muted">No recent downtime.</span></li>';
+                    }
+                }
+
+                // 5. Update Git Sync Status Button
+                const syncStacksBtn = document.getElementById('sync-stacks-btn');
+                const syncBadge = document.getElementById('sync-badge');
+                if (syncStacksBtn && syncBadge && data.git_sync_status) {
+                    const gitStatus = data.git_sync_status;
+                    if (gitStatus.changes_count > 0) {
+                        syncBadge.textContent = gitStatus.changes_count;
+                        syncBadge.style.display = 'block';
+                        syncStacksBtn.classList.add('btn-pulse');
+
+                        // Store diff data and set button to open modal
+                        syncStacksBtn.dataset.diff = gitStatus.diff;
+                        syncStacksBtn.setAttribute('data-bs-toggle', 'modal');
+                        syncStacksBtn.setAttribute('data-bs-target', '#syncGitModal');
+                    } else {
+                        // No changes, ensure button has default (direct sync) behavior
+                        syncBadge.style.display = 'none';
+                        syncStacksBtn.classList.remove('btn-pulse');
+                        syncStacksBtn.removeAttribute('data-bs-toggle');
+                        syncStacksBtn.removeAttribute('data-bs-target');
+                        syncStacksBtn.dataset.diff = '';
+                    }
+                }
+
+                // 6. Update Open Incidents Alert Dropdown
+                const incidentAlertBtn = document.getElementById('incident-alert-btn');
+                const incidentAlertBadge = document.getElementById('incident-alert-badge');
+                const incidentAlertItemsContainer = document.getElementById('incident-alert-items-container');
+                if (incidentAlertBtn && incidentAlertBadge && incidentAlertItemsContainer && data.open_incidents) {
+                    if (data.open_incidents.count > 0) {
+                        incidentAlertBtn.classList.add('btn-pulse');
+                        incidentAlertBadge.textContent = data.open_incidents.count;
+                        incidentAlertBadge.style.display = 'inline-block';
+
+                        let itemsHtml = '';
+                        data.open_incidents.alerts.forEach(alert => {
+                            const link = `${basePath}/incidents/${alert.id}`;
+                            let statusBadge = 'bg-danger';
+                            if (alert.status === 'Investigating') statusBadge = 'bg-warning';
+
+                            itemsHtml += `
+                                <li>
+                                    <a class="dropdown-item d-flex justify-content-between align-items-start" href="${link}">
+                                        <div>
+                                            <strong class="d-block">${alert.target_name}</strong>
+                                            <small class="text-muted"><i class="bi bi-tag-fill"></i> ${alert.incident_type}</small>
+                                        </div>
+                                        <span class="badge ${statusBadge} rounded-pill">${alert.status}</span>
+                                    </a>
+                                </li>`;
+                        });
+                        incidentAlertItemsContainer.innerHTML = itemsHtml;
+                    } else {
+                        incidentAlertBtn.classList.remove('btn-pulse');
+                        incidentAlertBadge.style.display = 'none';
+                        incidentAlertItemsContainer.innerHTML = '<li><span class="dropdown-item text-muted">No open incidents.</span></li>';
                     }
                 }
 
@@ -2329,6 +2406,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // --- Start the single, consolidated status poller ---
     updateGlobalStatus();
-    setInterval(updateGlobalStatus, 30000); // Check every 30 seconds
+    const notificationInterval = parseInt(document.body.dataset.notificationInterval) || 30000;
+    setInterval(updateGlobalStatus, notificationInterval);
 
 });

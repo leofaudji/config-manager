@@ -59,7 +59,6 @@ window.pageInit = function() {
     const searchInput = document.getElementById('search-input');
     const statusFilter = document.getElementById('status-filter');
     const autoRefreshSwitch = document.getElementById('auto-refresh-switch');
-    let autoRefreshInterval = null;
 
     function loadLogs(page = 1, isAutoRefresh = false) {
         if (!isAutoRefresh) {
@@ -125,13 +124,13 @@ window.pageInit = function() {
     autoRefreshSwitch.addEventListener('change', function() {
         localStorage.setItem('webhook_reports_auto_refresh', this.checked);
         if (this.checked) {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(() => loadLogs(1, true), 15000);
+            if (window.currentPageInterval) clearInterval(window.currentPageInterval);
+            window.currentPageInterval = setInterval(() => loadLogs(1, true), 15000);
             showToast('Auto-refresh enabled (15s).', true);
         } else {
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
+            if (window.currentPageInterval) {
+                clearInterval(window.currentPageInterval);
+                window.currentPageInterval = null;
                 showToast('Auto-refresh disabled.', true);
             }
         }

@@ -165,6 +165,36 @@ require_once __DIR__ . '/../includes/header.php';
                             <small class="form-text text-muted">Set the target SLA percentage for color-coding in reports.</small>
                         </div>
                     </div>
+                    <hr>
+                    <h5 class="card-title mb-4">SLA Maintenance Window</h5>
+                    <p class="text-muted small">Define a recurring weekly period during which downtime will NOT count against your SLA score. This is useful for planned maintenance.</p>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="maintenance_window_enabled" name="maintenance_window_enabled" <?= ($settings['maintenance_window_enabled'] ?? 0) == 1 ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="maintenance_window_enabled">Enable Maintenance Window</label>
+                    </div>
+                    <div id="maintenance-window-container" class="<?= ($settings['maintenance_window_enabled'] ?? 0) == 1 ? '' : 'd-none' ?>">
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="maintenance_window_day" class="form-label">Day of the Week</label>
+                                <select class="form-select" id="maintenance_window_day" name="maintenance_window_day">
+                                    <?php 
+                                    $days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                    $selected_day = $settings['maintenance_window_day'] ?? 'Sunday';
+                                    foreach ($days as $day): ?>
+                                        <option value="<?= $day ?>" <?= $selected_day === $day ? 'selected' : '' ?>><?= $day ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="maintenance_window_start_time" class="form-label">Start Time (24h format)</label>
+                                <input type="time" class="form-control" id="maintenance_window_start_time" name="maintenance_window_start_time" value="<?= htmlspecialchars($settings['maintenance_window_start_time'] ?? '02:00') ?>">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="maintenance_window_end_time" class="form-label">End Time (24h format)</label>
+                                <input type="time" class="form-control" id="maintenance_window_end_time" name="maintenance_window_end_time" value="<?= htmlspecialchars($settings['maintenance_window_end_time'] ?? '04:00') ?>">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -257,6 +287,11 @@ require_once __DIR__ . '/../includes/header.php';
                             <label class="form-check-label" for="notification_host_down_enabled">Enable Host Down/Recovered Notifications</label>
                             <small class="form-text text-muted d-block">Send a notification when a host is detected as down or has recovered.</small>
                         </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="notification_incident_created_enabled" name="notification_incident_created_enabled" <?= ($settings['notification_incident_created_enabled'] ?? 1) == 1 ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="notification_incident_created_enabled">Enable New Incident Notifications</label>
+                            <small class="form-text text-muted d-block">Send a notification when a new incident is automatically created (e.g., host down, container unhealthy).</small>
+                        </div>
                         <div class="mb-3">
                             <label for="notification_server_url" class="form-label">Notification Server URL</label>
                             <input type="url" class="form-control" id="notification_server_url" name="notification_server_url" value="<?= htmlspecialchars($settings['notification_server_url'] ?? '') ?>" placeholder="https://your-ntfy-server.com/topic">
@@ -266,6 +301,11 @@ require_once __DIR__ . '/../includes/header.php';
                             <label for="notification_secret_token" class="form-label">Authentication Token (Optional)</label>
                             <input type="password" class="form-control" id="notification_secret_token" name="notification_secret_token" value="<?= htmlspecialchars($settings['notification_secret_token'] ?? '') ?>">
                             <small class="form-text text-muted">If your ntfy topic requires authentication, enter the token here.</small>
+                        </div>
+                        <div class="mb-3" style="max-width: 300px;">
+                            <label for="header_notification_interval" class="form-label">Header Notification Interval (seconds)</label>
+                            <input type="number" class="form-control" id="header_notification_interval" name="header_notification_interval" value="<?= (int)($settings['header_notification_interval'] ?? 30) ?>" min="5">
+                            <small class="form-text text-muted">How often the header notifications (unhealthy, SLA, Git changes) should refresh. Minimum 5 seconds.</small>
                         </div>
                     </div>
                 </div>
@@ -306,6 +346,29 @@ require_once __DIR__ . '/../includes/header.php';
                             <label for="cron_log_path" class="form-label">Cron Job Log Path</label>
                             <input type="text" class="form-control" id="cron_log_path" name="cron_log_path" value="<?= htmlspecialchars($settings['cron_log_path'] ?? '/var/log') ?>">
                             <small class="form-text text-muted">Directory where cron job output logs will be stored (e.g., `health_monitor.log`).</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Automatic Backups</h5>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="backup_enabled" name="backup_enabled" <?= ($settings['backup_enabled'] ?? 0) == 1 ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="backup_enabled">Enable Automatic Backups</label>
+                    </div>
+                    <div id="backup-settings-container" class="<?= ($settings['backup_enabled'] ?? 0) == 1 ? '' : 'd-none' ?>">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="backup_path" class="form-label">Backup Storage Path</label>
+                                <input type="text" class="form-control" id="backup_path" name="backup_path" value="<?= htmlspecialchars($settings['backup_path'] ?? '/var/www/html/config-manager/backups') ?>">
+                                <small class="form-text text-muted">Absolute path on the server where backup files will be stored.</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="backup_retention_days" class="form-label">Backup Retention (Days)</label>
+                                <input type="number" class="form-control" id="backup_retention_days" name="backup_retention_days" value="<?= (int)($settings['backup_retention_days'] ?? 7) ?>" min="1">
+                                <small class="form-text text-muted">Automatically delete backup files older than this value.</small>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -376,6 +439,24 @@ window.pageInit = function() {
     if (notifSwitch && notifContainer) {
         notifSwitch.addEventListener('change', function() {
             notifContainer.classList.toggle('d-none', !this.checked);
+        });
+    }
+
+    // Toggle visibility for Backup settings
+    const backupSwitch = document.getElementById('backup_enabled');
+    const backupContainer = document.getElementById('backup-settings-container');
+    if (backupSwitch && backupContainer) {
+        backupSwitch.addEventListener('change', function() {
+            backupContainer.classList.toggle('d-none', !this.checked);
+        });
+    }
+
+    // Toggle visibility for Maintenance Window settings
+    const maintenanceSwitch = document.getElementById('maintenance_window_enabled');
+    const maintenanceContainer = document.getElementById('maintenance-window-container');
+    if (maintenanceSwitch && maintenanceContainer) {
+        maintenanceSwitch.addEventListener('change', function() {
+            maintenanceContainer.classList.toggle('d-none', !this.checked);
         });
     }
 

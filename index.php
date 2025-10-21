@@ -54,12 +54,15 @@ $router->get('/container-events', 'pages/container_events.php', ['auth', 'admin'
 $router->get('/health-agent-workflow', 'pages/health_agent_workflow.php', ['auth', 'admin']); // Rute baru untuk diagram
 $router->get('/webhook-reports', 'pages/webhook_reports.php', ['auth', 'admin']); // Rute baru untuk laporan webhook
 $router->get('/cpu-reader-workflow', 'pages/cpu_reader_workflow.php', ['auth', 'admin']); // Rute baru untuk diagram CPU Reader
+$router->get('/incident-reports', 'pages/incident_reports.php', ['auth', 'admin']);
+$router->get('/incidents/{id}', 'pages/incident_details.php', ['auth', 'admin']);
 $router->get('/traefik-workflow', 'pages/traefik_workflow.php', ['auth', 'admin']);
 $router->get('/container-management-workflow', 'pages/container_management_workflow.php', ['auth', 'admin']);
 $router->get('/traffic-flow-workflow', 'pages/traffic_flow_workflow.php', ['auth', 'admin']);
 $router->get('/app-launcher-workflow', 'pages/app_launcher_workflow.php', ['auth', 'admin']);
 $router->get('/cron-jobs', 'pages/cron_management.php', ['auth', 'admin']);
 $router->get('/templates', 'pages/template_management.php', ['auth', 'admin']);
+$router->get('/backup-restore', 'pages/backup_restore.php', ['auth', 'admin']);
 $router->get('/traefik-hosts', 'pages/traefik_host_management.php', ['auth', 'admin']);
 $router->get('/app-launcher', 'pages/app_launcher.php', ['auth', 'admin']);
 $router->get('/hosts', 'pages/host_management.php', ['auth', 'admin']);
@@ -153,10 +156,13 @@ $router->get('/api/containers/list', 'api/container_list_handler.php', ['auth', 
 $router->get('/api/sla-report', 'api/sla_report_handler.php', ['auth', 'admin']);
 $router->post('/api/pdf', 'api/pdf.php', ['auth', 'admin']); // New PDF export endpoint
 $router->post('/api/csv', 'api/csv.php', ['auth', 'admin']); // New CSV export endpoint
+$router->get('/api/sla-heatmap', 'api/sla_heatmap_handler.php', ['auth', 'admin']);
 $router->get('/api/status/config-dirty', 'api/status_handler.php', ['auth']);
 $router->get('/api/sla-alert-status', 'api/sla_alert_status.php', ['auth']); // New endpoint for SLA alerts
 $router->get('/api/unhealthy-status', 'api/unhealthy_status.php', ['auth']); // New endpoint for unhealthy alerts
 $router->post('/api/log/ingest', 'api/log_ingest_handler.php'); // For receiving logs from agents
+$router->get('/api/system/backup', 'api/system_handler.php', ['auth', 'admin']);
+$router->post('/api/system/restore', 'api/system_handler.php', ['auth', 'admin']);
 $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin']);
 $router->post('/api/notifications/agent-relay', 'api/notification_relay_handler.php'); // New endpoint for agent notifications
 $router->post('/api/routers/bulk-move', 'api/router_bulk_handler.php', ['auth', 'admin']);
@@ -164,6 +170,8 @@ $router->post('/api/routers/bulk-delete', 'api/router_bulk_handler.php', ['auth'
 $router->get('/api/services/status', 'actions/get_service_status.php', ['auth']);
 $router->get('/api/services/{id}/details', 'api/service_detail_handler.php', ['auth', 'admin']);
 $router->get('/sla-report', 'pages/sla_report.php', ['auth', 'admin']);
+$router->get('/api/incidents', 'api/incident_handler.php', ['auth', 'admin']);
+$router->post('/api/incidents/{id}', 'api/incident_handler.php', ['auth', 'admin']);
 
 
 $router->post('/users/new', 'api/user_handler.php', ['auth', 'admin']);

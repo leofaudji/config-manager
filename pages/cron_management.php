@@ -6,6 +6,7 @@ $php_path = PHP_BINARY;
 $collect_stats_path = PROJECT_ROOT . '/collect_stats.php';
 $autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
 $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
+$system_backup_path = PROJECT_ROOT . '/system_backup.php';
 ?>
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -145,6 +146,35 @@ $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
         </div>
     </div>
 
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5><i class="bi bi-database-down"></i> Automatic Backup</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Skrip ini secara otomatis membuat backup penuh dari semua data konfigurasi aplikasi Anda dan menyimpannya ke path yang ditentukan di "General Settings".</p>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="system_backup_enabled" name="system_backup[enabled]" value="1">
+                <label class="form-check-label" for="system_backup_enabled">
+                    Enable Automatic Backup
+                    <span id="system_backup_status_badge" class="badge rounded-pill ms-2"></span>
+                </label>
+            </div>
+            <div class="mb-3">
+                <label for="system_backup_schedule" class="form-label">Schedule (Format Cron)</label>
+                <input type="text" class="form-control" id="system_backup_schedule" name="system_backup[schedule]" placeholder="0 2 * * *">
+                <small class="form-text text-muted">Direkomendasikan untuk berjalan sekali sehari, misalnya pada jam 2 pagi (<code>0 2 * * *</code>).</small>
+                <?php if (!is_executable($system_backup_path)): ?>
+                <div class="alert alert-warning mt-2 small">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars($system_backup_path) ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars($system_backup_path) ?></code> on your server.
+                </div>
+                <?php endif; ?>
+            </div>
+            <div class="bg-light p-2 rounded">
+                <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($system_backup_path) ?></code></small>
+            </div>
+        </div>
+    </div>
+
     <div class="mt-4">
         <button type="submit" class="btn btn-primary" id="save-cron-btn">Save Crontab</button>
     </div>
@@ -159,12 +189,13 @@ window.pageInit = function() {
         const autoscalerBadge = document.getElementById('autoscaler_status_badge');
         const healthMonitorBadge = document.getElementById('health_monitor_status_badge');
         const systemCleanupBadge = document.getElementById('system_cleanup_status_badge');
+        const systemBackupBadge = document.getElementById('system_backup_status_badge');
 
         fetch('<?= base_url('/api/cron') ?>')
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    const { collect_stats, autoscaler, health_monitor, system_cleanup } = data.jobs;
+                    const { collect_stats, autoscaler, health_monitor, system_cleanup, system_backup } = data.jobs;
                     if (collect_stats) {
                         document.getElementById('collect_stats_enabled').checked = collect_stats.enabled;
                         document.getElementById('collect_stats_schedule').value = collect_stats.schedule;
@@ -207,6 +238,17 @@ window.pageInit = function() {
                         } else {
                             systemCleanupBadge.textContent = 'Not Set';
                             systemCleanupBadge.className = 'badge rounded-pill ms-2 text-bg-light';
+                        }
+                    }
+                    if (system_backup) {
+                        document.getElementById('system_backup_enabled').checked = system_backup.enabled;
+                        document.getElementById('system_backup_schedule').value = system_backup.schedule;
+                        if (system_backup.schedule) {
+                            systemBackupBadge.textContent = system_backup.enabled ? 'Scheduled' : 'Disabled';
+                            systemBackupBadge.className = `badge rounded-pill ms-2 text-bg-${system_backup.enabled ? 'success' : 'secondary'}`;
+                        } else {
+                            systemBackupBadge.textContent = 'Not Set';
+                            systemBackupBadge.className = 'badge rounded-pill ms-2 text-bg-light';
                         }
                     }
                 } else {
@@ -266,7 +308,7 @@ window.pageInit = function() {
     });
 
     // Add event listeners to the enable/disable switches
-    ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup'].forEach(scriptKey => {
+    ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup', 'system_backup'].forEach(scriptKey => {
         const enableSwitch = document.getElementById(`${scriptKey}_enabled`);
         const scheduleInput = document.getElementById(`${scriptKey}_schedule`);
         if (enableSwitch && scheduleInput) {

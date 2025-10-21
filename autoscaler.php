@@ -134,7 +134,7 @@ try {
                     try {
                         $dockerClient->updateContainerResources($container_id, $new_cpu_limit, $action_taken);
                         echo colorize_log("    -> SUKSES: Batas CPU kontainer berhasil di-update ke {$new_cpu_limit} vCPU.\n", "success");
-                        log_activity('SYSTEM', 'Container Scaled (Vertical)', "Batas CPU untuk kontainer '{$target_container['Names'][0]}' diubah menjadi {$new_cpu_limit} vCPU karena utilisasi CPU host.");
+                        log_activity('SYSTEM', 'Container Scaled (Vertical)', "Batas CPU untuk kontainer '{$target_container['Names'][0]}' diubah menjadi {$new_cpu_limit} vCPU karena utilisasi CPU host.", $stack['host_id']);
                     } catch (Exception $update_e) {
                         echo colorize_log("    -> ERROR: Gagal meng-update resource kontainer: " . $update_e->getMessage() . "\n", "error");
                     }
@@ -185,7 +185,7 @@ try {
                     // Call the generic service update method with the modified spec
                     $dockerClient->updateServiceSpec($service_id, $service_version, $service_spec);
                     echo colorize_log("    -> SUKSES: Service '{$target_service['Spec']['Name']}' di-update ke {$new_replicas} replika dengan label autoscaled.\n", "success");
-                    log_activity('SYSTEM', 'Service Scaled', "Service '{$target_service['Spec']['Name']}' di-scale ke {$new_replicas} replika karena utilisasi CPU host.");
+                    log_activity('SYSTEM', 'Service Scaled', "Service '{$target_service['Spec']['Name']}' di-scale ke {$new_replicas} replika karena utilisasi CPU host.", $stack['host_id']);
                 }
             }
         } catch (Exception $e) {

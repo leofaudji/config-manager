@@ -45,12 +45,21 @@ try {
         'health_agent_image' => trim($_POST['health_agent_image'] ?? ''),
         'webhook_cooldown_period' => (int)($_POST['webhook_cooldown_period'] ?? 300),
         'minimum_sla_percentage' => (float)($_POST['minimum_sla_percentage'] ?? 99.9),
+        'maintenance_window_enabled' => isset($_POST['maintenance_window_enabled']) ? 1 : 0,
+        'maintenance_window_day' => $_POST['maintenance_window_day'] ?? 'Sunday',
+        'maintenance_window_start_time' => $_POST['maintenance_window_start_time'] ?? '02:00',
+        'maintenance_window_end_time' => $_POST['maintenance_window_end_time'] ?? '04:00',
     ];
     $settings_to_update['auto_deploy_enabled'] = isset($_POST['auto_deploy_enabled']) ? 1 : 0;
     $settings_to_update['notification_enabled'] = isset($_POST['notification_enabled']) ? 1 : 0;
     $settings_to_update['notification_host_down_enabled'] = isset($_POST['notification_host_down_enabled']) ? 1 : 0;
     $settings_to_update['notification_server_url'] = trim($_POST['notification_server_url'] ?? '');
+    $settings_to_update['notification_incident_created_enabled'] = isset($_POST['notification_incident_created_enabled']) ? 1 : 0;
+    $settings_to_update['backup_enabled'] = isset($_POST['backup_enabled']) ? 1 : 0;
+    $settings_to_update['backup_path'] = trim($_POST['backup_path'] ?? '/var/www/html/config-manager/backups');
+    $settings_to_update['backup_retention_days'] = (int)($_POST['backup_retention_days'] ?? 7);
     $settings_to_update['notification_secret_token'] = trim($_POST['notification_secret_token'] ?? '');
+    $settings_to_update['header_notification_interval'] = (int)($_POST['header_notification_interval'] ?? 30);
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE for a safe upsert
     $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
@@ -70,7 +79,8 @@ try {
         'Default Standalone Compose Path' => $settings_to_update['default_compose_path'],
         'Git Persistent Repo Path' => $settings_to_update['git_persistent_repo_path'],
         'Temporary Directory Path' => $settings_to_update['temp_directory_path'],
-        'Cron Job Log Path' => $settings_to_update['cron_log_path']
+        'Cron Job Log Path' => $settings_to_update['cron_log_path'],
+        'Backup Storage Path' => $settings_to_update['backup_path']
     ];
 
     foreach ($paths_to_create as $label => $path) {

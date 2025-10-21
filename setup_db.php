@@ -47,7 +47,7 @@ $default_password_hash = password_hash('password', PASSWORD_DEFAULT);
 $webhook_token = bin2hex(random_bytes(32)); // Generate a secure random token
 
 $sql = "
-DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `container_health_status`, `service_health_status`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`,`traefik_hosts`, `container_stats`,`container_health_history`;
+DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `container_health_status`, `service_health_status`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`,`traefik_hosts`, `container_stats`,`container_health_history`, `incident_reports`;
 
 CREATE TABLE `stack_change_log` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -440,6 +440,32 @@ ALTER TABLE `docker_hosts`
 ADD COLUMN `is_down_notified` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Flag to prevent repeated down notifications'
 AFTER `agent_status`;
 
+CREATE TABLE `incident_reports` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `incident_type` enum('host','service','container') NOT NULL,
+  `target_id` varchar(255) NOT NULL COMMENT 'Can be host_id, service_id, or container_id',
+  `target_name` varchar(255) NOT NULL,
+  `host_id` int(11) DEFAULT NULL,
+  `start_time` datetime NOT NULL,
+  `end_time` datetime DEFAULT NULL,
+  `duration_seconds` int(11) DEFAULT NULL,
+  `status` enum('Open','Investigating','On Hold','Resolved','Closed') NOT NULL DEFAULT 'Open',
+  `severity` enum('Critical','High','Medium','Low') NOT NULL DEFAULT 'Medium',
+  `assignee_user_id` int(11) DEFAULT NULL,
+  `investigation_notes` text DEFAULT NULL,
+  `resolution_notes` text DEFAULT NULL,
+  `executive_summary` text DEFAULT NULL,
+  `root_cause` text DEFAULT NULL,
+  `lessons_learned` text DEFAULT NULL,
+  `action_items` text DEFAULT NULL COMMENT 'JSON-encoded array of tasks with status',
+  `monitoring_snapshot` text DEFAULT NULL COMMENT 'JSON snapshot of logs or stats at time of incident',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_status_start_time` (`status`,`start_time`),
+  KEY `fk_incident_assignee` (`assignee_user_id`),
+  CONSTRAINT `fk_incident_assignee` FOREIGN KEY (`assignee_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 ";
 

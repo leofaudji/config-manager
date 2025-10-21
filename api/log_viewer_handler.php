@@ -189,6 +189,43 @@ try {
             ]);
             break;
 
+        case 'system':
+            $limit = $is_download_request ? 10000 : 100;
+            $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+            $offset = ($page - 1) * $limit;
+
+            $total_items_result = $conn->query("SELECT COUNT(*) as count FROM activity_log WHERE username = 'SYSTEM'");
+            $total_items = $total_items_result->fetch_assoc()['count'];
+            $total_pages = ceil($total_items / $limit);
+
+            $sql = "SELECT al.id, al.created_at, al.action, al.details, h.name as host_name 
+                    FROM activity_log al 
+                    LEFT JOIN docker_hosts h ON al.host_id = h.id
+                    WHERE al.username = 'SYSTEM' 
+                    ORDER BY al.id DESC LIMIT ? OFFSET ?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("ii", $limit, $offset);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            $html = '';
+            while ($log = $result->fetch_assoc()) {
+                $badgeClass = 'secondary';
+                if (stripos($log['action'], 'Error') !== false || stripos($log['action'], 'Down') !== false) $badgeClass = 'danger';
+                if (stripos($log['action'], 'Scaled') !== false) $badgeClass = 'info';
+
+                $html .= '<tr>';
+                $html .= '<td>' . htmlspecialchars($log['created_at']) . '</td>';
+                $html .= '<td><span class="badge bg-'. $badgeClass .'">' . htmlspecialchars($log['action']) . '</span></td>';
+                $html .= '<td>' . htmlspecialchars($log['details'] ?? '') . '</td>';
+                $html .= '<td>' . htmlspecialchars($log['host_name'] ?? 'N/A') . '</td>';
+                $html .= '</tr>';
+            }
+            $stmt->close();
+
+            echo json_encode(['html' => $html, 'total_pages' => $total_pages, 'current_page' => $page, 'info' => "Showing " . $result->num_rows . " of " . $total_items . " records."]);
+            break;
+
         case 'cron':
             $script_name = $_GET['script'] ?? '';
             if (empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup'])) {

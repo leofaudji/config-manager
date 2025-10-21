@@ -13,7 +13,8 @@ class SlaReportGenerator
 
     public function getSlaData(array $params): array
     {
-        $total_seconds_in_period = strtotime($params['end_date']) - strtotime($params['start_date']);
+        // Add +1 to include the last second of the day, ensuring a full 24-hour period is 86400 seconds.
+        $total_seconds_in_period = (strtotime($params['end_date']) - strtotime($params['start_date'])) + 1;
         if ($total_seconds_in_period <= 0) $total_seconds_in_period = 1;
 
         $downtime_statuses = ['unhealthy', 'stopped'];
@@ -81,18 +82,42 @@ class SlaReportGenerator
             $downtime_events = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
 
+            // NEW: Fetch all relevant incidents for this container in the date range
+            $stmt_incidents = $this->conn->prepare(
+                "SELECT id, start_time, end_time 
+                 FROM incident_reports 
+                 WHERE target_id = ? AND incident_type = 'container' AND start_time <= ? AND (end_time >= ? OR end_time IS NULL)"
+            );
+            $stmt_incidents->bind_param("sss", $params['container_id'], $params['end_date'], $params['start_date']);
+            $stmt_incidents->execute();
+            $incidents = $stmt_incidents->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt_incidents->close();
+
+            // NEW: Get maintenance windows for the period
+            $maintenance_windows = $this->getMaintenanceWindows($params['start_date'], $params['end_date']);
+
             $total_downtime_seconds = 0;
             $downtime_details = [];
             foreach ($downtime_events as $event) {
-                $duration = $this->calculateClampedDuration($event, $params['start_date'], $params['end_date']);
-                if ($duration > 0) {
-                    $total_downtime_seconds += $duration;
+                $clamped_duration = $this->calculateClampedDuration($event, $params['start_date'], $params['end_date']);
+                if ($clamped_duration > 0) {
+                    $maintenance_overlap = $this->calculateMaintenanceOverlap(strtotime($event['start_time']), $event['end_time'] ? strtotime($event['end_time']) : strtotime($params['end_date']), $maintenance_windows);
+                    $chargeable_downtime = $clamped_duration - $maintenance_overlap;
+
+                    $total_downtime_seconds += $chargeable_downtime;
+                    $event_start_ts = strtotime($event['start_time']);
+                    $event_end_ts = $event['end_time'] ? strtotime($event['end_time']) : strtotime($params['end_date']);
+
+                    $matching_incident_id = $this->findMatchingIncident($event_start_ts, $event_end_ts, $incidents);
+
                     $downtime_details[] = [
                         'start_time' => date('Y-m-d H:i:s', max(strtotime($event['start_time']), strtotime($params['start_date']))),
                         'end_time' => $event['end_time'] ? date('Y-m-d H:i:s', min(strtotime($event['end_time']), strtotime($params['end_date']))) : null,
-                        'duration_seconds' => $duration,
-                        'duration_human' => $this->formatDuration($duration),
-                        'status' => $event['status']
+                        'duration_seconds' => $clamped_duration,
+                        'duration_human' => $this->formatDuration($clamped_duration),
+                        'status' => $event['status'],
+                        'incident_id' => $matching_incident_id,
+                        'maintenance_overlap_seconds' => $maintenance_overlap,
                     ];
                 }
             }
@@ -205,6 +230,7 @@ class SlaReportGenerator
         $stmt_hosts->close();
 
         $global_summary = [];
+        $violation_details = []; // NEW: Array to hold specific violations
         foreach ($all_hosts as $host) {
             $host_specs = [];
             try {
@@ -226,6 +252,20 @@ class SlaReportGenerator
             $overall_total_downtime = 0;
             $total_service_periods = 0;
             foreach ($summary_data as $row) {
+                // --- NEW: Check for individual violations ---
+                $sla_percentage_raw = (float)str_replace('%', '', $row[1]);
+                if ($sla_percentage_raw < (float)get_setting('minimum_sla_percentage', 99.9)) {
+                    $violation_details[] = [
+                        'host_id' => $host['id'],
+                        'container_id' => $row[5], // The identifier (container_id or service:name)
+                        'host_name' => $host['name'],
+                        'container_name' => $row[0], // Service/Container Name
+                        'sla_percentage' => $row[1], // Formatted SLA
+                        'sla_percentage_raw' => $sla_percentage_raw,
+                        'total_downtime_human' => $row[2], // Formatted Downtime
+                    ];
+                }
+
                 $overall_total_downtime += $row[4];
                 $total_service_periods += $total_seconds_in_period;
             }
@@ -246,15 +286,22 @@ class SlaReportGenerator
             ];
         }
 
+        // Sort the detailed violations by the lowest SLA percentage first
+        usort($violation_details, function ($a, $b) {
+            return $a['sla_percentage_raw'] <=> $b['sla_percentage_raw'];
+        });
+
         return [
             'report_type' => 'global_summary',
             'host_slas' => $global_summary,
+            'violation_details' => $violation_details, // NEW: Return the detailed list
         ];
     }
 
     public function generatePdf(array $params): void
     {
         $pdf = new PDF();
+        $pdf->setReportTitle('Service Level Agreement Report'); // Set the header title
         $pdf->AliasNbPages();
         $pdf->AddPage();
         $pdf->SetFont('Arial', '', 12);
@@ -506,6 +553,7 @@ class SlaReportGenerator
     private function calculateClampedDuration(array $event, string $start_date, string $end_date): int
     {
         $event_start = strtotime($event['start_time']);
+        // If the event is ongoing (end_time is NULL), use the report's end date as the end point.
         $event_end = $event['end_time'] ? strtotime($event['end_time']) : strtotime($end_date);
         $effective_start = max($event_start, strtotime($start_date));
         $effective_end = min($event_end, strtotime($end_date));
@@ -601,6 +649,101 @@ class SlaReportGenerator
             return $parts[0] . '.' . $sub_parts[0];
         }
         return $raw_name;
+    }
+
+    private function findMatchingIncident(int $event_start_ts, int $event_end_ts, array $incidents): ?int
+    {
+        foreach ($incidents as $incident) {
+            $incident_start_ts = strtotime($incident['start_time']);
+            // If incident is ongoing, its end time is effectively infinity for this check
+            $incident_end_ts = $incident['end_time'] ? strtotime($incident['end_time']) : PHP_INT_MAX;
+
+            // Check for overlap: (StartA <= EndB) and (EndA >= StartB)
+            if ($incident_start_ts <= $event_end_ts && $incident_end_ts >= $event_start_ts) {
+                return $incident['id'];
+            }
+        }
+        return null;
+    }
+
+    private function getMaintenanceWindows(string $start_date, string $end_date): array
+    {
+        if (!(bool)get_setting('maintenance_window_enabled', false)) {
+            return [];
+        }
+
+        $day = get_setting('maintenance_window_day', 'Sunday');
+        $start_time = get_setting('maintenance_window_start_time', '02:00');
+        $end_time = get_setting('maintenance_window_end_time', '04:00');
+
+        $windows = [];
+        $current_ts = strtotime("next {$day}", strtotime($start_date) - 86400);
+        $end_ts = strtotime($end_date);
+
+        while ($current_ts <= $end_ts) {
+            $window_start = strtotime(date('Y-m-d', $current_ts) . ' ' . $start_time);
+            $window_end = strtotime(date('Y-m-d', $current_ts) . ' ' . $end_time);
+
+            // Handle overnight windows
+            if ($window_end <= $window_start) {
+                $window_end += 86400; // Add one day
+            }
+
+            $windows[] = ['start' => $window_start, 'end' => $window_end];
+            $current_ts = strtotime('+1 week', $current_ts);
+        }
+
+        return $windows;
+    }
+
+    private function calculateMaintenanceOverlap(int $event_start, int $event_end, array $maintenance_windows): int
+    {
+        $total_overlap = 0;
+        foreach ($maintenance_windows as $window) {
+            $overlap_start = max($event_start, $window['start']);
+            $overlap_end = min($event_end, $window['end']);
+
+            if ($overlap_start < $overlap_end) {
+                $total_overlap += ($overlap_end - $overlap_start);
+            }
+        }
+        return $total_overlap;
+    }
+
+    public function getDailySlaForMonth(array $params): array
+    {
+        $year = $params['year'];
+        $month = $params['month'];
+        $days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+        $daily_sla_data = [];
+
+        for ($day = 1; $day <= $days_in_month; $day++) {
+            $current_date_str = sprintf('%d-%02d-%02d', $year, $month, $day);
+            
+            $day_params = [
+                'host_id'      => $params['host_id'],
+                'container_id' => $params['container_id'],
+                'start_date'   => $current_date_str . ' 00:00:00',
+                'end_date'     => $current_date_str . ' 23:59:59',
+            ];
+
+            // Use the existing getSlaData method to calculate SLA for a single day
+            // We wrap this in a try-catch to handle cases where there's no data for a day
+            try {
+                $sla_result = $this->getSlaData($day_params);
+                if (isset($sla_result['summary']['sla_percentage_raw'])) {
+                    $daily_sla_data[$current_date_str] = $sla_result['summary']['sla_percentage_raw'];
+                } else {
+                    // This can happen if there's no history at all for that day. Assume 100%.
+                    $daily_sla_data[$current_date_str] = 100.00;
+                }
+            } catch (Exception $e) {
+                // If getSlaData throws an error (e.g., host not found), we can't calculate.
+                $daily_sla_data[$current_date_str] = null;
+            }
+        }
+
+        return $daily_sla_data;
     }
 }
 

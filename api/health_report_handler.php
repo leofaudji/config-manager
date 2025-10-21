@@ -64,6 +64,15 @@ if ($was_down && (bool)get_setting('notification_host_down_enabled', true)) {
             'success',
             ['host_id' => $host_id, 'host_name' => $host_info['name']]
         );
+
+        // Resolve any open incident for this host
+        $stmt_resolve_incident = $conn->prepare("
+            UPDATE incident_reports 
+            SET status = 'Resolved', end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW())
+            WHERE target_id = ? AND incident_type = 'host' AND status IN ('Open', 'Investigating')
+        ");
+        $stmt_resolve_incident->bind_param("s", $host_id);
+        $stmt_resolve_incident->execute();
     }
 }
 
@@ -117,6 +126,14 @@ try {
         "INSERT INTO container_health_history (host_id, container_id, container_name, status, start_time) VALUES (?, ?, ?, ?, NOW())"
     );
 
+    $stmt_create_incident = $conn->prepare("
+        INSERT INTO incident_reports (incident_type, target_id, target_name, host_id, start_time, monitoring_snapshot, severity)
+        SELECT 'container', ?, ?, ?, NOW(), ?, 'High'
+        FROM DUAL WHERE NOT EXISTS (
+            SELECT 1 FROM incident_reports WHERE target_id = ? AND status IN ('Open', 'Investigating')
+        )
+    ");
+
 
     // Get global thresholds from settings
     $healthy_threshold = (int)get_setting('health_check_default_healthy_threshold', 2);
@@ -134,7 +151,7 @@ try {
         $current_status = $stmt_get_status->get_result()->fetch_assoc() ?: ['status' => 'unknown', 'consecutive_failures' => 0, 'consecutive_successes' => 0];
         $stmt_get_status->close();
 
-        $new_status = $current_status['status'];
+        $new_status = $current_status['status'] ?? 'unknown';
         $failures = (int)$current_status['consecutive_failures'];
         $successes = (int)$current_status['consecutive_successes'];
 
@@ -152,6 +169,33 @@ try {
         } else { // is_healthy is null (unknown)
             $new_status = 'unknown';
         }
+
+        if ($new_status === 'healthy' && $current_status['status'] === 'unhealthy') {
+            // Status just changed back to healthy, resolve any open incident
+            $stmt_resolve_incident = $conn->prepare("
+                UPDATE incident_reports 
+                SET status = 'Resolved', end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW())
+                WHERE target_id = ? AND status IN ('Open', 'Investigating')
+            ");
+            $stmt_resolve_incident->bind_param("s", $report['container_id']);
+            $stmt_resolve_incident->execute();
+        } elseif ($new_status === 'unhealthy' && $current_status['status'] !== 'unhealthy') {
+            // --- CORRECT PLACEMENT for Incident Creation Logic ---
+            // Status just changed to unhealthy, create a new incident if no open one exists
+            $snapshot = json_encode($report['log_message'] ?? 'No log available.');
+            $stmt_create_incident->bind_param("ssisi", $report['container_id'], $report['container_name'], $host_id, $snapshot, $report['container_id']);
+            $stmt_create_incident->execute();
+
+            // Send notification for the new incident if enabled
+            if ($stmt_create_incident->affected_rows > 0 && (bool)get_setting('notification_incident_created_enabled', true)) {
+                send_notification(
+                    "New Incident: " . $report['container_name'],
+                    "A new incident has been opened for container '{$report['container_name']}' on host '{$host_info['name']}'. Status: UNHEALTHY.",
+                    'error',
+                    ['incident_type' => 'container', 'target_name' => $report['container_name'], 'host_id' => $host_id]
+                );
+            }
+        } 
 
         // --- [SLA LOGIC - REFACTORED] ---
         // Only create a history record if the new status is definitive (not 'unknown')
@@ -186,6 +230,7 @@ try {
     $stmt_update->close();
     $stmt_update_history->close();
     $stmt_insert_history->close();
+    $stmt_create_incident->close();
 
     // --- NEW: Insert container stats ---
     if (!empty($container_stats)) {

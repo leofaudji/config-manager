@@ -4,6 +4,7 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/fpdf/fpdf.php'; // Pindahkan ke sini
 require_once __DIR__ . '/../includes/reports/SlaReportGenerator.php';
+require_once __DIR__ . '/../includes/reports/IncidentReportGenerator.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     http_response_code(403);
@@ -11,43 +12,53 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
 }
 
 // --- Input Validation ---
-$host_id_raw = $_POST['host_id'] ?? null;
-$host_id = ($host_id_raw === 'all') ? 'all' : filter_var($host_id_raw, FILTER_VALIDATE_INT);
-
-// Special handling for container_id which can be 'service:service_name'
-$raw_container_id = $_POST['container_id'] ?? null;
-if (strpos($raw_container_id, 'service:') === 0) {
-    // This is a service identifier, sanitize it carefully
-    $service_name = substr($raw_container_id, strlen('service:'));
-    // Allow alphanumeric, underscore, hyphen, dot
-    if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $service_name)) {
-        http_response_code(400);
-        die('Invalid service name format.');
-    }
-    $container_id = $raw_container_id; // Keep the full 'service:...' string
-} else {
-    $container_id = filter_input(INPUT_POST, 'container_id', FILTER_SANITIZE_STRING);
-}
-$date_range = filter_input(INPUT_POST, 'date_range', FILTER_SANITIZE_STRING); 
 $report_type = filter_input(INPUT_POST, 'report_type', FILTER_SANITIZE_STRING);
-$show_only_downtime = filter_input(INPUT_POST, 'show_only_downtime', FILTER_VALIDATE_BOOLEAN);
+$date_range = filter_input(INPUT_POST, 'date_range', FILTER_SANITIZE_STRING);
 
-// If host_id is 'all', container_id is not required for validation.
-if (!$report_type || !$host_id || (!$container_id && $host_id !== 'all') || !$date_range) {
-    http_response_code(400);
-    die('Report Type, Host ID, Container ID, and Date Range are required.');
+if ($report_type === 'sla_report') {
+    $host_id_raw = $_POST['host_id'] ?? null;
+    $host_id = ($host_id_raw === 'all') ? 'all' : filter_var($host_id_raw, FILTER_VALIDATE_INT);
+
+    // Special handling for container_id which can be 'service:service_name'
+    $raw_container_id = $_POST['container_id'] ?? null;
+    if (strpos($raw_container_id, 'service:') === 0) {
+        $service_name = substr($raw_container_id, strlen('service:'));
+        if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $service_name)) {
+            http_response_code(400); die('Invalid service name format.');
+        }
+        $container_id = $raw_container_id;
+    } else {
+        $container_id = filter_input(INPUT_POST, 'container_id', FILTER_SANITIZE_STRING);
+    }
+    $show_only_downtime = filter_input(INPUT_POST, 'show_only_downtime', FILTER_VALIDATE_BOOLEAN);
+
+    if (!$host_id || (!$container_id && $host_id !== 'all') || !$date_range) {
+        http_response_code(400);
+        die('Host ID, Container ID, and Date Range are required for SLA report.');
+    }
+} elseif ($report_type === 'single_incident_report') {
+    if (empty($_POST['incident_id'])) {
+        http_response_code(400);
+        die('Incident ID is required for single incident report.');
+    }
 }
 
-$dates = explode(' - ', $date_range);
-if (count($dates) !== 2) {
-    http_response_code(400);
-    die('Invalid date range format.');
+// The date_range can be empty for incident reports (meaning 'All Time'), so we only validate if it's not empty.
+$dates = [];
+if (!empty($date_range)) {
+    $dates = explode(' - ', $date_range);
+    if (count($dates) !== 2) {
+        http_response_code(400);
+        die('Invalid date range format.');
+    }
 }
 
 $conn = Database::getInstance()->getConnection();
 
 class PDF extends FPDF
 {
+    public $reportTitle = 'General Report'; // Default title
+
     // Page header
     function Header()
     {
@@ -64,10 +75,15 @@ class PDF extends FPDF
 
         // Report Title
         $this->SetFont('Arial', 'B', 12);
-        $this->Cell(0, 7, 'Service Level Agreement (SLA) Report', 0, 1, 'C');
+        $this->Cell(0, 7, $this->reportTitle, 0, 1, 'C');
 
         // Line break
         $this->Ln(5);
+    }
+
+    function setReportTitle($title)
+    {
+        $this->reportTitle = $title;
     }
 
     // Page footer
@@ -115,7 +131,8 @@ class PDF extends FPDF
 // --- Report Dispatcher ---
 $reportGenerators = [
     'sla_report' => SlaReportGenerator::class,
-    // 'another_report' => AnotherReportGenerator::class, // Future-proof
+    'incident_report' => IncidentReportGenerator::class,
+    'single_incident_report' => IncidentReportGenerator::class,
 ];
 
 try {
@@ -126,16 +143,29 @@ try {
     $generatorClass = $reportGenerators[$report_type];
     $reportGenerator = new $generatorClass($conn);
 
-    $params = [
-        'host_id'      => $host_id,
-        'container_id' => $container_id,
-        'start_date'   => date('Y-m-d 00:00:00', strtotime($dates[0])),
-        'end_date'     => date('Y-m-d 23:59:59', strtotime($dates[1])),
-        'show_only_downtime' => $show_only_downtime,
-        'dates'        => $dates, // Pass original date strings for display
-    ];
-
-    $reportGenerator->generatePdf($params);
+    if ($report_type === 'sla_report') {
+        $params = [
+            'host_id'      => $host_id,
+            'container_id' => $container_id,
+            'start_date'   => date('Y-m-d 00:00:00', strtotime($dates[0])),
+            'end_date'     => date('Y-m-d 23:59:59', strtotime($dates[1])),
+            'show_only_downtime' => $show_only_downtime,
+            'dates'        => $dates,
+        ];
+        $reportGenerator->generatePdf($params);
+    } elseif ($report_type === 'incident_report') {
+        $params = [
+            'search' => $_POST['search'] ?? '',
+            'status' => $_POST['status'] ?? '',
+            'date_range' => $_POST['date_range'] ?? '',
+            'dates' => $dates, // Pass parsed dates for display
+        ];
+        $reportGenerator->generatePdf($params);
+    } elseif ($report_type === 'single_incident_report') {
+        $incident_id = (int)$_POST['incident_id'];
+        $reportGenerator->generateSingleIncidentPdf($incident_id);
+        exit; // Stop execution after PDF is generated
+    }
 
 } catch (Exception $e) {
     http_response_code(500);

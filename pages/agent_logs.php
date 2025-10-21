@@ -76,7 +76,6 @@ window.pageInit = function() {
 
     // --- Load state from localStorage ---
     let currentPage = parseInt(localStorage.getItem('agent_logs_page')) || 1;
-    let autoRefreshInterval = null;
 
     const debouncedFetch = debounce(fetchLogs, 400);
 
@@ -105,7 +104,7 @@ window.pageInit = function() {
         }
 
         // Only show "Loading..." on manual fetches, not on auto-refresh
-        if (!isDebounced && !autoRefreshInterval) {
+        if (!isDebounced && !window.currentPageInterval) {
             logContainer.textContent = 'Loading logs...';
         }
         const originalBtnContent = refreshBtn.innerHTML;
@@ -124,7 +123,7 @@ window.pageInit = function() {
                     // Use a document fragment for performance when building large HTML strings
                     const fragment = document.createDocumentFragment();
                     result.data.forEach(logEntry => {
-                        const parsedLogs = JSON.parse(logEntry.log_content);
+                        const parsedLogs = JSON.parse(logEntry.log_content || '[]');
                         parsedLogs.forEach(line => {
                             const serverTimestamp = logEntry.created_at;
                             const hostName = logEntry.host_name;
@@ -185,13 +184,13 @@ window.pageInit = function() {
         localStorage.setItem('agent_logs_auto_refresh', autoRefreshSwitch.checked);
 
         if (autoRefreshSwitch.checked) {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval); // Clear any existing interval
-            autoRefreshInterval = setInterval(fetchLogs, 10000); // Refresh every 10 seconds
+            if (window.currentPageInterval) clearInterval(window.currentPageInterval); // Clear any existing interval
+            window.currentPageInterval = setInterval(fetchLogs, 10000); // Refresh every 10 seconds
             showToast('Auto-refresh enabled (10s).', true);
         } else {
-            if (autoRefreshInterval) {
-                clearInterval(autoRefreshInterval);
-                autoRefreshInterval = null;
+            if (window.currentPageInterval) {
+                clearInterval(window.currentPageInterval);
+                window.currentPageInterval = null;
                 showToast('Auto-refresh disabled.', true);
             }
         }

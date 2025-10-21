@@ -4,6 +4,40 @@ Semua perubahan penting pada proyek ini akan didokumentasikan di file ini.
 
 Format file ini didasarkan pada [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2023-10-29
+
+### Added
+- **Laporan Insiden & Analisis (RCA)**:
+  - Fitur utama baru untuk melacak insiden secara otomatis saat host *down* atau kontainer *unhealthy*.
+  - Halaman detail insiden kini mencakup template **Post-Mortem / Root Cause Analysis (RCA)** yang komprehensif, termasuk *Executive Summary*, *Root Cause*, *Lessons Learned*, dan *Action Items*.
+  - Menambahkan **Tingkat Keparahan (Severity)** dan **Pemilik (Assignee)** untuk setiap insiden, lengkap dengan filter di halaman daftar.
+  - Notifikasi di header dan sidebar untuk insiden yang sedang terbuka (`Open` atau `Investigating`).
+  - Kemampuan untuk mencetak laporan daftar insiden atau detail insiden tunggal ke dalam format **PDF** dengan format yang informatif.
+- **Integrasi SLA & Insiden**:
+  - Setiap peristiwa downtime di Laporan SLA kini secara otomatis ditautkan ke laporan insiden yang relevan, mempercepat analisis akar masalah.
+  - Menambahkan **Periode Pengecualian (Maintenance Window)** yang dapat dikonfigurasi di "Settings", di mana downtime yang terjadi selama periode ini tidak akan dihitung sebagai penalti SLA.
+- **Backup & Restore**:
+  - Halaman baru "Backup & Restore" untuk membuat backup penuh konfigurasi aplikasi dalam format JSON dan me-restore-nya.
+  - Menambahkan fitur **Backup Otomatis** yang dapat dijadwalkan melalui halaman "Cron Job Management", lengkap dengan pengaturan path dan retensi di "General Settings".
+- **Peningkatan Sistem & UI**:
+  - Menambahkan **System Logs Viewer** sebagai tab baru di "Log Viewer" untuk memisahkan log yang dihasilkan sistem.
+  - Menambahkan opsi di "General Settings" untuk mengatur **interval refresh notifikasi** di header.
+  - Menambahkan fitur **auto-refresh** pada halaman "Log Viewer".
+  - Menambahkan **penyimpanan filter dan paginasi ke `localStorage`** di halaman "Incident Reports" untuk menjaga state saat navigasi.
+
+### Changed
+- **Optimisasi Performa**:
+  - Panggilan API untuk statistik dashboard dan status Git kini hanya dieksekusi saat berada di halaman Dashboard, mengurangi beban saat navigasi.
+  - Variabel `autoRefreshInterval` di berbagai halaman telah diganti dengan variabel global untuk menghemat sumber daya browser.
+- **Standardisasi Zona Waktu**: Mengatur zona waktu default aplikasi (PHP & MySQL) ke **GMT+7 (Asia/Jakarta)** untuk memastikan konsistensi data waktu di seluruh sistem.
+- **Peningkatan Format Laporan**: Mendesain ulang format PDF untuk daftar dan detail insiden agar lebih informatif dan mudah dibaca.
+- **Header Notifikasi**: Mengatur ulang urutan ikon notifikasi di header untuk memprioritaskan notifikasi yang paling kritis.
+
+### Fixed
+- **Perhitungan SLA**: Memperbaiki bug dalam logika perhitungan SLA yang menyebabkan persentase tidak akurat, terutama untuk laporan harian.
+- **Status Kesehatan**: Memperbaiki bug di mana status kontainer bisa terjebak dalam keadaan "Unknown" secara permanen.
+- **Navigasi & Alur Kerja**: Memperbaiki berbagai bug kecil terkait alur kerja, seperti tombol "View Incident" yang tidak berfungsi, proses penyimpanan detail insiden, dan validasi endpoint API.
+
 ## [3.0.0] - 2023-10-29
 
 ### Added

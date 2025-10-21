@@ -133,7 +133,10 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.autotable.min.js"></script>
 
 </head>
-<body class="">
+<body class="" 
+      data-notification-interval="<?= (int)get_setting('header_notification_interval', 30) * 1000 ?>"
+      data-theme="<?= $_COOKIE['theme'] ?? 'light' ?>"
+>
 <div id="loading-bar" class="loading-bar"></div>
 <script>
     // On small screens, default to collapsed. On large screens, respect localStorage.
@@ -188,7 +191,10 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
                 <div class="collapse <?= $container_mgmt_expanded ? 'show' : '' ?>" id="container-submenu">
                     <ul class="sidebar-submenu">
-                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/hosts') ?>">Hosts</a></li>
+                        <li class="nav-item">
+                            <a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/hosts') ?>">
+                                <span>Hosts</span><span class="badge bg-danger rounded-pill" id="sidebar-down-hosts-badge" style="display: none;"></span>
+                            </a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/app-launcher') ?>">App Launcher</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/templates') ?>">Config Templates</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/stack-changes') ?>">Stack Changes</a></li>
@@ -214,15 +220,17 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/routers') ?>">Routers</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/services') ?>">Services</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/middlewares') ?>">Middlewares</a></li>
-                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/groups') ?>">Groups</a></li>
+                        <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/groups') ?>"><span>Groups</span><span class="badge bg-primary rounded-pill p-1" id="sidebar-pending-changes-badge" style="display: none;" title="Pending Changes"><i class="bi bi-circle-fill"></i></span></a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/traefik-hosts') ?>">Traefik Hosts</a></li>
-                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/history') ?>">Deployment History</a></li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="<?= base_url('/history') ?>">Deployment History</a>
+                        </li>
                     </ul>
                 </div>
             </li>
 
             <?php
-            $monitoring_active = str_starts_with($request_path, '/health-status') || str_starts_with($request_path, '/sla-report') || str_starts_with($request_path, '/host-overview') || str_starts_with($request_path, '/container-events') || str_starts_with($request_path, '/central-logs') || str_starts_with($request_path, '/resource-hotspots') || str_starts_with($request_path, '/network-inspector') || str_starts_with($request_path, '/stats');
+            $monitoring_active = str_starts_with($request_path, '/health-status') || str_starts_with($request_path, '/sla-report') || str_starts_with($request_path, '/incident-reports') || str_starts_with($request_path, '/host-overview') || str_starts_with($request_path, '/container-events') || str_starts_with($request_path, '/central-logs') || str_starts_with($request_path, '/resource-hotspots') || str_starts_with($request_path, '/network-inspector') || str_starts_with($request_path, '/stats');
             $monitoring_expanded = $monitoring_active || in_array('monitoring-submenu', $open_menus_cookie);
             ?>
             <li class="nav-item">
@@ -236,8 +244,17 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </a>
                 <div class="collapse <?= $monitoring_expanded ? 'show' : '' ?>" id="monitoring-submenu">
                     <ul class="sidebar-submenu">
-                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/health-status') ?>">Service Health</a></li>
-                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/sla-report') ?>">SLA Report</a></li>
+                        <li class="nav-item">
+                            <a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/health-status') ?>">
+                                <span>Service Health</span><span class="badge bg-danger rounded-pill" id="sidebar-unhealthy-badge" style="display: none;"></span>
+                            </a></li>
+                        <li class="nav-item">
+                            <a class="nav-link d-flex justify-content-between align-items-center" id="sla-report-link" href="<?= base_url('/sla-report') ?>">
+                                <span>SLA Report</span><span class="badge bg-warning rounded-pill" id="sidebar-sla-badge" style="display: none;"></span>
+                            </a></li>
+                        <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/incident-reports') ?>">
+                                <span>Incident Reports</span><span class="badge bg-primary rounded-pill" id="sidebar-incident-badge" style="display: none;"></span>
+                            </a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/host-overview') ?>">Host Overview</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/container-events') ?>">Container Events</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/central-logs') ?>">Centralized Logs</a></li>
@@ -249,7 +266,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             </li>
 
             <?php
-            $system_active = str_starts_with($request_path, '/users') || str_starts_with($request_path, '/logs') || str_starts_with($request_path, '/health-check') || str_starts_with($request_path, '/webhook-reports') || str_starts_with($request_path, '/settings') || str_starts_with($request_path, '/cron-jobs');
+            $system_active = str_starts_with($request_path, '/users') || str_starts_with($request_path, '/logs') || str_starts_with($request_path, '/health-check') || str_starts_with($request_path, '/webhook-reports') || str_starts_with($request_path, '/settings') || str_starts_with($request_path, '/cron-jobs') || str_starts_with($request_path, '/backup-restore');
             $system_expanded = $system_active || in_array('system-submenu', $open_menus_cookie);
             ?>
             <li class="nav-item">
@@ -268,6 +285,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/health-check') ?>">Health Check</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/webhook-reports') ?>">Webhook Reports</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/cron-jobs') ?>">Cron Jobs</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/backup-restore') ?>">Backup & Restore</a></li>
                     </ul>
                 </div>
             </li>
@@ -331,6 +349,19 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 </div>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item text-center" href="<?= base_url('/sla-report') ?>">View Full Report</a></li>
+            </ul>
+            <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="incident-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Open Incidents">
+                <i class="bi bi-shield-fill-exclamation text-primary fs-4"></i>
+                <span id="incident-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-dark">
+                    <span class="visually-hidden">Open incidents</span>
+                </span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="incident-alert-btn" id="incident-alert-dropdown">
+                <li><h6 class="dropdown-header">Open Incidents</h6></li>
+                <li><hr class="dropdown-divider"></li>
+                <div id="incident-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-center" href="<?= base_url('/incident-reports') ?>">View All Incidents</a></li>
             </ul>
             <a href="<?= base_url('/groups') ?>" id="deploy-notification-btn" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" style="display: none; width: 44px; height: 44px;" title="Pending Changes to Deploy">
                 <i class="bi bi-cloud-upload-fill text-primary fs-4"></i>

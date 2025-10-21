@@ -4,6 +4,11 @@ Config Manager adalah aplikasi web sederhana yang dibangun menggunakan PHP Nativ
 
 ## Fitur Utama
 
+- **Observabilitas & Keandalan**:
+  - **Laporan Insiden & RCA**: Lacak insiden secara otomatis, lakukan analisis akar masalah (RCA) dengan template terstruktur, dan tetapkan tingkat keparahan serta pemilik untuk setiap insiden.
+  - **Laporan SLA**: Pantau Service Level Agreement dengan laporan yang akurat, kini mendukung **Periode Pengecualian (Maintenance Window)** untuk mengabaikan downtime yang direncanakan.
+  - **Integrasi SLA & Insiden**: Hubungkan data downtime SLA langsung ke laporan insiden yang relevan untuk analisis yang lebih cepat.
+  - **Logging Terpusat**: Lihat log aktivitas pengguna, log agen kesehatan, dan log sistem dari satu antarmuka terpusat.
 - **Manajemen Konfigurasi Traefik**:
   - Antarmuka CRUD untuk **Routers**, **Services**, dan **Middlewares**.
   - **Pratinjau & Deploy**: Lihat pratinjau file YAML yang akan dihasilkan, lengkap dengan validasi, lalu deploy langsung dari UI.
@@ -27,6 +32,10 @@ Config Manager adalah aplikasi web sederhana yang dibangun menggunakan PHP Nativ
   - **Sync Stacks**: Sinkronkan dan backup semua file `docker-compose.yml` dari stack yang Anda deploy ke repositori Git.
 - **Integritas Data**: Menjaga konsistensi data dengan pembaruan dan penghapusan yang aman (cascading updates & protected deletes).
 - **Dependensi Minimal**: Hanya memerlukan satu file library eksternal (`Spyc.php`) untuk fungsionalitas YAML.
+- **Backup & Restore**:
+  - Lakukan backup penuh semua data konfigurasi ke dalam satu file JSON.
+  - Restore konfigurasi dari file backup, ideal untuk pemulihan bencana atau migrasi.
+  - Jadwalkan **backup otomatis** melalui antarmuka manajemen Cron Job.
 - **Interaksi AJAX**: Operasi CRUD menggunakan AJAX untuk pemrosesan di latar belakang. Aksi hapus memberikan umpan balik instan, sementara aksi simpan akan kembali ke halaman utama dengan pesan status yang jelas.
 
 ## Prasyarat

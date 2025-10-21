@@ -137,7 +137,7 @@ body.dark-mode .sidebar .navbar-brand {
     width: calc(100% - 1.5rem); /* Adjust width for margin */
     margin: 0.2rem 0.75rem; /* Add margin to create the "pill" effect */
     text-align: left;
-    padding: 0.45rem 1.5rem; /* Further reduced vertical padding */
+    padding: 0.35rem 1.5rem; /* Further reduced vertical padding for a more compact look */
     color: var(--sidebar-link-color);
     font-size: 0.95rem; /* Slightly smaller font size */
     font-weight: 500;
@@ -239,6 +239,12 @@ body.dark-mode .sidebar .navbar-brand {
     width: 1rem; /* Length of the horizontal line */
     height: 1px;
     background-color: var(--cf-border-color);
+}
+
+.sidebar-submenu .nav-link .badge {
+    font-size: 0.7em;
+    padding: 0.3em 0.5em;
+    line-height: 1;
 }
 
 .sidebar-submenu .submenu-separator {

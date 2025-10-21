@@ -17,8 +17,8 @@ echo "Memulai System Cleanup pada " . date('Y-m-d H:i:s') . "\n";
 $conn = Database::getInstance()->getConnection();
 
 // Helper function to log activity if not running from CLI
-function cleanup_log_activity($user, $action, $details) {
-    if (function_exists('log_activity')) log_activity($user, $action, $details);
+function cleanup_log_activity($user, $action, $details, $host_id = null) {
+    if (function_exists('log_activity')) log_activity($user, $action, $details, $host_id);
 }
 
 try {
@@ -106,10 +106,19 @@ try {
         $stmt_close_event = $conn->prepare("UPDATE container_health_history SET end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW()) WHERE container_id = ? AND end_time IS NULL");
         $stmt_create_unhealthy_event = $conn->prepare("INSERT INTO container_health_history (host_id, container_id, container_name, status, start_time) VALUES (?, ?, ?, 'unhealthy', NOW())");
         $stmt_mark_notified = $conn->prepare("UPDATE docker_hosts SET is_down_notified = 1 WHERE id = ?");
+        $stmt_create_incident = $conn->prepare("
+            INSERT INTO incident_reports (incident_type, target_id, target_name, host_id, start_time, monitoring_snapshot, severity)
+            SELECT 'host', ?, ?, ?, NOW(), ?, 'Critical'
+            FROM DUAL WHERE NOT EXISTS (
+                SELECT 1 FROM incident_reports 
+                WHERE target_id = ? AND incident_type = 'host' AND status IN ('Open', 'Investigating')
+            )
+        ");
+
 
         foreach ($newly_down_hosts as $host) {
             echo "  -> Host '{$host['name']}' (ID: {$host['id']}) dianggap down. Memproses kontainer...\n";
-            cleanup_log_activity('SYSTEM', 'Host Down Detected', "Host '{$host['name']}' is considered down. Creating synthetic downtime for SLA.");
+            cleanup_log_activity('SYSTEM', 'Host Down Detected', "Host '{$host['name']}' is considered down. Creating synthetic downtime for SLA.", $host['id']);
 
             // Send notification only if enabled
             if ((bool)get_setting('notification_host_down_enabled', true)) {
@@ -118,6 +127,22 @@ try {
                     "Host '{$host['name']}' is not reporting and is considered down. Synthetic downtime records are being created for SLA accuracy.",
                     'error',
                     ['host_id' => $host['id'], 'host_name' => $host['name']]
+                );
+            }
+
+            // Create a new incident for the host going down
+            $snapshot = json_encode(['message' => "Host failed to report in within the {$host_down_threshold_minutes} minute threshold."]);
+            $target_id_str = (string)$host['id'];
+            $stmt_create_incident->bind_param("ssisi", $target_id_str, $host['name'], $host['id'], $snapshot, $target_id_str);
+            $stmt_create_incident->execute();
+
+            // Send notification for the new incident if enabled
+            if ($stmt_create_incident->affected_rows > 0 && (bool)get_setting('notification_incident_created_enabled', true)) {
+                send_notification(
+                    "New Incident (Host Down): {$host['name']}",
+                    "A new incident has been opened for host '{$host['name']}' which is considered down.",
+                    'error',
+                    ['incident_type' => 'host', 'target_name' => $host['name'], 'host_id' => $host['id']]
                 );
             }
 
@@ -143,6 +168,7 @@ try {
         $stmt_close_event->close();
         $stmt_create_unhealthy_event->close();
         $stmt_mark_notified->close();
+        $stmt_create_incident->close();
     }
 
     // --- 5. Cleanup Cron Job Log File Entries ---

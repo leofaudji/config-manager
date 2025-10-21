@@ -1,4 +1,8 @@
 <?php
+// Set the default timezone for the entire application to GMT+7
+date_default_timezone_set('Asia/Jakarta');
+
+
 require_once __DIR__ . '/Config.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/functions.php';

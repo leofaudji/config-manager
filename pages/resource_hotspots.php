@@ -74,7 +74,6 @@ window.pageInit = function() {
     const topMemoryContainer = document.getElementById('top-memory-container');
     const refreshBtn = document.getElementById('refresh-hotspots-btn');
     const autoRefreshSwitch = document.getElementById('auto-refresh-hotspots');
-    let autoRefreshInterval = null;
 
     function loadHotspots(isAutoRefresh = false) {
         const originalBtnContent = refreshBtn.innerHTML;
@@ -121,10 +120,10 @@ window.pageInit = function() {
     refreshBtn.addEventListener('click', loadHotspots);
     autoRefreshSwitch.addEventListener('change', function() {
         if (this.checked) {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-            autoRefreshInterval = setInterval(() => loadHotspots(true), 15000);
+            if (window.currentPageInterval) clearInterval(window.currentPageInterval);
+            window.currentPageInterval = setInterval(() => loadHotspots(true), 15000);
         } else {
-            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            if (window.currentPageInterval) clearInterval(window.currentPageInterval);
         }
     });
 

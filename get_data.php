@@ -633,19 +633,19 @@ elseif ($type === 'hosts') {
 
     // --- Group hosts by their role ---
     $grouped_hosts = [
-        'manager' => [], 'worker' => [], 'standalone' => [], 'registry' => []
+        'manager' => [], 'worker' => [], 'standalone' => [], 'registry' => [], 'unreachable' => []
     ];
 
     foreach ($all_hosts as $host) {
         $uptime_status = 'N/A';
         $uptime_timestamp = $host['host_uptime_seconds'] ?? 0;
         $manager_status_text = '';
-        $swarm_status_for_db = 'unreachable'; // Default value
+        $swarm_status_for_db = $host['swarm_status'] ?? 'unreachable'; // Use DB value as default
         $connection_status_badge = '<span class="badge bg-secondary">Unknown</span>';
         if ($uptime_timestamp > 0) {
             $uptime_status = format_uptime($uptime_timestamp);
         }
-        try {
+        try { // Attempt to get live data
             $dockerClient = new DockerClient($host);
             $dockerInfo = $dockerClient->getInfo();
             $connection_status_badge = '<span class="badge bg-success">Reachable</span>';
@@ -686,10 +686,11 @@ elseif ($type === 'hosts') {
             }
 
         } catch (Exception $e) {
-            // Don't overwrite uptime status if we already have it from the DB
-            if ($uptime_timestamp <= 0) $uptime_status = 'Error';
+            // If connection fails, mark as unreachable and use DB data if available
+            if ($uptime_timestamp <= 0) $uptime_status = 'N/A';
             $connection_status_badge = '<span class="badge bg-danger" title="' . htmlspecialchars($e->getMessage()) . '">Unreachable</span>';
             $swarm_status_for_db = 'unreachable';
+            $manager_status_text = 'Unreachable';
         }
 
         // --- NEW: Detect if a registry container is running on the host ---
@@ -720,7 +721,7 @@ elseif ($type === 'hosts') {
              // --- Grouping Logic: Prioritize registry, then fall back to swarm status ---
         if ($is_registry_host) {
             $grouped_hosts['registry'][] = $host;
-        } elseif ($swarm_status_for_db !== 'unreachable') {
+        } else {
             $grouped_hosts[$swarm_status_for_db][] = $host;
         }
 
@@ -730,6 +731,7 @@ elseif ($type === 'hosts') {
     // --- Generate HTML from grouped hosts ---
     $html = '';
     $group_definitions = [
+        'unreachable' => ['title' => 'Unreachable Hosts', 'icon' => 'exclamation-triangle-fill text-danger'],
         'manager' => ['title' => 'Swarm Managers', 'icon' => 'hdd-stack-fill'],
         'worker' => ['title' => 'Swarm Workers', 'icon' => 'hdd-fill'],
         'standalone' => ['title' => 'Standalone Hosts', 'icon' => 'hdd-network-fill'],
