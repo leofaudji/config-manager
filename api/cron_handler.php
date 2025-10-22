@@ -19,6 +19,7 @@ class CronManager {
             'autoscaler' => PROJECT_ROOT . '/autoscaler.php',
             'health_monitor' => PROJECT_ROOT . '/health_monitor.php',
             'system_cleanup' => PROJECT_ROOT . '/system_cleanup.php',
+            'system_backup' => PROJECT_ROOT . '/system_backup.php'
         ];
     }
 
@@ -72,8 +73,9 @@ class CronManager {
 
         // Filter out existing lines for our managed scripts
         $new_lines = array_filter($lines, function($line) {
-            foreach ($this->scripts as $path) {
-                if (strpos($line, $path) !== false) {
+            // Check if the line contains any of the managed script filenames
+            foreach ($this->scripts as $key => $path) {
+                if (strpos($line, $key . '.sh') !== false) {
                     return false;
                 }
             }

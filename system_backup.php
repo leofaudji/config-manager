@@ -70,6 +70,7 @@ try {
         }
     }
     echo "SUKSES: {$deleted_count} file backup lama dihapus.\n";
+    log_activity('SYSTEM', 'Automatic Backup Success', "Backup created at {$file_path}. {$deleted_count} old backups removed.");
 
 } catch (Exception $e) {
     $error_message = "ERROR: Terjadi kesalahan saat backup otomatis: " . $e->getMessage() . "\n";

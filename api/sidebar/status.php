@@ -191,6 +191,36 @@ try {
     $incident_stmt->close();
     $response_data['open_incidents'] = ['count' => count($open_incidents), 'alerts' => $open_incidents];
 
+    //echo json_encode(['status' => 'success', 'data' => $response_data]);
+    
+    // --- 7. Get Auto Backup Status for Today ---
+    $backup_status_today = ['status' => 'pending', 'details' => 'No backup has run today.'];
+    $backup_enabled = (bool)get_setting('backup_enabled', false);
+
+    if ($backup_enabled) {
+        $backup_path = get_setting('backup_path', '/var/www/html/config-manager/backups');
+        $today_str = date('Y-m-d');
+        $backup_files_today = glob(rtrim($backup_path, '/') . "/config-manager-backup-{$today_str}_*.json");
+
+        if (!empty($backup_files_today)) {
+            // Found at least one backup file for today
+            $backup_status_today['status'] = 'success';
+            $latest_file = end($backup_files_today);
+            $backup_status_today['details'] = 'Latest backup created at ' . date('H:i:s', filemtime($latest_file)) . ' (' . basename($latest_file) . ')';
+        } else {
+            // No backup file found, check if there was an error log for today
+            $stmt_error = $conn->prepare("SELECT details FROM activity_log WHERE action = 'Automatic Backup Error' AND DATE(created_at) = CURDATE() ORDER BY id DESC LIMIT 1");
+            $stmt_error->execute();
+            $error_log = $stmt_error->get_result()->fetch_assoc();
+            $stmt_error->close();
+
+            if ($error_log) {
+                $backup_status_today['status'] = 'error';
+                $backup_status_today['details'] = 'Backup failed today. Last error: ' . $error_log['details'];
+            }
+        }
+    }
+    $response_data['latest_backup_status'] = $backup_status_today;
     echo json_encode(['status' => 'success', 'data' => $response_data]);
 
 } catch (Exception $e) {

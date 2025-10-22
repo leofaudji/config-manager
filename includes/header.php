@@ -285,7 +285,9 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/health-check') ?>">Health Check</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/webhook-reports') ?>">Webhook Reports</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/cron-jobs') ?>">Cron Jobs</a></li>
-                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/backup-restore') ?>">Backup & Restore</a></li>
+                        <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/backup-restore') ?>">
+                            <span>Backup & Restore</span><span id="sidebar-backup-status-badge" class="badge rounded-pill p-1" style="display: none;"><i class="bi bi-circle-fill"></i></span>
+                        </a></li>
                     </ul>
                 </div>
             </li>
@@ -318,6 +320,9 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <span class="visually-hidden">pending changes</span>
                 </span>
             </button>
+            <a href="<?= base_url('/backup-restore') ?>" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="backup-status-btn" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Automatic Backup Status" style="width: 44px; height: 44px;">
+                <i id="backup-status-icon" class="bi bi-database-down fs-4 text-secondary"></i>
+            </a>
             <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="unhealthy-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Unhealthy Items Alert">
                 <i class="bi bi-heartbreak-fill text-danger fs-4"></i>
                 <span id="unhealthy-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-dark">

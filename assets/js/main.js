@@ -2320,6 +2320,44 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
 
+                // 7. Update Auto Backup Status Icon & Sidebar Badge
+                const backupStatusBtn = document.getElementById('backup-status-btn');
+                const backupStatusIcon = document.getElementById('backup-status-icon');
+                const sidebarBackupBadge = document.getElementById('sidebar-backup-status-badge');
+
+                if (backupStatusBtn && backupStatusIcon && data.latest_backup_status) {
+                    const status = data.latest_backup_status;
+                    let iconColorClass = 'text-secondary'; // Default (pending)
+                    let title = `Backup Status: Pending\nDetails: ${status.details}`;
+                    let badgeClass = 'bg-warning';
+
+                    if (status.status === 'success') {
+                        iconColorClass = 'text-success';
+                        title = `Backup Status: Success\nDetails: ${status.details}`;
+                        badgeClass = 'bg-success';
+                    } else if (status.status === 'error') {
+                        iconColorClass = 'text-danger';
+                        title = `Backup Status: Failed\nDetails: ${status.details}`;
+                        badgeClass = 'bg-danger';
+                    }
+                    
+                    // Update tooltip
+                    const tooltip = bootstrap.Tooltip.getInstance(backupStatusBtn);
+                    if (tooltip) {
+                        tooltip.setContent({ '.tooltip-inner': title });
+                    } else {
+                        backupStatusBtn.setAttribute('title', title);
+                        new bootstrap.Tooltip(backupStatusBtn);
+                    }
+
+                    // Update icon color
+                    backupStatusIcon.className = `bi bi-database-down fs-4 ${iconColorClass}`;
+                    if (sidebarBackupBadge) {
+                        sidebarBackupBadge.className = `badge rounded-pill p-1 ${badgeClass}`;
+                        sidebarBackupBadge.style.display = 'inline-block';
+                    }
+                }
+
                 // 4. Update Deploy Notification Button
                 updateDeployNotification(data.config_dirty);
 

@@ -161,8 +161,10 @@ $router->get('/api/status/config-dirty', 'api/status_handler.php', ['auth']);
 $router->get('/api/sla-alert-status', 'api/sla_alert_status.php', ['auth']); // New endpoint for SLA alerts
 $router->get('/api/unhealthy-status', 'api/unhealthy_status.php', ['auth']); // New endpoint for unhealthy alerts
 $router->post('/api/log/ingest', 'api/log_ingest_handler.php'); // For receiving logs from agents
-$router->get('/api/system/backup', 'api/system_handler.php', ['auth', 'admin']);
+$router->add(['GET', 'POST'], '/api/system/backup', 'api/system_handler.php', ['auth', 'admin']);
 $router->post('/api/system/restore', 'api/system_handler.php', ['auth', 'admin']);
+$router->get('/api/system/backup-status', 'api/system_handler.php', ['auth', 'admin']);
+$router->get('/api/system/backup/download', 'api/system_handler.php', ['auth', 'admin']);
 $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin']);
 $router->post('/api/notifications/agent-relay', 'api/notification_relay_handler.php'); // New endpoint for agent notifications
 $router->post('/api/routers/bulk-move', 'api/router_bulk_handler.php', ['auth', 'admin']);

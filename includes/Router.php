@@ -8,13 +8,16 @@ class Router {
         $this->basePath = rtrim($basePath, '/');
     }
 
-    public function add(string $method, string $path, string $handler, array $middlewares = []): void {
-        $this->routes[] = [
-            'method' => strtoupper($method),
-            'path' => $path,
-            'handler' => $handler,
-            'middlewares' => $middlewares
-        ];
+    public function add(string|array $method, string $path, string $handler, array $middlewares = []): void {
+        $methods = is_array($method) ? $method : [$method];
+        foreach ($methods as $m) {
+            $this->routes[] = [
+                'method' => strtoupper($m),
+                'path' => $path,
+                'handler' => $handler,
+                'middlewares' => $middlewares
+            ];
+        }
     }
 
     public function get(string $path, string $handler, array $middlewares = []): void {
