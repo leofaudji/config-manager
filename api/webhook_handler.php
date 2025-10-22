@@ -58,7 +58,7 @@ try {
 
     $conn = Database::getInstance()->getConnection();
     // Find all stacks that use this Git repository as their source
-    $stmt = $conn->prepare("SELECT s.id, s.stack_name, s.host_id, s.deployment_details, s.last_webhook_triggered_at, h.name as host_name FROM application_stacks s JOIN docker_hosts h ON s.host_id = h.id WHERE s.source_type = 'git' AND JSON_UNQUOTE(JSON_EXTRACT(s.deployment_details, '$.git_url')) = ?");
+    $stmt = $conn->prepare("SELECT s.id, s.stack_name, s.host_id, s.deployment_details, s.last_webhook_triggered_at, s.webhook_update_policy, h.name as host_name FROM application_stacks s JOIN docker_hosts h ON s.host_id = h.id WHERE s.source_type = 'git' AND JSON_UNQUOTE(JSON_EXTRACT(s.deployment_details, '$.git_url')) = ?");
     $stmt->bind_param("s", $repo_url_from_payload);
     $stmt->execute();
     $stacks_to_update = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -75,6 +75,7 @@ try {
     $cooldown_period = (int)get_setting('webhook_cooldown_period', 300); // Default 5 menit
     $updated_stacks = [];
     $ignored_stacks = [];
+    $scheduled_stacks = [];
 
     foreach ($stacks_to_update as $stack) {
         // --- NEW: Cooldown Logic ---
@@ -89,24 +90,35 @@ try {
             }
         }
 
-        // --- NEW: Trigger the actual deployment ---
-        // We will simulate a form submission to the app_launcher_handler.
-        $deployment_details = json_decode($stack['deployment_details'], true);
-        if (!$deployment_details) {
-            log_activity('webhook_bot', 'Webhook Redeploy Failed', "Could not decode deployment details for stack '{$stack['stack_name']}'. Skipping.");
-            continue;
+        // --- IDE: Check update policy ---
+        if ($stack['webhook_update_policy'] === 'scheduled') {
+            // Mark for pending update instead of deploying
+            $update_stmt = $conn->prepare("UPDATE application_stacks SET webhook_pending_update = 1, webhook_pending_since = NOW() WHERE id = ?");
+            $update_stmt->bind_param("i", $stack['id']);
+            $update_stmt->execute();
+            $update_stmt->close();
+            $scheduled_stacks[] = "{$stack['stack_name']} (on {$stack['host_name']})";
+            log_activity('webhook_bot', 'Webhook Update Scheduled', "Update for stack '{$stack['stack_name']}' on host '{$stack['host_name']}' has been scheduled due to a push to '{$target_branch}'.");
+        } else { // 'realtime' policy
+            // --- Trigger the actual deployment ---
+            // We will simulate a form submission to the app_launcher_handler.
+            $deployment_details = json_decode($stack['deployment_details'], true);
+            if (!$deployment_details) {
+                log_activity('webhook_bot', 'Webhook Redeploy Failed', "Could not decode deployment details for stack '{$stack['stack_name']}'. Skipping.");
+                continue;
+            }
+
+            // Prepare the POST data for the app launcher
+            $post_data = $deployment_details;
+            $post_data['host_id'] = $stack['host_id'];
+            $post_data['stack_name'] = $stack['stack_name'];
+            $post_data['update_stack'] = 'true'; // This is crucial to tell the launcher it's an update
+
+            // FIX: Directly call the deployment logic instead of making a fragile internal HTTP call.
+            DeploymentRunner::runInBackground($post_data);
+            log_activity('webhook_bot', 'Webhook Redeploy Triggered', "Redeployment triggered for stack '{$stack['stack_name']}' on host '{$stack['host_name']}' due to a push to '{$target_branch}'.");
+            $updated_stacks[] = "{$stack['stack_name']} (on {$stack['host_name']})";
         }
-
-        // Prepare the POST data for the app launcher
-        $post_data = $deployment_details;
-        $post_data['host_id'] = $stack['host_id'];
-        $post_data['stack_name'] = $stack['stack_name'];
-        $post_data['update_stack'] = 'true'; // This is crucial to tell the launcher it's an update
-
-        // FIX: Directly call the deployment logic instead of making a fragile internal HTTP call.
-        DeploymentRunner::runInBackground($post_data);
-        log_activity('webhook_bot', 'Webhook Redeploy Triggered', "Redeployment triggered for stack '{$stack['stack_name']}' on host '{$stack['host_name']}' due to a push to '{$target_branch}'.");
-        $updated_stacks[] = "{$stack['stack_name']} (on {$stack['host_name']})";
     }
 
     // --- NEW: Send a notification ---
@@ -115,10 +127,18 @@ try {
         $notification_message = "Push to '{$target_branch}' triggered redeployment for: " . implode(', ', $updated_stacks);
         send_notification($notification_title, $notification_message, 'info');
     }
+    if (!empty($scheduled_stacks)) {
+        $notification_title = "Webhook Update Scheduled";
+        $notification_message = "Push to '{$target_branch}' scheduled updates for: " . implode(', ', $scheduled_stacks);
+        send_notification($notification_title, $notification_message, 'info');
+    }
 
     $message = 'Webhook processed.';
     if (!empty($updated_stacks)) {
         $message .= ' Redeployment triggered for: ' . implode(', ', $updated_stacks) . '.';
+    }
+    if (!empty($scheduled_stacks)) {
+        $message .= ' Updates scheduled for: ' . implode(', ', $scheduled_stacks) . '.';
     }
     if (!empty($ignored_stacks)) {
         $message .= ' Ignored stacks (cooldown): ' . implode(', ', $ignored_stacks) . '.';

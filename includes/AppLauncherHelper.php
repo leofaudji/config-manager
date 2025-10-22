@@ -379,6 +379,8 @@ class AppLauncherHelper
             $privileged = isset($post_data['privileged']) && $post_data['privileged'] === 'true';
             $deploy_placement_constraint = !empty($post_data['deploy_placement_constraint']) ? trim($post_data['deploy_placement_constraint']) : null;
             $is_update = isset($post_data['update_stack']) && $post_data['update_stack'] === 'true';
+            $webhook_update_policy = $post_data['webhook_update_policy'] ?? 'realtime';
+            $webhook_schedule_time = ($webhook_update_policy === 'scheduled' && !empty($post_data['webhook_schedule_time'])) ? $post_data['webhook_schedule_time'] : null; // Explicitly set to null if not provided
 
             // Autoscaling settings
             $autoscaling_enabled = isset($post_data['autoscaling_enabled']) ? 1 : 0;
@@ -539,15 +541,16 @@ class AppLauncherHelper
             $deployment_details_json = json_encode($post_data, JSON_UNESCAPED_SLASHES);
             $placement_to_save = $deploy_placement_constraint ?? '';
             $stmt_stack = $conn->prepare(
-                "INSERT INTO application_stacks (host_id, stack_name, source_type, compose_file_path, deployment_details, autoscaling_enabled, autoscaling_min_replicas, autoscaling_max_replicas, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down, deploy_placement_constraint) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "INSERT INTO application_stacks (host_id, stack_name, source_type, compose_file_path, deployment_details, autoscaling_enabled, autoscaling_min_replicas, autoscaling_max_replicas, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down, deploy_placement_constraint, webhook_update_policy, webhook_schedule_time) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE 
                     source_type = VALUES(source_type), compose_file_path = VALUES(compose_file_path), deployment_details = VALUES(deployment_details), 
                     autoscaling_enabled = VALUES(autoscaling_enabled), autoscaling_min_replicas = VALUES(autoscaling_min_replicas), autoscaling_max_replicas = VALUES(autoscaling_max_replicas), 
                     autoscaling_cpu_threshold_up = VALUES(autoscaling_cpu_threshold_up), autoscaling_cpu_threshold_down = VALUES(autoscaling_cpu_threshold_down),
-                    deploy_placement_constraint = VALUES(deploy_placement_constraint), updated_at = NOW()"
+                    deploy_placement_constraint = VALUES(deploy_placement_constraint), webhook_update_policy = VALUES(webhook_update_policy), webhook_schedule_time = VALUES(webhook_schedule_time),
+                    webhook_pending_update = 0, updated_at = NOW()"
             );
-            $stmt_stack->bind_param("issssiiiiis", $host_id, $stack_name, $source_type, $compose_file_name, $deployment_details_json, $autoscaling_enabled, $autoscaling_min_replicas, $autoscaling_max_replicas, $autoscaling_cpu_threshold_up, $autoscaling_cpu_threshold_down, $placement_to_save);
+            $stmt_stack->bind_param("issssiiiiisss", $host_id, $stack_name, $source_type, $compose_file_name, $deployment_details_json, $autoscaling_enabled, $autoscaling_min_replicas, $autoscaling_max_replicas, $autoscaling_cpu_threshold_up, $autoscaling_cpu_threshold_down, $placement_to_save, $webhook_update_policy, $webhook_schedule_time);
             $stmt_stack->execute();
             $stmt_stack->close();
 

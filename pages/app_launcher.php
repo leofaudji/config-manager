@@ -98,6 +98,22 @@ require_once __DIR__ . '/../includes/header.php';
                                         </div>
                                     </div>
                                 </div>
+                                <div class="mb-3">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label for="webhook_update_policy" class="form-label">Webhook Update Policy</label>
+                                            <select class="form-select" id="webhook_update_policy" name="webhook_update_policy">
+                                                <option value="realtime" selected>Real-time (Deploy immediately on push)</option>
+                                                <option value="scheduled">Scheduled (Deploy at a specific time)</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6" id="webhook-schedule-time-group" style="display: none;">
+                                            <label for="webhook_schedule_time" class="form-label">Deployment Time (WIB)</label>
+                                            <input type="time" class="form-control" id="webhook_schedule_time" name="webhook_schedule_time" value="02:00">
+                                        </div>
+                                    </div>
+                                    <small class="form-text text-muted">Choose how to handle updates from Git webhooks. The "Deploy Now" button will still be available for pending updates.</small>
+                                </div>
                                 <div class="form-check form-switch mb-3">
                                     <input class="form-check-input" type="checkbox" role="switch" id="build_from_dockerfile" name="build_from_dockerfile" value="1">
                                     <label class="form-check-label" for="build_from_dockerfile">Buat image dari Dockerfile</label>
@@ -1447,6 +1463,18 @@ window.pageInit = function() {
             launchBtn.innerHTML = originalBtnContent;
             logCloseBtn.disabled = false;
             document.getElementById('deploymentLogModalLabel').textContent = 'Deployment Finished';
+        }
+    });
+
+    // --- IDE: Logic for Webhook Schedule Time ---
+    const webhookPolicySelect = document.getElementById('webhook_update_policy');
+    const webhookTimeGroup = document.getElementById('webhook-schedule-time-group');
+
+    webhookPolicySelect.addEventListener('change', function() {
+        if (this.value === 'scheduled') {
+            webhookTimeGroup.style.display = 'block';
+        } else {
+            webhookTimeGroup.style.display = 'none';
         }
     });
 

@@ -221,7 +221,26 @@ try {
         }
     }
     $response_data['latest_backup_status'] = $backup_status_today;
-    echo json_encode(['status' => 'success', 'data' => $response_data]);
+
+    // --- 8. Get Pending Webhook Updates ---
+    $pending_updates_stmt = $conn->prepare("
+        SELECT s.id, s.stack_name, h.name as host_name, s.host_id
+        FROM application_stacks s
+        JOIN docker_hosts h ON s.host_id = h.id
+        WHERE s.webhook_pending_update = 1
+        ORDER BY s.stack_name ASC
+        LIMIT 20
+    ");
+    $pending_updates_stmt->execute();
+    $pending_updates_alerts = $pending_updates_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $pending_updates_stmt->close();
+    
+    $total_pending_count_stmt = $conn->query("SELECT COUNT(*) as count FROM application_stacks WHERE webhook_pending_update = 1");
+    $total_pending_count = (int)($total_pending_count_stmt->fetch_assoc()['count'] ?? 0);
+    
+    $response_data['pending_updates'] = ['count' => $total_pending_count, 'alerts' => $pending_updates_alerts];
+
+    echo json_encode(['status' => 'success', 'data' => $response_data]); 
 
 } catch (Exception $e) {
     http_response_code(500);

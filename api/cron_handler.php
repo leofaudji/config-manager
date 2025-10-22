@@ -19,7 +19,8 @@ class CronManager {
             'autoscaler' => PROJECT_ROOT . '/autoscaler.php',
             'health_monitor' => PROJECT_ROOT . '/health_monitor.php',
             'system_cleanup' => PROJECT_ROOT . '/system_cleanup.php',
-            'system_backup' => PROJECT_ROOT . '/system_backup.php'
+            'system_backup' => PROJECT_ROOT . '/system_backup.php',
+            'scheduled_deployment_runner' => PROJECT_ROOT . '/scheduled_deployment_runner.php'
         ];
     }
 

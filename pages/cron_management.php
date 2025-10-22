@@ -7,6 +7,7 @@ $collect_stats_path = PROJECT_ROOT . '/collect_stats.php';
 $autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
 $health_monitor_path = PROJECT_ROOT . '/health_monitor.php';
 $system_backup_path = PROJECT_ROOT . '/system_backup.php';
+$scheduled_deploy_path = PROJECT_ROOT . '/scheduled_deployment_runner.php';
 ?>
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -14,163 +15,119 @@ $system_backup_path = PROJECT_ROOT . '/system_backup.php';
 </div>
 
 <form id="main-form" action="<?= base_url('/api/cron') ?>" method="POST" data-redirect="/cron-jobs">
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5><i class="bi bi-graph-up"></i> Host Stats Collector</h5>
-        </div>
+    <div class="card">
         <div class="card-body">
-            <p class="text-muted">Skrip ini mengumpulkan statistik penggunaan CPU dan Memori dari semua host Docker Anda secara periodik. Data ini digunakan untuk menampilkan grafik di dashboard.</p>
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="collect_stats_enabled" name="collect_stats[enabled]" value="1">
-                <label class="form-check-label" for="collect_stats_enabled">
-                    Enable Stats Collector
-                    <span id="collect_stats_status_badge" class="badge rounded-pill ms-2"></span>
-                </label>
-            </div>
-            <div class="mb-3">
-                <label for="collect_stats_schedule" class="form-label">Schedule (Format Cron)</label>
-                <input type="text" class="form-control" id="collect_stats_schedule" name="collect_stats[schedule]" placeholder="*/5 * * * *">
-                <small class="form-text text-muted">Contoh: <code>*/5 * * * *</code> untuk berjalan setiap 5 menit. <code>0 * * * *</code> untuk berjalan setiap jam.</small>
-                <?php if (!is_executable($collect_stats_path)): ?>
-                <div class="alert alert-warning mt-2 small">
-                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars($collect_stats_path) ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars($collect_stats_path) ?></code> on your server.
-                </div>
-                <?php endif; ?>
-            </div>
-            <div class="bg-light p-2 rounded">
-                <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($collect_stats_path) ?></code></small>
-            </div>
-            <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="collect_stats"><i class="bi bi-card-text"></i> View Log</button>
-                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="collect_stats"><i class="bi bi-eraser-fill"></i> Clear Log</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5><i class="bi bi-arrows-angle-expand"></i> Service Autoscaler</h5>
-        </div>
-        <div class="card-body">
-            <p class="text-muted">Skrip ini memeriksa penggunaan CPU host dan secara otomatis menambah atau mengurangi jumlah replika service pada host Docker sesuai aturan yang Anda tetapkan.</p>
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="autoscaler_enabled" name="autoscaler[enabled]" value="1">
-                <label class="form-check-label" for="autoscaler_enabled">
-                    Enable Autoscaler
-                    <span id="autoscaler_status_badge" class="badge rounded-pill ms-2"></span>
-                </label>
-            </div>
-            <div class="mb-3">
-                <label for="autoscaler_schedule" class="form-label">Schedule (Format Cron)</label>
-                <input type="text" class="form-control" id="autoscaler_schedule" name="autoscaler[schedule]" placeholder="*/5 * * * *">
-                <small class="form-text text-muted">Direkomendasikan untuk berjalan setiap 5 menit.</small>
-                <?php if (!is_executable($autoscaler_path)): ?>
-                <div class="alert alert-warning mt-2 small">
-                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars($autoscaler_path) ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars($autoscaler_path) ?></code> on your server.
-                </div>
-                <?php endif; ?>
-            </div>
-            <div class="bg-light p-2 rounded">
-                <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($autoscaler_path) ?></code></small>
-            </div>
-            <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="autoscaler"><i class="bi bi-card-text"></i> View Log</button>
-                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="autoscaler"><i class="bi bi-eraser-fill"></i> Clear Log</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5><i class="bi bi-heart-pulse"></i> Service Health Monitor</h5>
-        </div>
-        <div class="card-body">
-            <p class="text-muted">Skrip ini secara aktif memeriksa kesehatan layanan Anda dan secara otomatis me-restart layanan yang tidak responsif (auto-healing).</p>
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="health_monitor_enabled" name="health_monitor[enabled]" value="1">
-                <label class="form-check-label" for="health_monitor_enabled">
-                    Enable Health Monitor
-                    <span id="health_monitor_status_badge" class="badge rounded-pill ms-2"></span>
-                </label>
-            </div>
-            <div class="mb-3">
-                <label for="health_monitor_schedule" class="form-label">Schedule (Format Cron)</label>
-                <input type="text" class="form-control" id="health_monitor_schedule" name="health_monitor[schedule]" placeholder="* * * * *">
-                <small class="form-text text-muted">Direkomendasikan untuk berjalan setiap 1 menit.</small>
-                <?php if (!is_executable($health_monitor_path)): ?>
-                <div class="alert alert-warning mt-2 small">
-                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars($health_monitor_path) ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars($health_monitor_path) ?></code> on your server.
-                </div>
-                <?php endif; ?>
-            </div>
-            <div class="bg-light p-2 rounded">
-                <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($health_monitor_path) ?></code></small>
-            </div>
-            <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="health_monitor"><i class="bi bi-card-text"></i> View Log</button>
-                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="health_monitor"><i class="bi bi-eraser-fill"></i> Clear Log</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5><i class="bi bi-trash3"></i> System Cleanup</h5>
-        </div>
-        <div class="card-body">
-            <p class="text-muted">Skrip ini secara otomatis membersihkan data lama dari database untuk menjaga performa, seperti riwayat konfigurasi yang diarsipkan, log aktivitas, dan riwayat statistik host.</p>
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="system_cleanup_enabled" name="system_cleanup[enabled]" value="1">
-                <label class="form-check-label" for="system_cleanup_enabled">
-                    Enable System Cleanup
-                    <span id="system_cleanup_status_badge" class="badge rounded-pill ms-2"></span>
-                </label>
-            </div>
-            <div class="mb-3">
-                <label for="system_cleanup_schedule" class="form-label">Schedule (Format Cron)</label>
-                <input type="text" class="form-control" id="system_cleanup_schedule" name="system_cleanup[schedule]" placeholder="0 3 * * *">
-                <small class="form-text text-muted">Direkomendasikan untuk berjalan sekali sehari, misalnya pada jam 3 pagi (<code>0 3 * * *</code>).</small>
-                <?php if (!is_executable(PROJECT_ROOT . '/system_cleanup.php')): ?>
-                <div class="alert alert-warning mt-2 small">
-                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars(PROJECT_ROOT . '/system_cleanup.php') ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars(PROJECT_ROOT . '/system_cleanup.php') ?></code> on your server.
-                </div>
-                <?php endif; ?>
-            </div>
-            <div class="bg-light p-2 rounded">
-                <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars(PROJECT_ROOT . '/system_cleanup.php') ?></code></small>
-            </div>
-            <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="system_cleanup"><i class="bi bi-card-text"></i> View Log</button>
-                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="system_cleanup"><i class="bi bi-eraser-fill"></i> Clear Log</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5><i class="bi bi-database-down"></i> Automatic Backup</h5>
-        </div>
-        <div class="card-body">
-            <p class="text-muted">Skrip ini secara otomatis membuat backup penuh dari semua data konfigurasi aplikasi Anda dan menyimpannya ke path yang ditentukan di "General Settings".</p>
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="system_backup_enabled" name="system_backup[enabled]" value="1">
-                <label class="form-check-label" for="system_backup_enabled">
-                    Enable Automatic Backup
-                    <span id="system_backup_status_badge" class="badge rounded-pill ms-2"></span>
-                </label>
-            </div>
-            <div class="mb-3">
-                <label for="system_backup_schedule" class="form-label">Schedule (Format Cron)</label>
-                <input type="text" class="form-control" id="system_backup_schedule" name="system_backup[schedule]" placeholder="0 2 * * *">
-                <small class="form-text text-muted">Direkomendasikan untuk berjalan sekali sehari, misalnya pada jam 2 pagi (<code>0 2 * * *</code>).</small>
-                <?php if (!is_executable($system_backup_path)): ?>
-                <div class="alert alert-warning mt-2 small">
-                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Permission Warning:</strong> The script <code><?= htmlspecialchars($system_backup_path) ?></code> is not executable. Please run <code>chmod +x <?= htmlspecialchars($system_backup_path) ?></code> on your server.
-                </div>
-                <?php endif; ?>
-            </div>
-            <div class="bg-light p-2 rounded">
-                <small class="font-monospace text-muted">Perintah yang akan dijalankan: <code><?= htmlspecialchars($system_backup_path) ?></code></small>
+            <div class="table-responsive">
+                <table class="table table-vcenter">
+                    <thead>
+                        <tr>
+                            <th>Job</th>
+                            <th style="width: 30%;">Description</th>
+                            <th>Status</th>
+                            <th style="min-width: 180px;">Schedule (Cron Format)</th>
+                            <th style="min-width: 150px;">Actions</th>
+                            <th>Enabled</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Host Stats Collector -->
+                        <tr>
+                            <td><strong><i class="bi bi-graph-up me-2"></i>Host Stats Collector</strong></td>
+                            <td class="text-muted small">Collects CPU and Memory usage from all hosts for dashboard graphs.</td>
+                            <td><span id="collect_stats_status_badge" class="badge rounded-pill"></span></td>
+                            <td><input type="text" class="form-control form-control-sm" id="collect_stats_schedule" name="collect_stats[schedule]" placeholder="*/5 * * * *"></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="collect_stats" title="View Log"><i class="bi bi-card-text"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="collect_stats" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
+                            </td>
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="collect_stats_enabled" name="collect_stats[enabled]" value="1">
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Service Autoscaler -->
+                        <tr>
+                            <td><strong><i class="bi bi-arrows-angle-expand me-2"></i>Service Autoscaler</strong></td>
+                            <td class="text-muted small">Checks host CPU usage and scales service replicas up or down based on defined rules.</td>
+                            <td><span id="autoscaler_status_badge" class="badge rounded-pill"></span></td>
+                            <td><input type="text" class="form-control form-control-sm" id="autoscaler_schedule" name="autoscaler[schedule]" placeholder="*/5 * * * *"></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="autoscaler" title="View Log"><i class="bi bi-card-text"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="autoscaler" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
+                            </td>
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="autoscaler_enabled" name="autoscaler[enabled]" value="1">
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Service Health Monitor -->
+                        <tr>
+                            <td><strong><i class="bi bi-heart-pulse me-2"></i>Service Health Monitor</strong></td>
+                            <td class="text-muted small">Actively checks service health and performs auto-healing by restarting unresponsive services.</td>
+                            <td><span id="health_monitor_status_badge" class="badge rounded-pill"></span></td>
+                            <td><input type="text" class="form-control form-control-sm" id="health_monitor_schedule" name="health_monitor[schedule]" placeholder="* * * * *"></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="health_monitor" title="View Log"><i class="bi bi-card-text"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="health_monitor" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
+                            </td>
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="health_monitor_enabled" name="health_monitor[enabled]" value="1">
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- System Cleanup -->
+                        <tr>
+                            <td><strong><i class="bi bi-trash3 me-2"></i>System Cleanup</strong></td>
+                            <td class="text-muted small">Cleans up old data from the database (archived history, activity logs, host stats) to maintain performance.</td>
+                            <td><span id="system_cleanup_status_badge" class="badge rounded-pill"></span></td>
+                            <td><input type="text" class="form-control form-control-sm" id="system_cleanup_schedule" name="system_cleanup[schedule]" placeholder="0 3 * * *"></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="system_cleanup" title="View Log"><i class="bi bi-card-text"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="system_cleanup" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
+                            </td>
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="system_cleanup_enabled" name="system_cleanup[enabled]" value="1">
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Automatic Backup -->
+                        <tr>
+                            <td><strong><i class="bi bi-database-down me-2"></i>Automatic Backup</strong></td>
+                            <td class="text-muted small">Creates a full backup of all application configuration data to the path specified in General Settings.</td>
+                            <td><span id="system_backup_status_badge" class="badge rounded-pill"></span></td>
+                            <td><input type="text" class="form-control form-control-sm" id="system_backup_schedule" name="system_backup[schedule]" placeholder="0 2 * * *"></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="system_backup" title="View Log"><i class="bi bi-card-text"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="system_backup" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
+                            </td>
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="system_backup_enabled" name="system_backup[enabled]" value="1">
+                                </div>
+                            </td>
+                        </tr>
+                        <!-- Scheduled Deployment Runner -->
+                        <tr>
+                            <td><strong><i class="bi bi-calendar-check me-2"></i>Scheduled Deployment</strong></td>
+                            <td class="text-muted small">Checks for stacks with a "Scheduled" policy that have pending updates and are due for deployment.</td>
+                            <td><span id="scheduled_deployment_runner_status_badge" class="badge rounded-pill"></span></td>
+                            <td><input type="text" class="form-control form-control-sm" id="scheduled_deployment_runner_schedule" name="scheduled_deployment_runner[schedule]" placeholder="* * * * *"></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="scheduled_deployment_runner" title="View Log"><i class="bi bi-card-text"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="scheduled_deployment_runner" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
+                            </td>
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="scheduled_deployment_runner_enabled" name="scheduled_deployment_runner[enabled]" value="1">
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -190,12 +147,13 @@ window.pageInit = function() {
         const healthMonitorBadge = document.getElementById('health_monitor_status_badge');
         const systemCleanupBadge = document.getElementById('system_cleanup_status_badge');
         const systemBackupBadge = document.getElementById('system_backup_status_badge');
+    const scheduledDeployBadge = document.getElementById('scheduled_deployment_runner_status_badge');
 
         fetch('<?= base_url('/api/cron') ?>')
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    const { collect_stats, autoscaler, health_monitor, system_cleanup, system_backup } = data.jobs;
+                const { collect_stats, autoscaler, health_monitor, system_cleanup, system_backup, scheduled_deployment_runner } = data.jobs;
                     if (collect_stats) {
                         document.getElementById('collect_stats_enabled').checked = collect_stats.enabled;
                         document.getElementById('collect_stats_schedule').value = collect_stats.schedule;
@@ -249,6 +207,17 @@ window.pageInit = function() {
                         } else {
                             systemBackupBadge.textContent = 'Not Set';
                             systemBackupBadge.className = 'badge rounded-pill ms-2 text-bg-light';
+                        }
+                    }
+                    if (scheduled_deployment_runner) {
+                        document.getElementById('scheduled_deployment_runner_enabled').checked = scheduled_deployment_runner.enabled;
+                        document.getElementById('scheduled_deployment_runner_schedule').value = scheduled_deployment_runner.schedule;
+                        if (scheduled_deployment_runner.schedule) {
+                            scheduledDeployBadge.textContent = scheduled_deployment_runner.enabled ? 'Scheduled' : 'Disabled';
+                            scheduledDeployBadge.className = `badge rounded-pill ms-2 text-bg-${scheduled_deployment_runner.enabled ? 'success' : 'secondary'}`;
+                        } else {
+                            scheduledDeployBadge.textContent = 'Not Set';
+                            scheduledDeployBadge.className = 'badge rounded-pill ms-2 text-bg-light';
                         }
                     }
                 } else {
@@ -308,7 +277,7 @@ window.pageInit = function() {
     });
 
     // Add event listeners to the enable/disable switches
-    ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup', 'system_backup'].forEach(scriptKey => {
+    ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup', 'system_backup', 'scheduled_deployment_runner'].forEach(scriptKey => {
         const enableSwitch = document.getElementById(`${scriptKey}_enabled`);
         const scheduleInput = document.getElementById(`${scriptKey}_schedule`);
         if (enableSwitch && scheduleInput) {

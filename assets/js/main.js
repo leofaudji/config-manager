@@ -2358,6 +2358,41 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
 
+                // 8. Update Pending Updates Notification
+                const pendingUpdatesBtn = document.getElementById('pending-updates-alert-btn');
+                const pendingUpdatesBadge = document.getElementById('pending-updates-alert-badge');
+                const pendingUpdatesItemsContainer = document.getElementById('pending-updates-alert-items-container');
+                const sidebarPendingUpdatesBadge = document.getElementById('sidebar-pending-updates-badge');
+
+                if (pendingUpdatesBtn && data.pending_updates) {
+                    const count = data.pending_updates.count;
+                    if (count > 0) {
+                        pendingUpdatesBtn.style.display = 'flex';
+                        pendingUpdatesBadge.textContent = count;
+                        pendingUpdatesBadge.style.display = 'inline-block';
+                        if (sidebarPendingUpdatesBadge) {
+                            sidebarPendingUpdatesBadge.textContent = count;
+                            sidebarPendingUpdatesBadge.style.display = 'inline-block';
+                        }
+
+                        let itemsHtml = '';
+                        data.pending_updates.alerts.forEach(alert => {
+                            const link = `${basePath}/pending-updates`;
+                            itemsHtml += `
+                                <li>
+                                    <a class="dropdown-item d-flex justify-content-between align-items-start" href="${link}">
+                                        <div><strong class="d-block text-info">${alert.stack_name}</strong><small class="text-muted"><i class="bi bi-hdd-network-fill"></i> ${alert.host_name}</small></div>
+                                    </a>
+                                </li>`;
+                        });
+                        pendingUpdatesItemsContainer.innerHTML = itemsHtml;
+                    } else {
+                        pendingUpdatesBtn.style.display = 'none';
+                        pendingUpdatesBadge.style.display = 'none';
+                        if (sidebarPendingUpdatesBadge) sidebarPendingUpdatesBadge.style.display = 'none';
+                    }
+                }
+
                 // 4. Update Deploy Notification Button
                 updateDeployNotification(data.config_dirty);
 

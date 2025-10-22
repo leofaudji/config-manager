@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/header.php';
 
-$cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscaler'];
+$cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscaler', 'system_backup', 'scheduled_deployment_runner'];
 ?>
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -129,7 +129,7 @@ $cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscale
                     <div class="col-md-4">
                         <div class="list-group">
                             <?php foreach ($cron_scripts as $script): ?>
-                                <a href="#" class="list-group-item list-group-item-action cron-log-select" data-script="<?= $script ?>">
+                                <a href="javascript:void(0);" class="list-group-item list-group-item-action cron-log-select" data-script="<?= $script ?>">
                                     <?= ucwords(str_replace('_', ' ', $script)) ?>.log
                                 </a>
                             <?php endforeach; ?>
@@ -138,7 +138,7 @@ $cron_scripts = ['system_cleanup', 'health_monitor', 'collect_stats', 'autoscale
                     <div class="col-md-8">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <h5 id="cron-log-title" class="mb-0">Select a log file to view</h5>
-                            <a href="#" id="cron-log-download-btn" class="btn btn-sm btn-outline-secondary no-spa download-log-btn" style="display: none;" download><i class="bi bi-download"></i> Download Log</a>
+                            <a href="javascript:void(0);" id="cron-log-download-btn" class="btn btn-sm btn-outline-secondary no-spa download-log-btn" style="display: none;" download><i class="bi bi-download"></i> Download Log</a>
                         </div>
                         <pre id="cron-log-content" class="bg-dark text-light p-3 rounded" style="white-space: pre-wrap; word-break: break-all; min-height: 400px; max-height: 65vh; overflow-y: auto;"></pre>
                     </div>
@@ -238,11 +238,11 @@ window.pageInit = function() {
     }
 
     function renderPagination(containerId, totalPages, currentPage, callback) {
-        const container = document.getElementById(containerId);
+        const container = document.getElementById(containerId); // NOSONAR
         if (!container) return;
         container.innerHTML = '';
         if (totalPages <= 1) return;
-
+        
         const ul = document.createElement('ul');
         ul.className = 'pagination pagination-sm';
 
@@ -251,7 +251,7 @@ window.pageInit = function() {
             li.className = `page-item ${i === currentPage ? 'active' : ''}`;
             const a = document.createElement('a');
             a.className = 'page-link';
-            a.href = '#';
+            a.href = 'javascript:void(0);';
             a.textContent = i;
             a.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -318,12 +318,15 @@ window.pageInit = function() {
     });
 
     // Event listeners for cron log selection
-    document.querySelectorAll('.cron-log-select').forEach(item => {
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
+    const cronLogPane = document.getElementById('cron-log-pane');
+    if (cronLogPane) {
+        cronLogPane.addEventListener('click', function(e) {
+            const target = e.target.closest('.cron-log-select');
+            if (!target) return;
+
             document.querySelectorAll('.cron-log-select').forEach(el => el.classList.remove('active'));
-            this.classList.add('active');
-            const scriptName = this.dataset.script;
+            target.classList.add('active');
+            const scriptName = target.dataset.script;
             loadCronLog(scriptName);
             // Restart auto-refresh for the new active log file
             handleAutoRefresh();
@@ -331,14 +334,15 @@ window.pageInit = function() {
     });
 
     // Initial load for the active tab
-    loadActivityLogs(1);
-
-    // --- FIX: Automatically click the first cron log item to load it by default ---
-    // This ensures that when the user switches to the cron tab, content is already there.
-    const firstCronLog = document.querySelector('.cron-log-select');
-    if (firstCronLog) {
-        firstCronLog.click();
-    }
+    // --- IDE: Fix initial load logic ---
+    // Load content for the initially active tab.
+    const activeTab = logTabs.querySelector('.nav-link.active');
+    if (activeTab) {
+        const tabId = activeTab.id;
+        if (tabId === 'activity-log-tab') loadActivityLogs(1);
+        else if (tabId === 'agent-log-tab') loadAgentLogs(1);
+        else if (tabId === 'system-log-tab') loadSystemLogs(1);
+    } // Other tabs load their content when shown.
 
     // --- Auto-Deploy Log Logic ---
     const autoDeployLogContent = document.getElementById('auto-deploy-log-content');

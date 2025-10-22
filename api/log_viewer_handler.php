@@ -228,7 +228,7 @@ try {
 
         case 'cron':
             $script_name = $_GET['script'] ?? '';
-            if (empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup'])) {
+            if (empty($script_name) || !in_array($script_name, ['collect_stats', 'autoscaler', 'health_monitor', 'system_cleanup','system_backup','scheduled_deployment_runner'])) {
                 throw new Exception('Invalid script name provided.');
             }
 

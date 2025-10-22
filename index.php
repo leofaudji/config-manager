@@ -78,6 +78,8 @@ $router->get('/services/{clone_id}/clone', 'pages/service_form.php', ['auth', 'a
 $router->get('/servers/new', 'pages/server_form.php', ['auth', 'admin']); // Form tambah server ke service
 $router->get('/servers/{id}/edit', 'pages/server_form.php', ['auth', 'admin']);
 $router->get('/stack-changes', 'pages/stack_changes.php', ['auth', 'admin']);
+$router->get('/pending-updates', 'pages/pending-updates.php', ['auth', 'admin']);
+
 $router->get('/hosts/new', 'pages/host_form.php', ['auth', 'admin']);
 $router->get('/hosts/{id}/edit', 'pages/host_form.php', ['auth', 'admin']);
 $router->get('/hosts/{clone_id}/clone', 'pages/host_form.php', ['auth', 'admin']);
@@ -114,6 +116,7 @@ $router->post('/api/cron', 'api/cron_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->post('/api/hosts/{id}/stacks', 'api/host_stack_handler.php', ['auth', 'admin']);
 $router->get('/api/stack-changes', 'api/stack_changes_handler.php', ['auth', 'admin']);
+$router->get('/api/stacks/pending-updates', 'api/pending-updates.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/events', 'api/container_events_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/stats', 'api/container_stats_stream_handler.php', ['auth', 'admin']);
 $router->get('/api/registry/repositories', 'api/registry_handler.php', ['auth', 'admin']);
@@ -174,6 +177,7 @@ $router->get('/api/services/{id}/details', 'api/service_detail_handler.php', ['a
 $router->get('/sla-report', 'pages/sla_report.php', ['auth', 'admin']);
 $router->get('/api/incidents', 'api/incident_handler.php', ['auth', 'admin']);
 $router->post('/api/incidents/{id}', 'api/incident_handler.php', ['auth', 'admin']);
+$router->post('/api/stacks/deploy-pending', 'api/deploy-pending.php', ['auth', 'admin']);
 
 
 $router->post('/users/new', 'api/user_handler.php', ['auth', 'admin']);

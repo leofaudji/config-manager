@@ -8,6 +8,8 @@
     --cf-input-bg-color: #ffffff;
     --cf-table-striped-bg: rgba(0, 0, 0, 0.05);
     --cf-modal-bg: #ffffff;
+    --cf-dropdown-item-hover-bg: rgba(0, 0, 0, 0.04); /* Warna hover untuk item dropdown (lebih cerah) */
+    --cf-header-btn-hover-bg: rgba(0, 0, 0, 0.075); /* Warna hover untuk tombol header */
     --sidebar-width: 290px;
     --sidebar-bg: var(--cf-card-bg-color); /* Light background */
     --sidebar-link-color: #495057; /* Made the default link color darker */
@@ -26,6 +28,8 @@ body.dark-mode {
     --cf-input-bg-color: #2a2a2a;
     --cf-table-striped-bg: rgba(255, 255, 255, 0.05);
     --cf-modal-bg: #2a2a2a;
+    --cf-dropdown-item-hover-bg: rgba(255, 255, 255, 0.1); /* Warna hover untuk item dropdown (mode gelap) */
+    --cf-header-btn-hover-bg: rgba(255, 255, 255, 0.1); /* Warna hover untuk tombol header (mode gelap) */
     --sidebar-bg: #1e1e1e;
     --sidebar-link-color: #adb5bd; /* Made the default link color slightly brighter for better readability */
     --sidebar-link-hover-color: var(--cf-text-color);
@@ -400,6 +404,7 @@ body.dark-mode #sidebar-toggle-btn {
     color: var(--cf-text-color);
 }
 
+
 .top-navbar .nav-link {
     color: var(--cf-text-color);
 }
@@ -494,8 +499,14 @@ body.dark-mode .text-muted {
 }
 
 .dropdown-item:hover, .dropdown-item:focus {
-    background-color: var(--cf-sidebar-link-hover-bg);
+    background-color: var(--cf-dropdown-item-hover-bg);
 }
+
+/* --- IDE: Efek Hover untuk Item Dropdown --- */
+.dropdown-item:hover .text-muted {
+    color: var(--cf-text-color) !important;
+}
+/* --- Akhir IDE --- */
 
 /* --- Responsive Design --- */
 @media (max-width: 992px) {

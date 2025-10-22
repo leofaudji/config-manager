@@ -196,8 +196,8 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                                 <span>Hosts</span><span class="badge bg-danger rounded-pill" id="sidebar-down-hosts-badge" style="display: none;"></span>
                             </a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/app-launcher') ?>">App Launcher</a></li>
-                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/templates') ?>">Config Templates</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/stack-changes') ?>">Stack Changes</a></li>
+                        <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/pending-updates') ?>"><span>Pending Updates</span><span class="badge bg-info rounded-pill" id="sidebar-pending-updates-badge" style="display: none;"></span></a></li>
                     </ul>
                 </div>
             </li>
@@ -220,6 +220,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/routers') ?>">Routers</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/services') ?>">Services</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/middlewares') ?>">Middlewares</a></li>
+                        <li class="nav-item"><a class="nav-link" href="<?= base_url('/templates') ?>">Config Templates</a></li>
                         <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/groups') ?>"><span>Groups</span><span class="badge bg-primary rounded-pill p-1" id="sidebar-pending-changes-badge" style="display: none;" title="Pending Changes"><i class="bi bi-circle-fill"></i></span></a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/traefik-hosts') ?>">Traefik Hosts</a></li>
                         <li class="nav-item">
@@ -368,6 +369,20 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item text-center" href="<?= base_url('/incident-reports') ?>">View All Incidents</a></li>
             </ul>
+            <!-- IDE: Tombol Notifikasi Update Tertunda -->
+            <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="pending-updates-alert-btn" style="display: none; width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Pending Updates">
+                <i class="bi bi-arrow-clockwise text-info fs-4"></i>
+                <span id="pending-updates-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    <span class="visually-hidden">Pending updates</span>
+                </span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="pending-updates-alert-btn" id="pending-updates-alert-dropdown">
+                <li><h6 class="dropdown-header">Stacks with Pending Updates</h6></li>
+                <li><hr class="dropdown-divider"></li>
+                <div id="pending-updates-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item text-center" href="<?= base_url('/pending-updates') ?>" id="view-all-pending-stacks-link">View All Pending Updates</a></li>
+            </ul>
             <a href="<?= base_url('/groups') ?>" id="deploy-notification-btn" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" style="display: none; width: 44px; height: 44px;" title="Pending Changes to Deploy">
                 <i class="bi bi-cloud-upload-fill text-primary fs-4"></i>
             </a>
@@ -384,6 +399,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
                     <li><h6 class="dropdown-header">Monitoring</h6></li>
                     <li><a class="dropdown-item" href="<?= base_url('/sla-report') ?>"><i class="bi bi-clipboard-data-fill me-2 text-muted"></i>SLA Report</a></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/incident-reports') ?>"><i class="bi bi-shield-fill-exclamation me-2 text-muted"></i>Incident Reports</a></li>
                     <li><a class="dropdown-item" href="<?= base_url('/central-logs') ?>"><i class="bi bi-journals me-2 text-muted"></i>Centralized Logs</a></li>
                     <li><a class="dropdown-item" href="<?= base_url('/logs') ?>"><i class="bi bi-journals me-2 text-muted"></i>Activity Logs</a></li>
                     <li><hr class="dropdown-divider"></li>

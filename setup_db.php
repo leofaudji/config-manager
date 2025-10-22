@@ -467,6 +467,13 @@ CREATE TABLE `incident_reports` (
   CONSTRAINT `fk_incident_assignee` FOREIGN KEY (`assignee_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+ALTER TABLE `application_stacks`
+ADD COLUMN `webhook_update_policy` ENUM('realtime','scheduled') NOT NULL DEFAULT 'realtime' AFTER `last_webhook_triggered_at`,
+ADD COLUMN `webhook_pending_update` TINYINT(1) NOT NULL DEFAULT 0 AFTER `webhook_update_policy`;
+ADD COLUMN `webhook_schedule_time` TIME NULL DEFAULT NULL AFTER `webhook_pending_update`,
+ADD COLUMN `last_scheduled_deployment_at` DATETIME NULL DEFAULT NULL AFTER `webhook_schedule_time`,
+ADD COLUMN `webhook_pending_since` DATETIME NULL DEFAULT NULL AFTER `last_scheduled_deployment_at`;
+
 ";
 
 // --- Execution Logic ---
