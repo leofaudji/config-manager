@@ -14,6 +14,16 @@ $scheduled_deploy_path = PROJECT_ROOT . '/scheduled_deployment_runner.php';
     <h1 class="h2"><i class="bi bi-clock-history"></i> Cron Job Management</h1>
 </div>
 
+<style>
+    /* --- IDE: Increase font size for cron schedule inputs --- */
+    .table input[id$='_schedule'] {
+        font-size: 1.1rem; /* Slightly larger than the default form-control size */
+        font-family: 'Courier New', Courier, monospace;
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+</style>
+
 <form id="main-form" action="<?= base_url('/api/cron') ?>" method="POST" data-redirect="/cron-jobs">
     <div class="card">
         <div class="card-body">
@@ -35,7 +45,7 @@ $scheduled_deploy_path = PROJECT_ROOT . '/scheduled_deployment_runner.php';
                             <td><strong><i class="bi bi-graph-up me-2"></i>Host Stats Collector</strong></td>
                             <td class="text-muted small">Collects CPU and Memory usage from all hosts for dashboard graphs.</td>
                             <td><span id="collect_stats_status_badge" class="badge rounded-pill"></span></td>
-                            <td><input type="text" class="form-control form-control-sm" id="collect_stats_schedule" name="collect_stats[schedule]" placeholder="*/5 * * * *"></td>
+                            <td><input type="text" class="form-control" id="collect_stats_schedule" name="collect_stats[schedule]" placeholder="*/5 * * * *"></td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="collect_stats" title="View Log"><i class="bi bi-card-text"></i></button>
                                 <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="collect_stats" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
@@ -51,7 +61,7 @@ $scheduled_deploy_path = PROJECT_ROOT . '/scheduled_deployment_runner.php';
                             <td><strong><i class="bi bi-arrows-angle-expand me-2"></i>Service Autoscaler</strong></td>
                             <td class="text-muted small">Checks host CPU usage and scales service replicas up or down based on defined rules.</td>
                             <td><span id="autoscaler_status_badge" class="badge rounded-pill"></span></td>
-                            <td><input type="text" class="form-control form-control-sm" id="autoscaler_schedule" name="autoscaler[schedule]" placeholder="*/5 * * * *"></td>
+                            <td><input type="text" class="form-control" id="autoscaler_schedule" name="autoscaler[schedule]" placeholder="*/5 * * * *"></td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="autoscaler" title="View Log"><i class="bi bi-card-text"></i></button>
                                 <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="autoscaler" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
@@ -67,7 +77,7 @@ $scheduled_deploy_path = PROJECT_ROOT . '/scheduled_deployment_runner.php';
                             <td><strong><i class="bi bi-heart-pulse me-2"></i>Service Health Monitor</strong></td>
                             <td class="text-muted small">Actively checks service health and performs auto-healing by restarting unresponsive services.</td>
                             <td><span id="health_monitor_status_badge" class="badge rounded-pill"></span></td>
-                            <td><input type="text" class="form-control form-control-sm" id="health_monitor_schedule" name="health_monitor[schedule]" placeholder="* * * * *"></td>
+                            <td><input type="text" class="form-control" id="health_monitor_schedule" name="health_monitor[schedule]" placeholder="* * * * *"></td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="health_monitor" title="View Log"><i class="bi bi-card-text"></i></button>
                                 <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="health_monitor" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
@@ -83,7 +93,7 @@ $scheduled_deploy_path = PROJECT_ROOT . '/scheduled_deployment_runner.php';
                             <td><strong><i class="bi bi-trash3 me-2"></i>System Cleanup</strong></td>
                             <td class="text-muted small">Cleans up old data from the database (archived history, activity logs, host stats) to maintain performance.</td>
                             <td><span id="system_cleanup_status_badge" class="badge rounded-pill"></span></td>
-                            <td><input type="text" class="form-control form-control-sm" id="system_cleanup_schedule" name="system_cleanup[schedule]" placeholder="0 3 * * *"></td>
+                            <td><input type="text" class="form-control" id="system_cleanup_schedule" name="system_cleanup[schedule]" placeholder="0 3 * * *"></td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="system_cleanup" title="View Log"><i class="bi bi-card-text"></i></button>
                                 <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="system_cleanup" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
@@ -99,7 +109,7 @@ $scheduled_deploy_path = PROJECT_ROOT . '/scheduled_deployment_runner.php';
                             <td><strong><i class="bi bi-database-down me-2"></i>Automatic Backup</strong></td>
                             <td class="text-muted small">Creates a full backup of all application configuration data to the path specified in General Settings.</td>
                             <td><span id="system_backup_status_badge" class="badge rounded-pill"></span></td>
-                            <td><input type="text" class="form-control form-control-sm" id="system_backup_schedule" name="system_backup[schedule]" placeholder="0 2 * * *"></td>
+                            <td><input type="text" class="form-control" id="system_backup_schedule" name="system_backup[schedule]" placeholder="0 2 * * *"></td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="system_backup" title="View Log"><i class="bi bi-card-text"></i></button>
                                 <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="system_backup" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>
@@ -115,7 +125,7 @@ $scheduled_deploy_path = PROJECT_ROOT . '/scheduled_deployment_runner.php';
                             <td><strong><i class="bi bi-calendar-check me-2"></i>Scheduled Deployment</strong></td>
                             <td class="text-muted small">Checks for stacks with a "Scheduled" policy that have pending updates and are due for deployment.</td>
                             <td><span id="scheduled_deployment_runner_status_badge" class="badge rounded-pill"></span></td>
-                            <td><input type="text" class="form-control form-control-sm" id="scheduled_deployment_runner_schedule" name="scheduled_deployment_runner[schedule]" placeholder="* * * * *"></td>
+                            <td><input type="text" class="form-control" id="scheduled_deployment_runner_schedule" name="scheduled_deployment_runner[schedule]" placeholder="* * * * *"></td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-info view-log-btn" data-script="scheduled_deployment_runner" title="View Log"><i class="bi bi-card-text"></i></button>
                                 <button type="button" class="btn btn-sm btn-outline-danger clear-log-btn" data-script="scheduled_deployment_runner" title="Clear Log"><i class="bi bi-eraser-fill"></i></button>

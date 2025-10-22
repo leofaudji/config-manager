@@ -2,10 +2,6 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/AppLauncherHelper.php';
 
-// Set global variable for log file handle used by AppLauncherHelper's stream functions
-global $log_file_handle;
-$log_file_handle = null;
-
 // --- Streaming Setup ---
 header('Content-Type: text/plain; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -22,15 +18,15 @@ ob_implicit_flush(1);
 try {
     // Call the centralized deployment logic
     AppLauncherHelper::executeDeployment($_POST);
-    stream_message("---");
-    stream_message("Deployment finished successfully!", "SUCCESS");
+    AppLauncherHelper::stream_message("---");
+    AppLauncherHelper::stream_message("Deployment finished successfully!", "SUCCESS");
     echo "_DEPLOYMENT_COMPLETE_";
 
-} catch (Exception $e) {
-    // The exception message is already streamed by AppLauncherHelper, so we just mark failure.
-    // stream_message($e->getMessage(), 'ERROR');
+} catch (Throwable $e) { // Catch any throwable error
+    AppLauncherHelper::stream_message($e->getMessage(), 'ERROR');
     echo "_DEPLOYMENT_FAILED_";
 } finally {
-    // Cleanup is handled within AppLauncherHelper::executeDeployment
+    // Ensure the log file is always closed at the end of the script.
+    AppLauncherHelper::closeLogFile();
 }
 ?>

@@ -8,6 +8,16 @@ require_once __DIR__ . '/Spyc.php';
 class AppLauncherHelper
 {
     /**
+     * @var resource|null The file handle for the current deployment log.
+     */
+    private static $log_file_handle = null;
+
+    /**
+     * @var string|null The path to the current deployment log file.
+     */
+    private static ?string $log_file_path = null;
+
+    /**
      * Modifies the compose data array with settings from the form.
      *
      * @param array &$compose_data The compose data array (passed by reference).
@@ -331,6 +341,45 @@ class AppLauncherHelper
         }
 
     }
+    
+    /**
+     * Opens the log file for the current deployment.
+     *
+     * @param array $host The host details array.
+     * @param string $stack_name The name of the stack being deployed.
+     */
+    private static function openLogFile(array $host, string $stack_name): void
+    {
+        $base_log_path = get_setting('default_compose_path');
+        if ($base_log_path) {
+            $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+            $log_dir = rtrim($base_log_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
+            if (!is_dir($log_dir)) {
+                // Attempt to create the directory. The '@' suppresses warnings on failure.
+                if (!@mkdir($log_dir, 0755, true) && !is_dir($log_dir)) {
+                    // If mkdir fails and the directory still doesn't exist, we can't proceed.
+                    // We won't throw an error here, but logging will be disabled.
+                    self::$log_file_handle = null;
+                    return;
+                }
+            }
+            self::$log_file_path = $log_dir . '/deployment.log';
+            // Open in 'w' mode to overwrite previous log for this deployment
+            self::$log_file_handle = @fopen(self::$log_file_path, 'w');
+        }
+    }
+
+    /**
+     * Closes the log file handle if it's open.
+     * This should be called by the script that initiates the deployment.
+     */
+    public static function closeLogFile(): void
+    {
+        if (self::$log_file_handle) {
+            fflush(self::$log_file_handle); // Explicitly flush the buffer to disk
+        }
+        if (self::$log_file_handle) @fclose(self::$log_file_handle);
+    }
 
     /**
      * Executes the full deployment process for a given set of parameters.
@@ -344,13 +393,8 @@ class AppLauncherHelper
     public static function executeDeployment(array $post_data): void
     {
         $start_time = microtime(true); // Start the timer
-
         $conn = Database::getInstance()->getConnection();
-        $repo_path = null;
-        $temp_dir = null;
-        $docker_config_dir = null;
-        $git = new GitHelper();
-
+        
         // --- NEW: Setup Log File ---
         $log_file_handle = null;
         $log_file_path = null;
@@ -359,12 +403,6 @@ class AppLauncherHelper
             // --- Input Validation ---
             $host_id = $post_data['host_id'] ?? null;
             $stack_name = strtolower(trim($post_data['stack_name'] ?? ''));
-            $source_type = $post_data['source_type'] ?? 'git';
-            $git_url = trim($post_data['git_url'] ?? '');
-            $git_branch = trim($post_data['git_branch'] ?? 'main');
-            $compose_path = trim($post_data['compose_path'] ?? '');
-            $build_from_dockerfile = isset($post_data['build_from_dockerfile']) && $post_data['build_from_dockerfile'] === '1';
-
             // Resource settings
             $replicas = !empty($post_data['deploy_replicas']) ? (int)$post_data['deploy_replicas'] : null;
             $cpu = !empty($post_data['deploy_cpu']) ? $post_data['deploy_cpu'] : null;
@@ -379,6 +417,12 @@ class AppLauncherHelper
             $privileged = isset($post_data['privileged']) && $post_data['privileged'] === 'true';
             $deploy_placement_constraint = !empty($post_data['deploy_placement_constraint']) ? trim($post_data['deploy_placement_constraint']) : null;
             $is_update = isset($post_data['update_stack']) && $post_data['update_stack'] === 'true';
+
+            if (empty($host_id) || empty($stack_name)) throw new Exception("Host and Stack Name are required.");
+            
+            self::stream_message("Validating stack name '{$stack_name}'...");
+            if (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/', $stack_name)) throw new Exception("Invalid Stack Name.");
+
             $webhook_update_policy = $post_data['webhook_update_policy'] ?? 'realtime';
             $webhook_schedule_time = ($webhook_update_policy === 'scheduled' && !empty($post_data['webhook_schedule_time'])) ? $post_data['webhook_schedule_time'] : null; // Explicitly set to null if not provided
 
@@ -389,11 +433,6 @@ class AppLauncherHelper
             $autoscaling_cpu_threshold_up = !empty($post_data['autoscaling_cpu_threshold_up']) ? (int)$post_data['autoscaling_cpu_threshold_up'] : 80;
             $autoscaling_cpu_threshold_down = !empty($post_data['autoscaling_cpu_threshold_down']) ? (int)$post_data['autoscaling_cpu_threshold_down'] : 20;
 
-            if (empty($host_id) || empty($stack_name)) throw new Exception("Host and Stack Name are required.");
-            
-            stream_message("Validating stack name '{$stack_name}'...");
-            if (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/', $stack_name)) throw new Exception("Invalid Stack Name.");
-
             $form_params = $post_data; // Pass all data
 
             $stmt = $conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
@@ -401,21 +440,10 @@ class AppLauncherHelper
             $stmt->execute();
             $result = $stmt->get_result();
             if (!($host = $result->fetch_assoc())) throw new Exception("Host not found.");
-
-            // --- NEW: Open log file for writing ---
-            $base_log_path = get_setting('default_compose_path');
-            if ($base_log_path) {
-                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
-                $log_dir = rtrim($base_log_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
-                if (!is_dir($log_dir)) {
-                    mkdir($log_dir, 0755, true);
-                }
-                $log_file_path = $log_dir . '/deployment.log';
-                // Open in 'w' mode to overwrite previous log for this deployment
-                $log_file_handle = fopen($log_file_path, 'w');
-            }
-
             $stmt->close();
+
+            // --- REFACTORED: Open log file using the new method ---
+            self::openLogFile($host, $stack_name);
 
             $dockerClient = new DockerClient($host);
             $dockerInfo = $dockerClient->getInfo();
@@ -424,10 +452,19 @@ class AppLauncherHelper
             // Generate Compose Content
             $compose_content = '';
             $compose_file_name = 'docker-compose.yml';
+            $repo_path = null;
+            $temp_dir = null;
+            $docker_config_dir = null;
+            $git = new GitHelper();
 
+            $source_type = $post_data['source_type'] ?? 'git';
             if ($source_type === 'git') {
+                $git_url = trim($post_data['git_url'] ?? '');
+                $git_branch = trim($post_data['git_branch'] ?? 'main');
+                $compose_path = trim($post_data['compose_path'] ?? '');
+
                 if (empty($git_url)) throw new Exception("Git URL is required.");
-                stream_message("Cloning repository '{$git_url}' (branch: {$git_branch})...");
+                self::stream_message("Cloning repository '{$git_url}' (branch: {$git_branch})...");
                 $repo_path = $git->cloneOrPull($git_url, $git_branch);
 
                 $final_compose_path = '';
@@ -533,7 +570,7 @@ class AppLauncherHelper
             $script_to_run = $cd_command . ' && ' . $login_command . $main_compose_command;
             $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($script_to_run);
 
-            stream_exec($full_command, $return_var);
+            self::stream_exec($full_command, $return_var);
 
             if ($return_var !== 0) throw new Exception("Docker-compose deployment failed.");
 
@@ -567,41 +604,41 @@ class AppLauncherHelper
             $stmt_log_change->execute();
             $stmt_log_change->close();
 
-        } catch (Exception $e) {
-            // Ensure the exception is also written to the log file if it's open
-            if ($log_file_handle) {
-                fwrite($log_file_handle, "\n--- DEPLOYMENT FAILED ---\n" . $e->getMessage());
-            }
-            throw $e; // Re-throw the exception
         } finally {
             if (isset($git) && isset($repo_path)) $git->cleanup($repo_path);
             if (isset($temp_dir) && is_dir($temp_dir)) shell_exec("rm -rf " . escapeshellarg($temp_dir));
             if (empty(Config::get('DOCKER_CONFIG_PATH')) && isset($docker_config_dir) && is_dir($docker_config_dir)) shell_exec("rm -rf " . escapeshellarg($docker_config_dir));
         }
     }
-}
 
-// --- Global stream functions that also write to a file ---
-function stream_message($message, $type = 'INFO')
-{
-    global $log_file_handle;
-    $line = date('[Y-m-d H:i:s]') . " [{$type}] " . htmlspecialchars(trim($message)) . "\n";
-    echo $line;
-    flush();
-    if ($log_file_handle) {
-        fwrite($log_file_handle, $line);
-    }
-}
-
-function stream_exec($command, &$return_var)
-{
-    global $log_file_handle;
-    $handle = popen($command . ' 2>&1', 'r');
-    while (($line = fgets($handle)) !== false) {
-        $trimmed_line = rtrim($line);
-        echo $trimmed_line . "\n";
+    /**
+     * Streams a formatted message to the output and writes to the log file.
+     *
+     * @param string $message The message to stream.
+     * @param string $type The type of message (e.g., INFO, ERROR).
+     */
+    public static function stream_message(string $message, string $type = 'INFO'): void
+    {
+        $line = date('[Y-m-d H:i:s]') . " [{$type}] " . htmlspecialchars(trim($message)) . "\n";
+        echo $line;
         flush();
-        if ($log_file_handle) fwrite($log_file_handle, rtrim($line) . "\n");
+        if (self::$log_file_handle) {
+            fwrite(self::$log_file_handle, $line);
+        }
     }
-    $return_var = pclose($handle);
+
+    /**
+     * Executes a shell command and streams its output line by line.
+     *
+     * @param string $command The command to execute.
+     * @param int &$return_var The return status of the command.
+     */
+    public static function stream_exec(string $command, &$return_var): void
+    {
+        $handle = popen($command . ' 2>&1', 'r');
+        while (($line = fgets($handle)) !== false) {
+            self::stream_message(rtrim($line), 'SHELL');
+        }
+        $return_var = pclose($handle);
+    }
 }

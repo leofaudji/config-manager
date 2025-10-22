@@ -23,11 +23,12 @@ try {
             $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
             $offset = ($page - 1) * $limit;
 
-            $total_items_result = $conn->query("SELECT COUNT(*) as count FROM activity_log WHERE username NOT IN ('health-agent', 'SYSTEM')");
+            $excluded_users = "'health-agent', 'SYSTEM', 'webhook_bot', 'webhook_caller', 'system-auto-deploy'";
+            $total_items_result = $conn->query("SELECT COUNT(*) as count FROM activity_log WHERE username NOT IN ({$excluded_users})");
             $total_items = $total_items_result->fetch_assoc()['count'];
             $total_pages = ceil($total_items / $limit);
 
-            $stmt = $conn->prepare("SELECT * FROM activity_log WHERE username NOT IN ('health-agent', 'SYSTEM') ORDER BY id DESC LIMIT ? OFFSET ?");
+            $stmt = $conn->prepare("SELECT * FROM activity_log WHERE username NOT IN ({$excluded_users}) ORDER BY id DESC LIMIT ? OFFSET ?");
             $stmt->bind_param("ii", $limit, $offset);
             $stmt->execute();
             $result = $stmt->get_result();
@@ -134,7 +135,11 @@ try {
             break;
 
         case 'webhook':
-            $limit = $is_download_request ? 10000 : 25;
+            $limit_get = isset($_GET['limit']) ? (int)$_GET['limit'] : 25; // Default to 25 if not set or invalid
+            // Ensure limit is never zero for division, unless it's -1 (for 'All')
+            if ($limit_get === 0) $limit_get = 25; 
+            $limit = ($limit_get == -1) ? 1000000 : $limit_get;
+            if ($is_download_request) $limit = 10000;
             $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
             $offset = ($page - 1) * $limit;
             $search = trim($_GET['search'] ?? '');
@@ -169,7 +174,7 @@ try {
             $stmt_count->execute();
             $total_items = $stmt_count->get_result()->fetch_assoc()['count'];
             $stmt_count->close();
-            $total_pages = ceil($total_items / $limit);
+            $total_pages = ($limit_get == -1) ? 1 : ceil($total_items / $limit);
 
             $stmt = $conn->prepare("SELECT * FROM activity_log {$where_sql} ORDER BY id DESC LIMIT ? OFFSET ?");
             $params[] = $limit;
@@ -185,6 +190,7 @@ try {
                 'data' => $result,
                 'total_pages' => $total_pages,
                 'current_page' => $page,
+                'limit' => $limit_get,
                 'info' => "Showing " . count($result) . " of " . $total_items . " records."
             ]);
             break;

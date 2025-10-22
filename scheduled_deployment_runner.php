@@ -25,7 +25,8 @@ $conn = Database::getInstance()->getConnection();
 
 try {
     // Find stacks with pending updates and a scheduled deployment time for today
-    // We check if the current time is past the scheduled time.
+    // The logic is: find stacks where the scheduled time has passed since the last deployment.
+    // We construct a full datetime for today's scheduled time and compare it.
     $sql = "
         SELECT s.id, s.stack_name, s.host_id, s.deployment_details, h.name as host_name
         FROM application_stacks s
@@ -34,7 +35,8 @@ try {
           AND s.webhook_pending_update = 1
           AND s.webhook_schedule_time IS NOT NULL
           AND CURTIME() >= s.webhook_schedule_time
-          AND (s.last_scheduled_deployment_at IS NULL OR DATE(s.last_scheduled_deployment_at) < CURDATE())
+          AND (s.last_scheduled_deployment_at IS NULL OR 
+               DATE(s.last_scheduled_deployment_at) < CURDATE())
     ";
     
     $result = $conn->query($sql);

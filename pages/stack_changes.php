@@ -88,6 +88,24 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 </div>
 
+<!-- Deployment Log Modal -->
+<div class="modal fade" id="deploymentLogModal" tabindex="-1" aria-labelledby="deploymentLogModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deploymentLogModalLabel">Deployment Log</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body bg-dark text-light font-monospace">
+        <pre id="deployment-log-content" class="mb-0" style="white-space: pre-wrap; word-break: break-all;"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function() { // IIFE to ensure script runs on AJAX load
     const container = document.getElementById('stack-changes-container');
@@ -97,6 +115,9 @@ require_once __DIR__ . '/../includes/header.php';
     const searchInput = document.getElementById('search-input');
     const changeTypeFilter = document.getElementById('change-type-filter');
     const resetFilterBtn = document.getElementById('reset-filter-btn');
+    const deploymentLogModal = new bootstrap.Modal(document.getElementById('deploymentLogModal'));
+    const deploymentLogContent = document.getElementById('deployment-log-content');
+    const deploymentLogModalLabel = document.getElementById('deploymentLogModalLabel');
     const paginationContainer = document.getElementById('stack-changes-pagination');
     const infoContainer = document.getElementById('stack-changes-info');
     const limitSelector = document.getElementById('stack-changes-limit-selector');
@@ -193,6 +214,11 @@ require_once __DIR__ . '/../includes/header.php';
                                     <div class="d-flex align-items-center">
                                         ${durationHtml}
                                         <small class="text-muted me-3">${new Date(change.created_at).toLocaleTimeString()}</small>
+                                        <button class="btn btn-sm btn-outline-secondary view-log-btn me-2" 
+                                                data-host-name="${change.host_name}" 
+                                                data-stack-name="${change.stack_name}" 
+                                                title="View Deployment Log">
+                                            <i class="bi bi-card-text"></i></button>
                                         <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#stackChangeDetailModal" data-stack-name="${change.stack_name}" data-change-type="${change.change_type}" data-details="${escapedDetails}" data-changed-by="${change.changed_by}" data-created-at="${change.created_at}" title="View Details"><i class="bi bi-info-circle"></i></button>
                                     </div>
                                  </li>
@@ -254,6 +280,29 @@ require_once __DIR__ . '/../includes/header.php';
 
     searchInput.addEventListener('input', debounce(() => loadStackChanges(1), 400));
 
+    container.addEventListener('click', function(e) {
+        const viewBtn = e.target.closest('.view-log-btn');
+        if (viewBtn) {
+            const hostName = viewBtn.dataset.hostName;
+            const stackName = viewBtn.dataset.stackName;
+            const safeHostName = hostName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+            const logFilePath = `${safeHostName}/${stackName}/deployment.log`;
+
+            deploymentLogModalLabel.textContent = `Deployment Log for: ${stackName} on ${hostName}`;
+            deploymentLogContent.textContent = 'Loading log...';
+            deploymentLogModal.show();
+
+            fetch(`<?= base_url('/api/deployment-logs') ?>?file=${encodeURIComponent(logFilePath)}`)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.status !== 'success') throw new Error(result.message);
+                    deploymentLogContent.textContent = result.content || 'Log file is empty or not found.';
+                })
+                .catch(error => {
+                    deploymentLogContent.textContent = `Error loading log: ${error.message}`;
+                });
+        }
+    });
     // --- Initial Load with Saved State ---
     function initialize() {
         const savedLimit = localStorage.getItem('stack_changes_limit') || '15';

@@ -145,7 +145,7 @@ try {
     }
     
     // Respond with a success message
-    header('Content-Type: application/json');
+    //header('Content-Type: application/json');
     echo json_encode(['status' => 'success', 'message' => $message]);
     // Close the connection at the very end of the successful execution path.
     if (isset($conn)) {

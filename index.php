@@ -135,7 +135,7 @@ $router->post('/api/app-launcher/deploy', 'api/app_launcher_handler.php', ['auth
 $router->post('/api/app-launcher/preview', 'api/app_launcher_preview_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/stats', 'api/host_dashboard_stats_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/helper/{path}', 'api/host_agent_handler.php', ['auth', 'admin']); // Untuk agent-status
-$router->get('/api/hosts/{id}/deployment-logs', 'api/host_deployment_log_handler.php', ['auth', 'admin']);
+$router->get('/api/deployment-logs', 'api/deployment_log_handler.php', ['auth', 'admin']);
 $router->post('/api/hosts/{id}/helper/{path}', 'api/host_agent_handler.php', ['auth', 'admin']); // Untuk agent-action
 $router->get('/api/hosts/{id}/networks', 'api/network_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/images', 'api/network_handler.php', ['auth', 'admin']);

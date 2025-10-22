@@ -398,10 +398,20 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <li><hr class="dropdown-divider"></li>
 
                     <li><h6 class="dropdown-header">Monitoring</h6></li>
-                    <li><a class="dropdown-item" href="<?= base_url('/sla-report') ?>"><i class="bi bi-clipboard-data-fill me-2 text-muted"></i>SLA Report</a></li>
-                    <li><a class="dropdown-item" href="<?= base_url('/incident-reports') ?>"><i class="bi bi-shield-fill-exclamation me-2 text-muted"></i>Incident Reports</a></li>
+                    <li>
+                        <a class="dropdown-item d-flex justify-content-between align-items-center" href="<?= base_url('/sla-report') ?>">
+                            <span><i class="bi bi-clipboard-data-fill me-2 text-muted"></i>SLA Report</span>
+                            <span class="badge bg-warning rounded-pill" id="dropdown-sla-badge" style="display: none;"></span>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item d-flex justify-content-between align-items-center" href="<?= base_url('/incident-reports') ?>">
+                            <span><i class="bi bi-shield-fill-exclamation me-2 text-muted"></i>Incident Reports</span>
+                            <span class="badge bg-danger rounded-pill" id="dropdown-incident-badge" style="display: none;"></span>
+                        </a>
+                    </li>
                     <li><a class="dropdown-item" href="<?= base_url('/central-logs') ?>"><i class="bi bi-journals me-2 text-muted"></i>Centralized Logs</a></li>
-                    <li><a class="dropdown-item" href="<?= base_url('/logs') ?>"><i class="bi bi-journals me-2 text-muted"></i>Activity Logs</a></li>
+                    <li><a class="dropdown-item" href="<?= base_url('/logs') ?>"><i class="bi bi-person-lines-fill me-2 text-muted"></i>Activity Logs</a></li>
                     <li><hr class="dropdown-divider"></li>
 
                     <li><h6 class="dropdown-header">System & Management</h6></li>

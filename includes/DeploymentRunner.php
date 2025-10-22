@@ -36,8 +36,17 @@ class DeploymentRunner
         } else {
             // This is the child process.
             // It will execute the long-running deployment task.
-            AppLauncherHelper::executeDeployment($post_data);
-            
+
+            // --- FIX: Re-establish database connection in the child process ---
+            // The child process inherits the parent's DB connection, which is often stale or invalid.
+            Database::getInstance()->reconnect();
+
+            try {
+                AppLauncherHelper::executeDeployment($post_data);
+            } finally {
+                // Ensure the log file is always closed before the child process exits.
+                AppLauncherHelper::closeLogFile();
+            }
             // Important: The child process must exit to not continue the parent's script execution.
             exit();
         }

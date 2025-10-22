@@ -263,22 +263,30 @@ window.pageInit = function() {
         container.appendChild(ul);
     }
 
+    // --- IDE: Refactored Auto-Refresh Logic ---
     function handleAutoRefresh() {
         if (window.currentPageInterval) {
             clearInterval(window.currentPageInterval);
             window.currentPageInterval = null;
         }
-
         if (autoRefreshSwitch.checked) {
             const activeTabLoader = getActiveTabLoader();
             if (activeTabLoader) {
                 window.currentPageInterval = setInterval(activeTabLoader, 15000); // Refresh every 15 seconds
-                showToast('Auto-refresh enabled (15s).', true);
             }
+        }
+    }
+
+    autoRefreshSwitch.addEventListener('change', function() {
+        localStorage.setItem('log_viewer_auto_refresh', this.checked);
+        if (this.checked) {
+            showToast('Auto-refresh enabled (15s).', true);
         } else {
             showToast('Auto-refresh disabled.', true);
         }
-    }
+        // Apply the new state (start or stop the interval)
+        handleAutoRefresh();
+    });
 
     function getActiveTabLoader() {
         const activeTab = logTabs.querySelector('.nav-link.active');
@@ -331,7 +339,7 @@ window.pageInit = function() {
             // Restart auto-refresh for the new active log file
             handleAutoRefresh();
         });
-    });
+    }
 
     // Initial load for the active tab
     // --- IDE: Fix initial load logic ---
@@ -383,6 +391,20 @@ window.pageInit = function() {
         loadAutoDeployLog();
     }
 
+    // --- IDE: Ensure initial load happens reliably ---
+    // This is a more robust way to ensure the initial data load occurs,
+    // especially with the complex script execution flow in main.js.
+    // We check if the tab is already active and load its content.
+    if (document.getElementById('activity-log-tab')?.classList.contains('active')) {
+        loadActivityLogs(1);
+    }
+
+    // --- IDE: Initialize auto-refresh state on page load ---
+    const savedAutoRefresh = localStorage.getItem('log_viewer_auto_refresh') === 'true';
+    if (savedAutoRefresh) {
+        autoRefreshSwitch.checked = true;
+        handleAutoRefresh();
+    }
 };
 </script>
 

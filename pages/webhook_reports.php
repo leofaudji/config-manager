@@ -46,7 +46,17 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
     <div class="card-footer d-flex justify-content-between align-items-center">
         <div class="text-muted small" id="logs-info"></div>
-        <nav id="logs-pagination"></nav>
+        <div class="d-flex align-items-center">
+            <nav id="logs-pagination"></nav>
+            <div class="ms-3">
+                <select name="limit" class="form-select form-select-sm" id="limit-selector" style="width: auto;">
+                    <option value="10">10</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="-1">All</option>
+                </select>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -59,15 +69,26 @@ window.pageInit = function() {
     const searchInput = document.getElementById('search-input');
     const statusFilter = document.getElementById('status-filter');
     const autoRefreshSwitch = document.getElementById('auto-refresh-switch');
+    const limitSelector = document.getElementById('limit-selector');
+
+    let currentPage = 1;
 
     function loadLogs(page = 1, isAutoRefresh = false) {
+        currentPage = page;
         if (!isAutoRefresh) {
             container.innerHTML = '<tr><td colspan="4" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div></td></tr>';
         }
 
         const searchTerm = searchInput.value.trim();
         const status = statusFilter.value;
-        const url = `<?= base_url('/api/logs/view') ?>?type=webhook&page=${page}&search=${encodeURIComponent(searchTerm)}&status=${status}`;
+        const limit = limitSelector.value;
+        const url = `<?= base_url('/api/logs/view') ?>?type=webhook&page=${page}&limit=${limit}&search=${encodeURIComponent(searchTerm)}&status=${status}`;
+
+        // Save state to localStorage
+        localStorage.setItem('webhook_reports_page', page);
+        localStorage.setItem('webhook_reports_limit', limit);
+        localStorage.setItem('webhook_reports_search', searchTerm);
+        localStorage.setItem('webhook_reports_status', status);
 
         fetch(url)
             .then(response => response.json())
@@ -113,11 +134,21 @@ window.pageInit = function() {
 
     filterForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        loadLogs(1);
+        loadLogs(1); // Reset to page 1 on new filter
     });
 
     paginationContainer.addEventListener('click', e => {
-        if (e.target.matches('.page-link')) { e.preventDefault(); loadLogs(e.target.dataset.page); }
+        if (e.target.matches('.page-link')) {
+            e.preventDefault();
+            const page = e.target.dataset.page;
+            if (page) {
+                loadLogs(page);
+            }
+        }
+    });
+
+    limitSelector.addEventListener('change', () => {
+        loadLogs(1); // Reset to page 1 when limit changes
     });
 
     // --- Auto-refresh logic ---
@@ -125,7 +156,7 @@ window.pageInit = function() {
         localStorage.setItem('webhook_reports_auto_refresh', this.checked);
         if (this.checked) {
             if (window.currentPageInterval) clearInterval(window.currentPageInterval);
-            window.currentPageInterval = setInterval(() => loadLogs(1, true), 15000);
+            window.currentPageInterval = setInterval(() => loadLogs(currentPage, true), 15000);
             showToast('Auto-refresh enabled (15s).', true);
         } else {
             if (window.currentPageInterval) {
@@ -136,10 +167,20 @@ window.pageInit = function() {
         }
     });
 
-    // Initial Load
+    // Initial Load from localStorage
     const savedAutoRefresh = localStorage.getItem('webhook_reports_auto_refresh') === 'true';
+    let savedPage = localStorage.getItem('webhook_reports_page') || '1';
+    let savedLimit = localStorage.getItem('webhook_reports_limit') || '25';
+    if (parseInt(savedLimit) === 0) savedLimit = '25'; // Prevent 0 from localStorage
+    const savedSearch = localStorage.getItem('webhook_reports_search') || '';
+    const savedStatus = localStorage.getItem('webhook_reports_status') || '';
+
     autoRefreshSwitch.checked = savedAutoRefresh;
-    loadLogs(1);
+    limitSelector.value = savedLimit;
+    searchInput.value = savedSearch;
+    statusFilter.value = savedStatus;
+
+    loadLogs(savedPage);
     if (savedAutoRefresh) {
         autoRefreshSwitch.dispatchEvent(new Event('change'));
     }

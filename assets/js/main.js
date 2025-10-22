@@ -2191,6 +2191,26 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
 
+                // --- NEW: Update Dropdown Menu Badges ---
+                const dropdownSlaBadge = document.getElementById('dropdown-sla-badge');
+                if (dropdownSlaBadge && data.sla_violations) {
+                    if (data.sla_violations.count > 0) {
+                        dropdownSlaBadge.textContent = data.sla_violations.count;
+                        dropdownSlaBadge.style.display = 'inline-block';
+                    } else {
+                        dropdownSlaBadge.style.display = 'none';
+                    }
+                }
+                const dropdownIncidentBadge = document.getElementById('dropdown-incident-badge');
+                if (dropdownIncidentBadge && data.open_incidents) {
+                    if (data.open_incidents.count > 0) {
+                        dropdownIncidentBadge.textContent = data.open_incidents.count;
+                        dropdownIncidentBadge.style.display = 'inline-block';
+                    } else {
+                        dropdownIncidentBadge.style.display = 'none';
+                    }
+                }
+
                 // 2. Update Unhealthy Items Alert Dropdown
                 const unhealthyAlertBtn = document.getElementById('unhealthy-alert-btn');
                 const unhealthyAlertBadge = document.getElementById('unhealthy-alert-badge');
