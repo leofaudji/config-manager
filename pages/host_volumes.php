@@ -259,6 +259,24 @@ require_once __DIR__ . '/../includes/host_nav.php';
                 refreshBtn.disabled = false;
                 refreshBtn.innerHTML = originalBtnContent;
                 volumesContainer.classList.remove('table-loading');
+
+                // --- IDE: Scroll to and highlight search result ---
+                const urlParams = new URLSearchParams(window.location.search);
+                const searchTermFromUrl = urlParams.get('search');
+                const shouldHighlight = urlParams.get('highlight') === 'true';
+
+                if (shouldHighlight && searchTermFromUrl) {
+                    const rows = volumesContainer.querySelectorAll('tr');
+                    for (const row of rows) {
+                        if (row.textContent.includes(searchTermFromUrl)) {
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            row.classList.add('highlight-row');
+                            // Clean the URL to prevent re-highlighting on manual refresh
+                            history.replaceState(null, '', window.location.pathname + `?id=${hostId}&search=${encodeURIComponent(searchTermFromUrl)}`);
+                            break;
+                        }
+                    }
+                }
             });
     }
 

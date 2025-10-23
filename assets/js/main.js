@@ -100,11 +100,14 @@ const mainContent = document.querySelector('.main-content');
 
 function executeScriptsInContainer(container) {
     const scripts = container.querySelectorAll('script');
-    scripts.forEach(oldScript => {
-        const newScript = document.createElement('script');
-        Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-        newScript.textContent = oldScript.textContent;
-        document.body.appendChild(newScript).parentNode.removeChild(newScript);
+    scripts.forEach(script => {
+        // Only re-execute inline scripts. External scripts (with a 'src' attribute)
+        // are already handled by the browser and should not be re-processed.
+        if (!script.hasAttribute('src')) {
+            const newScript = document.createElement('script');
+            newScript.innerHTML = script.innerHTML;
+            document.body.appendChild(newScript).parentNode.removeChild(newScript);
+        }
     });
 }
 
@@ -170,6 +173,8 @@ async function loadPage(url, pushState = true, noAnimation = false) {
 
         if (pushState) {
             history.pushState({ path: url }, '', url);
+            // --- FIX: Dispatch a custom event for SPA navigation ---
+            window.dispatchEvent(new Event('spa-navigated'));
         }
 
         // --- NEW: Save last visited page to localStorage ---

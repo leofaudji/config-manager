@@ -411,6 +411,13 @@ require_once __DIR__ . '/../includes/header.php';
                             <input type="number" class="form-control" id="sla_history_cleanup_days" name="sla_history_cleanup_days" value="<?= (int)($settings['sla_history_cleanup_days'] ?? 90) ?>" min="1">
                             <small class="form-text text-muted">Automatically delete container health history (SLA data) older than this value.</small>
                         </div>
+                        <div class="card-footer">
+                            <h6 class="card-title">Manual Actions</h6>
+                            <p class="text-muted small">Perform one-off data management tasks.</p>
+                            <button type="button" class="btn btn-sm btn-outline-warning" id="clear-search-cache-btn">
+                                <i class="bi bi-stars"></i> Clear Global Search Cache
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -560,6 +567,52 @@ window.pageInit = function() {
             });
         });
     }
+
+    // --- Clear Search Cache Button Logic ---
+    const clearCacheBtn = document.getElementById('clear-search-cache-btn');
+    if (clearCacheBtn) {
+        clearCacheBtn.addEventListener('click', function() {
+            if (!confirm('Are you sure you want to clear the search cache? The next search may be slightly slower.')) {
+                return;
+            }
+
+            const originalBtnText = this.innerHTML;
+            this.disabled = true;
+            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Clearing...`;
+
+            fetch('<?= base_url('/api/system/clear-cache') ?>', {
+                method: 'POST'
+            })
+            .then(response => response.json().then(data => ({ok: response.ok, data})))
+            .then(({ok, data}) => {
+                showToast(data.message, ok);
+            })
+            .finally(() => {
+                this.disabled = false;
+                this.innerHTML = originalBtnText;
+            });
+        });
+    }
+
+    // --- IDE: Activate tab from URL hash ---
+    // This allows linking directly to a specific settings tab, e.g., from global search.
+    const activateTabFromHash = () => {
+        const hash = window.location.hash;
+        if (hash) {
+            // The hash includes the '#', so we can use it directly as a selector.
+            const tabTriggerEl = document.querySelector(`.nav-tabs button[data-bs-target="${hash}"]`);
+            if (tabTriggerEl) {
+                // Ensure it's a tab button before trying to activate
+                const tab = new bootstrap.Tab(tabTriggerEl);
+                tab.show();
+            }
+        }
+    };
+    // Call the function on page load
+    activateTabFromHash();
+
+    // --- FIX: Listen for the custom SPA navigation event ---
+    window.addEventListener('spa-navigated', activateTabFromHash);
 };
 </script>
 

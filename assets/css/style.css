@@ -804,3 +804,191 @@ body.dark-mode .sidebar-nav::-webkit-scrollbar-thumb:hover {
 #monitoring-alert-toggle-btn.active > i {
     color: var(--bs-danger); /* Warna merah saat ada notifikasi atau saat aktif */
 }
+
+/* --- IDE: Widen Global Search Button --- */
+#global-search-btn {
+    transition: all 0.2s ease-in-out;
+}
+@media (min-width: 768px) { /* md breakpoint and up */
+    #global-search-btn {
+        width: 35%;
+        max-width: 300px;
+    }
+}
+
+/* --- IDE: Make search text brighter on hover --- */
+/* Make all elements inside the search button brighter on hover */
+#global-search-btn.active, /* When modal is open */
+#global-search-btn:hover {
+    background-color: var(--cf-header-btn-hover-bg);
+}
+#global-search-btn.active,
+#global-search-btn.active .text-muted,
+#global-search-btn.active kbd,
+#global-search-btn:hover .text-muted,
+#global-search-btn:hover kbd {
+    color: var(--cf-text-color) !important; /* Use !important to override Bootstrap's default text-muted color on hover */
+}
+
+/* --- Global Search Modal (Command Palette) Styling --- */
+#globalSearchModal .modal-dialog {
+    /* Position modal at the top of the viewport */
+    margin-top: 10vh;
+}
+
+#globalSearchModal .modal-content {
+    background-color: var(--cf-card-bg-color);
+    border: 1px solid var(--cf-border-color);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+}
+
+#globalSearchModal #global-search-input {
+    background-color: transparent;
+    color: var(--cf-text-color);
+    font-size: 1.1rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+/* --- IDE: Add clear button to global search --- */
+#globalSearchModal #global-search-clear-btn {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5; /* Ensure it's above the input */
+    padding: 0.5rem;
+}
+/* --- End IDE --- */
+
+#globalSearchModal #global-search-input:focus {
+    background-color: transparent;
+    color: var(--cf-text-color);
+}
+
+#globalSearchModal .modal-body {
+    max-height: 400px;
+}
+
+#globalSearchModal .list-group-item {
+    background-color: transparent;
+    color: var(--cf-text-color);
+    border-color: var(--bs-border-color-translucent);
+}
+
+#globalSearchModal .list-group-item.list-group-item-light {
+    background-color: var(--cf-bg-color);
+    color: var(--cf-text-muted-color);
+    font-weight: 500;
+}
+
+#globalSearchModal .global-search-item:hover,
+#globalSearchModal .global-search-item.active {
+    background-color: var(--cf-dropdown-item-hover-bg);
+    color: var(--cf-text-color);
+    border-radius: 0.375rem; /* Add a slight radius on hover/active */
+}
+
+/* --- FIX: Quick Actions for Search Results --- */
+.search-item-actions {
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+}
+
+.global-search-item-wrapper:hover .search-item-actions,
+.global-search-item-wrapper.active .search-item-actions {
+    opacity: 1;
+}
+
+/* --- FIX: Make quick action buttons visible --- */
+.quick-action-btn {
+    --bs-btn-bg: var(--cf-table-striped-bg); /* Use a subtle background */
+}
+
+body.dark-mode .quick-action-btn {
+    --bs-btn-color: var(--cf-text-color);
+    --bs-btn-border-color: var(--cf-border-color);
+}
+/* --- End FIX --- */
+/* --- End FIX --- */
+
+/* --- IDE: Make search results more compact --- */
+#globalSearchModal .global-search-item {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+#globalSearchModal .modal-footer {
+    background-color: var(--cf-bg-color);
+}
+
+/* --- Highlight for Search Results --- */
+@keyframes highlight-fade {
+    from { background-color: rgba(var(--bs-warning-rgb), 0.6); }
+    to { background-color: transparent; }
+}
+
+.highlight-row {
+    animation: highlight-fade 2.5s ease-out forwards;
+}
+
+/* Ensure the highlight is visible in dark mode */
+body.dark-mode .highlight-row {
+    animation: highlight-fade-dark 2.5s ease-out forwards;
+}
+@keyframes highlight-fade-dark {
+    from { background-color: rgba(var(--bs-warning-rgb), 0.4); }
+    to { background-color: transparent; }
+}
+
+/* --- IDE: New Search Modal Layout --- */
+.search-layout {
+    min-height: 350px; /* Ensure a minimum height for the layout */
+}
+
+.search-categories-pane {
+    width: 200px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--cf-border-color);
+    padding-right: 0.5rem;
+}
+
+.search-categories-list .nav-link {
+    color: var(--cf-text-muted-color);
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.search-categories-list .nav-link:hover {
+    background-color: var(--cf-table-striped-bg);
+    color: var(--cf-text-color);
+}
+
+.search-categories-list .nav-link.active {
+    background-color: var(--cf-blue);
+    color: #fff;
+    font-weight: 500;
+}
+
+.search-results-pane {
+    overflow-y: auto;
+}
+
+.search-results-list .list-group-item {
+    border: none; /* Remove default borders */
+    border-bottom: 1px solid var(--cf-border-color); /* Use our own border */
+}
+
+.search-results-list .list-group-item:last-child {
+    border-bottom: none;
+}
+
+.search-results-list .global-search-item:hover,
+.search-results-list .global-search-item.active {
+    background-color: var(--cf-dropdown-item-hover-bg);
+}
+/* --- End IDE --- */

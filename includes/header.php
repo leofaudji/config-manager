@@ -130,7 +130,6 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
     <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.autotable.min.js"></script>
 
 </head>
 <body class="" 
@@ -317,6 +316,13 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 <i class="bi bi-list fs-4"></i>
             </button>
         </div>
+        <!-- Global Search Button -->
+        <button type="button" class="btn btn-outline-secondary btn-sm d-flex align-items-center me-auto" id="global-search-btn" data-bs-toggle="modal" data-bs-target="#globalSearchModal" title="Search (Ctrl+K)">
+            <i class="bi bi-search"></i>
+            <span class="d-none d-md-inline mx-2 text-muted">Search...</span>
+            <kbd class="ms-auto d-none d-lg-inline small">Ctrl+K</kbd>
+        </button>
+
         <div class="d-flex align-items-center" id="top-nav-actions">
             <?php if ($_SESSION['role'] === 'admin'): ?>
             <!-- Container untuk semua tombol notifikasi -->
