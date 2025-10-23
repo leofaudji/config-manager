@@ -360,6 +360,12 @@ function run_check_cycle() {
                 continue;
             }
 
+            // Jangan laporkan kontainer Falco atau Falcosidekick
+            if ($container_name === 'falco-sensor' || $container_name === 'falcosidekick') {
+                log_message("    - Melewati '{$container_name}' (agen keamanan).");
+                continue;
+            }
+
             $details = $dockerClient->inspectContainer($container_id);
             $docker_health_status = $details['State']['Health']['Status'] ?? null;
 

@@ -47,7 +47,7 @@ $default_password_hash = password_hash('password', PASSWORD_DEFAULT);
 $webhook_token = bin2hex(random_bytes(32)); // Generate a secure random token
 
 $sql = "
-DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `container_health_status`, `service_health_status`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`,`traefik_hosts`, `container_stats`,`container_health_history`, `incident_reports`;
+DROP TABLE IF EXISTS `activity_log`, `config_history`, `router_middleware`, `servers`, `routers`, `middlewares`, `transports`, `container_health_status`, `service_health_status`, `services`, `groups`, `users`, `settings`, `configuration_templates`, `stack_change_log`, `application_stacks`, `docker_hosts`, `host_stats_history`,`traefik_hosts`, `container_stats`,`container_health_history`, `incident_reports`, `security_events`;
 
 CREATE TABLE `stack_change_log` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -109,6 +109,8 @@ CREATE TABLE `docker_hosts` (
   `last_cpu_report_at` timestamp NULL DEFAULT NULL,
   `last_report_at` timestamp NULL DEFAULT NULL,
   `agent_status` varchar(20) DEFAULT 'Unknown',
+  `falco_status` varchar(20) DEFAULT 'Unknown',
+  `falcosidekick_status` varchar(20) DEFAULT 'Unknown',
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -465,6 +467,24 @@ CREATE TABLE `incident_reports` (
   KEY `idx_status_start_time` (`status`,`start_time`),
   KEY `fk_incident_assignee` (`assignee_user_id`),
   CONSTRAINT `fk_incident_assignee` FOREIGN KEY (`assignee_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `security_events` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `host_id` int(11) DEFAULT NULL,
+  `priority` varchar(50) NOT NULL,
+  `rule` varchar(255) NOT NULL,
+  `output` text NOT NULL,
+  `source` varchar(50) DEFAULT NULL,
+  `container_id` varchar(255) DEFAULT NULL,
+  `container_name` varchar(255) DEFAULT NULL,
+  `image_name` varchar(255) DEFAULT NULL,
+  `event_time` datetime NOT NULL,
+  `raw_event` json DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_host_id_priority_event_time` (`host_id`,`priority`,`event_time`),
+  CONSTRAINT `fk_security_events_host` FOREIGN KEY (`host_id`) REFERENCES `docker_hosts` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 ALTER TABLE `application_stacks`

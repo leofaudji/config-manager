@@ -809,14 +809,14 @@ class DockerClient
     }
 
     /**
-     * Private helper to create and start a container with a unified networking configuration.
+     * Creates and starts a container with a unified networking configuration.
      * @param string $containerName The name for the container.
      * @param array $config The base configuration for the container.
      * @param string|null $networkToAttach The specific network to attach to.
      * @return string The ID of the created container.
      * @throws Exception
      */
-    private function createAndStartContainer(string $containerName, array $config, ?string $networkToAttach = null): string
+    public function createAndStartContainer(string $containerName, array $config, ?string $networkToAttach = null): string
     {
         // Docker API expects the EndpointsConfig to be an object, not an array.
         // We ensure this structure is always correct.
@@ -840,6 +840,25 @@ class DockerClient
         $this->startContainer($containerId);
         return $containerId;
     }
+
+    /**
+     * Creates a container without starting it.
+     * @param string $containerName The name for the container.
+     * @param array $config The base configuration for the container.
+     * @return string The ID of the created container.
+     * @throws Exception
+     */
+    public function createContainer(string $containerName, array $config): string
+    {
+        $response = $this->request('/containers/create?name=' . $containerName, 'POST', $config);
+        if (!isset($response['Id'])) {
+            $errorMessage = 'Failed to create container: ' . ($response['message'] ?? 'Unknown error');
+            if (isset($response['message']) && str_contains($response['message'], 'is already in use by container')) $errorMessage .= ". Please remove the existing container first.";
+            throw new Exception($errorMessage);
+        }
+        return $response['Id'];
+    }
+
 
     /**
      * Copies a local file into a container.

@@ -35,7 +35,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                 </button>
             </div>
             <div class="card-body p-0">
-                <table class="table table-hover mb-0 align-middle">
+                <table class="table table-hover mb-0 align-middle" id="helper-agents-table">
                     <thead>
                         <tr>
                             <th>Agent</th>
@@ -55,10 +55,10 @@ require_once __DIR__ . '/../includes/host_nav.php';
                             <td><span id="agent-last-report" class="text-muted small" data-timestamp="">Never</span></td>
                             <td class="text-end">
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <button id="deploy-agent-btn" class="btn btn-outline-success" data-host-id="<?= $host_id ?>" data-action="deploy" title="Deploy/Redeploy"><i class="bi bi-cloud-arrow-down-fill"></i></button>
-                                    <button id="restart-agent-btn" class="btn btn-outline-warning" data-host-id="<?= $host_id ?>" data-action="restart" style="display: none;" title="Restart"><i class="bi bi-arrow-clockwise"></i></button>
-                                    <button id="remove-agent-btn" class="btn btn-outline-danger" data-host-id="<?= $host_id ?>" data-action="remove" style="display: none;" title="Remove"><i class="bi bi-trash-fill"></i></button>
-                                    <button id="run-agent-btn" class="btn btn-outline-primary" data-host-id="<?= $host_id ?>" data-action="run" style="display: none;" title="Run Check Now"><i class="bi bi-play-fill"></i></button>
+                                    <button id="deploy-agent-btn" class="btn btn-outline-success" data-type="agent" data-action="deploy" title="Deploy/Redeploy"><i class="bi bi-cloud-arrow-down-fill"></i></button>
+                                    <button id="restart-agent-btn" class="btn btn-outline-warning" data-type="agent" data-action="restart" style="display: none;" title="Restart"><i class="bi bi-arrow-clockwise"></i></button>
+                                    <button id="remove-agent-btn" class="btn btn-outline-danger" data-type="agent" data-action="remove" style="display: none;" title="Remove"><i class="bi bi-trash-fill"></i></button>
+                                    <button id="run-agent-btn" class="btn btn-outline-primary" data-type="agent" data-action="run" style="display: none;" title="Run Check Now"><i class="bi bi-play-fill"></i></button>
                                 </div>
                                 <div class="btn-group btn-group-sm ms-2" role="group">
                                     <button class="btn btn-outline-secondary view-container-logs-btn" data-container-name="cm-health-agent" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
@@ -66,6 +66,39 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                         <i class="bi bi-diagram-3"></i>
                                     </a>
                                 </div>
+                            </td>
+                        </tr>
+                        <!-- Falco Security Sensor Row -->
+                        <tr>
+                            <td>
+                                <strong>Falco Security Sensor</strong>
+                                <p class="small text-muted mb-0">Detects suspicious activity inside containers in real-time.</p>
+                            </td>
+                            <td><span id="falco-status-badge" class="badge text-bg-secondary">Checking...</span></td>
+                            <td><span class="text-muted small">N/A</span></td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button id="deploy-falco-btn" class="btn btn-outline-success" data-type="falco" data-action="deploy" title="Deploy/Redeploy"><i class="bi bi-cloud-arrow-down-fill"></i></button>
+                                    <button id="restart-falco-btn" class="btn btn-outline-warning" data-type="falco" data-action="restart" style="display: none;" title="Restart"><i class="bi bi-arrow-clockwise"></i></button>
+                                    <button id="remove-falco-btn" class="btn btn-outline-danger" data-type="falco" data-action="remove" style="display: none;" title="Remove"><i class="bi bi-trash-fill"></i></button>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary view-container-logs-btn ms-2" data-container-name="falco-sensor" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
+                            </td>
+                        </tr>
+                        <!-- Falcosidekick Row -->
+                        <tr>
+                            <td>
+                                <strong>Falcosidekick</strong>
+                                <p class="small text-muted mb-0">Forwards Falco alerts to Config Manager.</p>
+                            </td>
+                            <td><span id="falcosidekick-status-badge" class="badge text-bg-secondary">Checking...</span></td>
+                            <td><span class="text-muted small">N/A</span></td>
+                            <td class="text-end">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button id="deploy-falcosidekick-btn" class="btn btn-outline-success" data-type="falcosidekick" data-action="deploy" title="Deploy/Redeploy"><i class="bi bi-cloud-arrow-down-fill"></i></button>
+                                    <button id="remove-falcosidekick-btn" class="btn btn-outline-danger" data-type="falcosidekick" data-action="remove" style="display: none;" title="Remove"><i class="bi bi-trash-fill"></i></button>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary view-container-logs-btn ms-2" data-container-name="falcosidekick" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
                             </td>
                         </tr>
                        
@@ -277,7 +310,7 @@ window.pageInit = function() {
     const deployBtn = document.getElementById('deploy-agent-btn');
     const restartBtn = document.getElementById('restart-agent-btn');
     const removeBtn = document.getElementById('remove-agent-btn');
-    const runAgentBtn = document.getElementById('run-agent-btn');
+    const runAgentBtn = document.getElementById('run-agent-btn'); // This is for health-agent only
     
     const cpuReaderStatusBadge = document.getElementById('cpu-reader-status-badge');
 
@@ -306,49 +339,55 @@ window.pageInit = function() {
     }
 
     function updateHelperStatusUI(status, type) {
-        if (type !== 'agent') return;
+        const elements = {
+            'agent': [agentStatusBadge, deployBtn, restartBtn, removeBtn, runAgentBtn],
+            'falco': [document.getElementById('falco-status-badge'), document.getElementById('deploy-falco-btn'), document.getElementById('restart-falco-btn'), document.getElementById('remove-falco-btn'), null],
+            'falcosidekick': [document.getElementById('falcosidekick-status-badge'), document.getElementById('deploy-falcosidekick-btn'), null, document.getElementById('remove-falcosidekick-btn'), null]
+        };
 
-        const [statusBadge, deployButton, restartButton, removeButton, runButton] = [agentStatusBadge, deployBtn, restartBtn, removeBtn, runAgentBtn];
+        const [statusBadge, deployButton, restartButton, removeButton, runButton] = elements[type] || [null];
 
+        if (!statusBadge) return;
+        
         statusBadge.textContent = status;
         switch (status.toLowerCase()) {
             case 'running':
                 statusBadge.className = 'badge text-bg-success';
                 deployButton.style.display = 'block';
-                deployButton.title = 'Redeploy';
-                restartButton.style.display = 'inline-block';
-                removeButton.style.display = 'inline-block';
-                runButton.style.display = 'inline-block';
+                deployButton.title = 'Redeploy'; // NOSONAR
+                if (restartButton) restartButton.style.display = 'inline-block'; // NOSONAR
+                if (removeButton) removeButton.style.display = 'inline-block';
+                if (runButton) runButton.style.display = 'inline-block';
                 break;
             case 'stopped':
                 statusBadge.className = 'badge text-bg-warning';
                 deployButton.style.display = 'inline-block';
                 deployButton.title = 'Redeploy';
-                restartButton.style.display = 'inline-block';
-                removeButton.style.display = 'inline-block';
-                runButton.style.display = 'none'; // Can't run if stopped
+                if (restartButton) restartButton.style.display = 'inline-block'; // NOSONAR
+                if (removeButton) removeButton.style.display = 'inline-block';
+                if (runButton) runButton.style.display = 'none';
                 break;
             case 'not deployed':
                 statusBadge.className = 'badge text-bg-danger';
                 deployButton.style.display = 'inline-block';
                 deployButton.title = 'Deploy';
-                restartButton.style.display = 'none';
-                removeButton.style.display = 'none';
-                runButton.style.display = 'none';
+                if (restartButton) restartButton.style.display = 'none';
+                if (removeButton) removeButton.style.display = 'none';
+                if (runButton) runButton.style.display = 'none';
                 break;
             default: // Checking, Error
                 statusBadge.className = 'badge text-bg-secondary';
                 // Sembunyikan semua tombol aksi saat status tidak jelas
                 deployButton.style.display = 'inline-block';
                 deployButton.title = 'Deploy / Redeploy';
-                restartButton.style.display = 'none';
-                removeButton.style.display = 'none';
-                runButton.style.display = 'none';
+                if (restartButton) restartButton.style.display = 'none';
+                if (removeButton) removeButton.style.display = 'none';
+                if (runButton) runButton.style.display = 'none';
         }
     }
 
     function checkHelperStatus(type) {
-        const actionPath = 'agent-status';
+        const actionPath = `${type}-status`;
         updateHelperStatusUI('Checking...', type);
         fetch(`<?= base_url('/api/hosts/') ?>${hostId}/helper/${actionPath}`)
             .then(response => response.json())
@@ -359,26 +398,29 @@ window.pageInit = function() {
 
                 updateHelperStatusUI(result.agent_status, type);
 
-                // Update last report time specifically for the health agent
-                const lastReportElId = 'agent-last-report';
-                const lastReportEl = document.getElementById(lastReportElId);
-                if (lastReportEl && result.last_report_at) {
-                    lastReportEl.dataset.timestamp = result.last_report_at; // Store raw timestamp
-                    lastReportEl.dataset.type = type; // Store agent type for threshold check
-                    lastReportEl.textContent = timeAgo(result.last_report_at);
+                // --- FIX: Only update the last report time if the type is 'agent' ---
+                // This prevents other helper status checks (like falco) from overwriting the health agent's time.
+                if (type === 'agent') {
+                    const lastReportEl = document.getElementById('agent-last-report');
+                    if (lastReportEl && result.last_report_at) {
+                        lastReportEl.dataset.timestamp = result.last_report_at; // Store raw timestamp
+                        lastReportEl.textContent = timeAgo(result.last_report_at);
 
-                    // Set initial color based on threshold
-                    const seconds_ago = Math.round((new Date() - new Date(result.last_report_at)) / 1000); // NOSONAR
-                    const threshold = (type === 'agent') ? 180 : 600; // 3 mins for health-agent, 10 mins for cpu-reader
-                    if (seconds_ago > threshold) {
-                        lastReportEl.className = 'text-danger small fw-bold';
+                        // Set color based on threshold (3 minutes for health-agent)
+                        const seconds_ago = Math.round((new Date() - new Date(result.last_report_at)) / 1000); // NOSONAR
+                        const threshold = 180; 
+                        if (seconds_ago > threshold) {
+                            lastReportEl.className = 'text-danger small fw-bold';
+                        } else {
+                            lastReportEl.className = 'text-success small fw-bold';
+                        }
+                    } else if (lastReportEl) {
+                        delete lastReportEl.dataset.timestamp;
+                        lastReportEl.textContent = 'Never';
+                        lastReportEl.className = 'text-muted small';
                     } else {
-                        lastReportEl.className = 'text-success small fw-bold';
+                        // Do nothing if the element doesn't exist.
                     }
-                } else if (lastReportEl) {
-                    delete lastReportEl.dataset.timestamp;
-                    lastReportEl.textContent = 'Never';
-                    lastReportEl.className = 'text-muted small';
                 }
             })
             .catch(error => {
@@ -387,10 +429,10 @@ window.pageInit = function() {
             });
     }
 
-    function handleHelperAction(event, type) {
-        const button = event.currentTarget;
-        const action = button.dataset.action;
-        const actionPath = 'agent-action';
+    function handleHelperAction(button, type) {
+        // const button = event.currentTarget; // This was the source of the bug
+        const action = button.dataset.action; // e.g., 'deploy', 'restart'
+        const actionPath = `${type}-action`; // e.g., 'falco-action'
 
         let confirmMessage = `Are you sure you want to ${action} the ${type.replace('-', ' ')} on this host?`;
         if (action === 'deploy') {
@@ -470,26 +512,14 @@ window.pageInit = function() {
         }
     }
 
-    deployBtn.addEventListener('click', (e) => handleHelperAction(e, 'agent'));
-    restartBtn.addEventListener('click', (e) => handleHelperAction(e, 'agent'));
-    removeBtn.addEventListener('click', (e) => handleHelperAction(e, 'agent'));
-    runAgentBtn.addEventListener('click', (e) => handleHelperAction(e, 'agent'));
-
-    // Periodically update all relative timestamps on the page
-    setInterval(() => {
-        document.querySelectorAll('[data-timestamp]').forEach(el => {
-            const timestamp = el.dataset.timestamp;
-            const type = el.dataset.type;
-            el.textContent = timeAgo(timestamp);
-
-            // Also update color based on threshold
-            const seconds_ago = Math.round((new Date() - new Date(timestamp)) / 1000); // NOSONAR
-            const threshold = (type === 'agent') ? 180 : 600; // 3 mins for health-agent, 10 mins for cpu-reader
-            const is_stale = seconds_ago > threshold;
-            el.classList.toggle('text-danger', is_stale);
-            el.classList.toggle('text-success', !is_stale);
+    // Attach listeners to all helper buttons using event delegation for robustness
+    const helperAgentsTable = document.getElementById('helper-agents-table');
+    if (helperAgentsTable) {
+        helperAgentsTable.addEventListener('click', function(e) {
+            const button = e.target.closest('button[data-type]');
+            if (button) handleHelperAction(button, button.dataset.type);
         });
-    }, 5000); // Update every 5 seconds
+    }
 
     // --- Log Viewer Logic ---
     const viewLogsModal = document.getElementById('viewLogsModal');
@@ -502,6 +532,12 @@ window.pageInit = function() {
 
         viewLogsModal.addEventListener('show.bs.modal', function(event) {
             const button = event.relatedTarget;
+            // FIX: If the modal is shown programmatically (e.g., for deployment),
+            // the 'relatedTarget' (the button) will be undefined. We should exit
+            // early to prevent errors and let the programmatic call handle the content.
+            if (!button) {
+                return;
+            }
             const logType = button.dataset.logType;
             const logTitle = button.dataset.logTitle;
 
@@ -630,6 +666,8 @@ window.pageInit = function() {
     // --- Initial Load ---
     function initialize() {
         checkHelperStatus('agent');
+        checkHelperStatus('falco');
+        checkHelperStatus('falcosidekick');
         loadDashboardStats();
     }
 

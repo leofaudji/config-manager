@@ -298,6 +298,19 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
         handleScroll();
         document.addEventListener('scroll', handleScroll, { passive: true });
     })();
+
+    // --- Logika untuk Tombol Monitoring Alert ---
+    (function() {
+        const toggleBtn = document.getElementById('monitoring-alert-toggle-btn');
+        const container = document.querySelector('.monitoring-alerts-container');
+
+        if (toggleBtn && container) {
+            toggleBtn.addEventListener('click', function() {
+                container.classList.toggle('active');
+            });
+        }
+    })();
+
 </script>
 </body>
 </html> 

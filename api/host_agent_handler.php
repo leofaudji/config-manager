@@ -2,9 +2,18 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/DockerClient.php';
 
-header('Content-Type: application/json');
-
-$path = $_GET['path'] ?? '';
+// --- NEW: Extract path from request URI ---
+$request_uri_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$basePath = BASE_PATH;
+if ($basePath && strpos($request_uri_path, $basePath) === 0) {
+    $request_uri_path = substr($request_uri_path, strlen($basePath));
+}
+if (!preg_match('/^\/api\/hosts\/\d+\/helper\/(.+)$/', $request_uri_path, $matches)) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Invalid helper API endpoint format.']);
+    exit;
+}
+$path = $matches[1]; // This will be 'agent-action', 'falco-status', etc.
 
 // --- Streaming Setup for Deployment ---
 if (isset($_POST['action']) && $_POST['action'] === 'deploy') {
@@ -18,6 +27,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'deploy') {
         }
     }
     ob_implicit_flush(1);
+} else {
+    header('Content-Type: application/json');
 }
 
 function stream_message($message, $type = 'INFO') {
@@ -25,14 +36,12 @@ function stream_message($message, $type = 'INFO') {
 }
 
 $host_id = $_GET['id'] ?? null;
-$action = $_POST['action'] ?? null;
 
 if (!$host_id) {
     http_response_code(400);
     echo json_encode(['status' => 'error', 'message' => 'Host ID is required.']);
     exit;
 }
-
 $conn = Database::getInstance()->getConnection();
 $stmt = $conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
 $stmt->bind_param("i", $host_id);
@@ -47,12 +56,16 @@ $host = $result->fetch_assoc();
 $stmt->close();
 
 // --- Determine which helper container we are working with ---
-$container_name = '';
-if (str_contains($path, 'agent')) {
-    $container_name = 'cm-health-agent';
+$agent_type = 'unknown';
+if (str_contains($path, 'agent-')) {
+    $agent_type = 'agent';
+} elseif (str_contains($path, 'falco-')) {
+    $agent_type = 'falco';
+} elseif (str_contains($path, 'falcosidekick-')) {
+    $agent_type = 'falcosidekick';
 }
 
-if (empty($container_name)) {
+if ($agent_type === 'unknown') {
     http_response_code(400);
     echo json_encode(['status' => 'error', 'message' => 'Invalid helper type in path.']);
     exit;
@@ -63,9 +76,17 @@ try {
 
     // Handle status check request
     if (str_ends_with($path, '-status')) {
-        try {
-            $status_column = 'agent_status';
+        $status_column = 'agent_status';
+        $container_name = 'cm-health-agent';
+        if ($agent_type === 'falco') {
+            $status_column = 'falco_status';
+            $container_name = 'falco-sensor';
+        } elseif ($agent_type === 'falcosidekick') {
+            $status_column = 'falcosidekick_status';
+            $container_name = 'falcosidekick';
+        }
 
+        try {
             $details = $dockerClient->inspectContainer($container_name);
             $status = ($details['State']['Running'] ?? false) ? 'Running' : 'Stopped';
         } catch (Exception $e) {
@@ -81,15 +102,20 @@ try {
                 throw $e; // Re-throw other errors
             }
         }
-        $response_data = ['status' => 'success', 'agent_status' => $status];
-        if ($container_name === 'cm-health-agent') {
-            $response_data['last_report_at'] = $host['last_report_at'] ?? null;
+
+        // --- FIX: Always include last_report_at for the health agent ---
+        $response_data = ['status' => 'success', 'agent_status' => $status, 'last_report_at' => null];
+        if ($agent_type === 'agent') {
+            // The $host variable already contains the latest data from the DB, including last_report_at.
+            // This ensures we send the correct value back to the UI.
+            $response_data['last_report_at'] = $host['last_report_at'];
         }
 
         // Update the database with the latest known status
         $stmt_update = $conn->prepare("UPDATE docker_hosts SET {$status_column} = ? WHERE id = ?");
         $stmt_update->bind_param("si", $status, $host_id);
         $stmt_update->execute();
+        // --- FIX: Close the statement immediately after use ---
         $stmt_update->close();
 
         echo json_encode($response_data);
@@ -97,16 +123,24 @@ try {
     }
 
     // Handle action requests
+    $action = $_POST['action'] ?? null;
     if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$action) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Invalid action or request method.']);
         exit;
     }
 
-    $status_column = 'agent_status';
+    $status_column = 'agent_status'; // Default
+    if ($agent_type === 'falco') $status_column = 'falco_status';
+    if ($agent_type === 'falcosidekick') $status_column = 'falcosidekick_status';
 
     switch ($action) { 
         case 'deploy':
+            $container_name = '';
+            if ($agent_type === 'agent') $container_name = 'cm-health-agent';
+            if ($agent_type === 'falco') $container_name = 'falco-sensor';
+            if ($agent_type === 'falcosidekick') $container_name = 'falcosidekick';
+
             stream_message("Deployment process initiated for '{$container_name}' on host '{$host['name']}'...");
             // Remove existing container first to ensure a clean deploy
             try {
@@ -119,7 +153,7 @@ try {
                 stream_message("Container did not exist, proceeding with deployment.");
             }
 
-            if ($container_name === 'cm-health-agent') {
+            if ($agent_type === 'agent') {
                 // --- Deployment logic for Health Agent ---
                 $agent_image = get_setting('health_agent_image');
                 $agent_api_token = get_setting('health_agent_api_token');
@@ -205,9 +239,106 @@ try {
                 // We must wait for this command to complete.
                 $dockerClient->execInContainer($containerId, ['/bin/sh', '-c', $injectionCommand], true);
                 stream_message("Agent script copied successfully.");
+            } elseif ($agent_type === 'falco') {
+                // --- Deployment logic for Falco ---
+                $falco_image = 'falcosecurity/falco:latest';
+                stream_message("Pulling Falco image '{$falco_image}'...");
+                $dockerClient->pullImage($falco_image);
+                stream_message("Image pull completed.");
 
-                log_activity($_SESSION['username'], 'Helper Deployed', "Health Agent deployed to host '{$host['name']}'.");
+                $volumes = [
+                    '/var/run/docker.sock:/host/var/run/docker.sock:ro',
+                    '/dev:/host/dev:ro',
+                    '/proc:/host/proc:ro',
+                    '/boot:/host/boot:ro',
+                    '/lib/modules:/host/lib/modules:ro',
+                    '/usr:/host/usr:ro'
+                ];
+
+                stream_message("Creating and starting Falco container...");
+                $falco_config = [
+                    'Image' => $falco_image,
+                    // Attach to the default bridge network to allow communication from falcosidekick
+                    'HostConfig' => ['Binds' => $volumes, 'Privileged' => true, 'NetworkMode' => 'bridge']
+                ];
+                $dockerClient->createAndStartContainer($container_name, $falco_config);
+
+            } elseif ($agent_type === 'falcosidekick') {
+                // --- Deployment logic for Falcosidekick ---
+                // FIX: Use a specific version for stability
+                $sidekick_image = 'falcosecurity/falcosidekick:2.28.0';
+                $config_manager_url = get_setting('app_base_url');
+                $api_token = get_setting('health_agent_api_token');
+
+                if (empty($config_manager_url) || empty($api_token)) {
+                    throw new Exception("Application Base URL and Health Agent API Token must be configured in General Settings to deploy Falcosidekick.");
+                }
+
+                stream_message("Pulling Falcosidekick image '{$sidekick_image}'...");
+                $dockerClient->pullImage($sidekick_image);
+                stream_message("Image pull completed.");
+
+                // --- DEFINITIVE FIX: Use a bind mount for the configuration file ---
+                // This avoids all race conditions related to copying files into a running or starting container.
+                // The config file is created on the host and mounted directly into the container.
+                $base_compose_path = get_setting('default_compose_path');
+                if (empty($base_compose_path)) throw new Exception("Default Compose File Path must be configured in settings to deploy Falcosidekick.");
+                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $container_name;
+                if (!is_dir($deployment_dir) && !mkdir($deployment_dir, 0755, true)) throw new Exception("Could not create deployment directory for Falcosidekick config: {$deployment_dir}");
+
+                stream_message("Creating and starting Falcosidekick container...");
+
+                // --- FIX: Explicitly create and use a config file for Falcosidekick ---
+                // This is more reliable than environment variables, which can be ignored.
+                $webui_url = rtrim($config_manager_url, '/') . '/api/security/ingest';
+                $sidekick_config_content = <<<YAML
+webui:
+  url: "{$webui_url}"
+  customheaders:
+    X-API-KEY: "{$api_token}"
+    X-FALCO-HOSTNAME: "{$host['name']}"
+YAML;
+                // Create a temporary file for the config
+                $temp_config_file = tempnam(sys_get_temp_dir(), 'falcosidekick-config-');
+                file_put_contents($temp_config_file, $sidekick_config_content);
+
+                // --- FIX: Use a more robust multi-step process to avoid race conditions ---
+                // 1. Create the container but DO NOT start it yet.
+                // 1. Create the container with a placeholder command to keep it running.
+                $sidekick_config = [
+                    'Image' => $sidekick_image,
+                    // FIX: Add environment variable to tell falcosidekick where to find falco
+                    'Env' => ['FALCO_GRPC_HOSTNAME=falco-sensor'],
+                    // FIX: The image has an ENTRYPOINT of /falcosidekick, so Cmd should only contain the arguments.
+                    'Cmd' => ['-c', '/etc/config.yaml'],
+                    // FIX: Use a placeholder command to keep the container running while we configure it.
+                    'Cmd' => ['sleep', 'infinity'],
+                    // Explicitly attach to the default bridge network to allow communication with falco-sensor
+                    'HostConfig' => ['NetworkMode' => 'bridge']
+                ];
+                $containerId = $dockerClient->createContainer($container_name, $sidekick_config);
+                $containerId = $dockerClient->createAndStartContainer($container_name, $sidekick_config);
+
+                // 2. Copy the config file into the created (but not running) container.
+                // 2. Copy the config file to a temporary location inside the running container.
+                stream_message("Injecting configuration into Falcosidekick container...");
+                $dockerClient->copyToContainer($containerId, $temp_config_file, '/etc/config.yaml');
+
+                // 3. Now, start the container. It will start with the correct config file already in place.
+                stream_message("Starting Falcosidekick container...");
+                $dockerClient->startContainer($containerId);
+                // 3. Execute a command to replace the 'sleep' process with the actual 'falcosidekick' process.
+                stream_message("Starting Falcosidekick process...");
+                $start_command = 'exec /falcosidekick -c /etc/config.yaml';
+                $dockerClient->execInContainer($containerId, ['/bin/sh', '-c', $start_command]);
+
+                // Clean up the temporary file
+                unlink($temp_config_file);
+                stream_message("Falcosidekick configuration complete.");
+
             }
+            log_activity($_SESSION['username'], 'Helper Deployed', "{$container_name} deployed to host '{$host['name']}'.");
             // Update status in DB after successful deployment
             $stmt_update = $conn->prepare("UPDATE docker_hosts SET {$status_column} = 'Running' WHERE id = ?");
             $stmt_update->bind_param("i", $host_id);
@@ -220,6 +351,11 @@ try {
             break;
 
         case 'restart':
+            $container_name = '';
+            if ($agent_type === 'agent') $container_name = 'cm-health-agent';
+            if ($agent_type === 'falco') $container_name = 'falco-sensor';
+            if (empty($container_name)) throw new Exception("Restart is not supported for this agent type.");
+
             $dockerClient->restartContainer($container_name);
             $log_message = "Helper container '{$container_name}' restarted on host '{$host['name']}'.";
             log_activity($_SESSION['username'], 'Helper Restarted', $log_message);
@@ -232,6 +368,12 @@ try {
             break;
 
         case 'remove':
+            $container_name = '';
+            if ($agent_type === 'agent') $container_name = 'cm-health-agent';
+            if ($agent_type === 'falco') $container_name = 'falco-sensor';
+            if ($agent_type === 'falcosidekick') $container_name = 'falcosidekick';
+            if (empty($container_name)) throw new Exception("Remove is not supported for this agent type.");
+
             $dockerClient->removeContainer($container_name, true);
             $log_message = "Helper container '{$container_name}' removed from host '{$host['name']}'.";
             log_activity($_SESSION['username'], 'Helper Removed', $log_message);
@@ -245,7 +387,7 @@ try {
             break;
         
         case 'run':
-            if ($container_name === 'cm-health-agent') {
+            if ($agent_type === 'agent') {
                 // Skrip sudah ada di dalam image, jadi kita bisa langsung menjalankannya.
                 // Ini akan memicu satu siklus pengecekan di luar jadwal cron.
                 $dockerClient->execInContainer($container_name, ['php', '/usr/src/app/agent.php']);
@@ -260,7 +402,10 @@ try {
             break;
     }
 } catch (Exception $e) {
+    // FIX: Define $action for GET requests (status checks) to prevent undefined variable notice
+    $action = $_POST['action'] ?? 'status check';
     $error_message = "Failed to perform action '{$action}' on host '{$host['name']}': " . $e->getMessage();
+
     log_activity('SYSTEM', 'Health Agent Error', $error_message);
 
     if ($action === 'deploy') {

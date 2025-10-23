@@ -115,67 +115,57 @@ class Parsedown
     # ~
     #
 
-    public function lines(array $lines)
+    protected function lines(array $lines)
     {
         $CurrentBlock = null;
 
         foreach ($lines as $line)
         {
-            if (chop($line) === '')
+            if (rtrim($line) === '')
             {
                 if (isset($CurrentBlock))
                 {
                     $CurrentBlock['interrupted'] = true;
                 }
-
                 continue;
             }
 
             if (strpos($line, "\t") !== false)
             {
                 $parts = explode("\t", $line);
-
                 $line = $parts[0];
-
                 unset($parts[0]);
 
                 foreach ($parts as $part)
                 {
                     $shortage = 4 - mb_strlen($line, 'utf-8') % 4;
-
                     $line .= str_repeat(' ', $shortage);
                     $line .= $part;
                 }
             }
 
             $indent = 0;
-
             while (isset($line[$indent]) and $line[$indent] === ' ')
             {
                 $indent ++;
             }
 
             $text = $indent > 0 ? substr($line, $indent) : $line;
-
             # ~
-
             $Line = array('body' => $line, 'indent' => $indent, 'text' => $text);
-
             # ~
 
             if (isset($CurrentBlock['continuable']))
             {
                 $Block = $this->{'block'.$CurrentBlock['type'].'Continue'}($Line, $CurrentBlock);
-
                 if (isset($Block))
                 {
                     $CurrentBlock = $Block;
-
                     continue;
                 }
                 else
                 {
-                    if ($this->isBlockCompletable($CurrentBlock['type']))
+                    if ($this->isBlockCompletable($CurrentBlock))
                     {
                         $CurrentBlock = $this->{'block'.$CurrentBlock['type'].'Complete'}($CurrentBlock);
                     }
@@ -183,13 +173,10 @@ class Parsedown
             }
 
             # ~
-
             $marker = $text[0];
-
             # ~
 
             $BlockTypes = $this->unmarkedBlockTypes;
-
             if (isset($this->BlockTypes[$marker]))
             {
                 foreach ($this->BlockTypes[$marker] as $blockType)
@@ -197,78 +184,65 @@ class Parsedown
                     $BlockTypes []= $blockType;
                 }
             }
-
             #
             # ~
 
             foreach ($BlockTypes as $blockType)
             {
                 $Block = $this->{'block'.$blockType}($Line, $CurrentBlock);
-
                 if (isset($Block))
                 {
                     $Block['type'] = $blockType;
-
                     if ( ! isset($Block['identified']))
                     {
-                        $Blocks []= $CurrentBlock;
-
+                        $Elements []= $CurrentBlock;
                         $Block['identified'] = true;
                     }
 
-                    if ($this->isBlockContinuable($blockType))
+                    if ($this->isBlockContinuable($Block))
                     {
                         $Block['continuable'] = true;
                     }
 
                     $CurrentBlock = $Block;
-
                     continue 2;
                 }
             }
 
             # ~
-
             if (isset($CurrentBlock) and ! isset($CurrentBlock['type']) and ! isset($CurrentBlock['interrupted']))
             {
                 $CurrentBlock['element']['text'] .= "\n".$text;
             }
             else
             {
-                $Blocks []= $CurrentBlock;
-
+                $Elements []= $CurrentBlock;
                 $CurrentBlock = $this->paragraph($Line);
-
                 $CurrentBlock['identified'] = true;
             }
         }
 
         # ~
-
-        if (isset($CurrentBlock['continuable']) and $this->isBlockCompletable($CurrentBlock['type']))
+        if (isset($CurrentBlock['continuable']) and $this->isBlockCompletable($CurrentBlock))
         {
             $CurrentBlock = $this->{'block'.$CurrentBlock['type'].'Complete'}($CurrentBlock);
         }
 
         # ~
-
-        $Blocks []= $CurrentBlock;
-
-        unset($Blocks[0]);
-
+        $Elements []= $CurrentBlock;
+        unset($Elements[0]);
         # ~
 
         $markup = '';
-
-        foreach ($Blocks as $Block)
+        foreach ($Elements as $Element)
         {
-            if (isset($Block['hidden']))
+            if (isset($Element['hidden']))
             {
                 continue;
             }
 
             $markup .= "\n";
-            $markup .= isset($Block['markup']) ? $Block['markup'] : $this->element($Block['element']);
+            $markup .= isset($Element['markup']) ? $Element['markup'] : $this->element($Element['element']);
         }
 
         $markup .= "\n";
@@ -278,14 +252,14 @@ class Parsedown
         return $markup;
     }
 
-    protected function isBlockContinuable($Type)
+    protected function isBlockContinuable($Block)
     {
-        return method_exists($this, 'block'.$Type.'Continue');
+        return method_exists($this, 'block'.$Block['type'].'Continue');
     }
 
-    protected function isBlockCompletable($Type)
+    protected function isBlockCompletable($Block)
     {
-        return method_exists($this, 'block'.$Type.'Complete');
+        return method_exists($this, 'block'.$Block['type'].'Complete');
     }
 
     #

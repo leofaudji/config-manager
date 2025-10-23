@@ -4,12 +4,16 @@ require_once __DIR__ . '/../includes/Parsedown.php';
 require_once __DIR__ . '/../includes/header.php';
 
 $changelog_content = "### Error\nChangelog file (`CHANGELOG.md`) not found or could not be read.";
-$changelog_path = PROJECT_ROOT . '/CHANGELOG.md';
+$changelog_path = PROJECT_ROOT . '/CHANGELOG.md'; // NOSONAR
 
 if (file_exists($changelog_path)) {
-    $markdown_content = file_get_contents($changelog_path);
-    $Parsedown = new Parsedown();
-    $changelog_content = $Parsedown->text($markdown_content);
+    if (is_readable($changelog_path)) {
+        $markdown_content = file_get_contents($changelog_path);
+        $Parsedown = new Parsedown();
+        $changelog_content = $Parsedown->text($markdown_content);
+    } else {
+        $changelog_content = "### Error\nChangelog file (`CHANGELOG.md`) exists but is not readable. Please check file permissions.";
+    }
 }
 ?>
 

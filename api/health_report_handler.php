@@ -127,11 +127,13 @@ try {
     );
 
     $stmt_create_incident = $conn->prepare("
-        INSERT INTO incident_reports (incident_type, target_id, target_name, host_id, start_time, monitoring_snapshot, severity)
-        SELECT 'container', ?, ?, ?, NOW(), ?, 'High'
+        INSERT INTO incident_reports (incident_type, target_id, target_name, host_id, start_time, monitoring_snapshot, severity, status)
+        SELECT 'container', ?, ?, ?, NOW(), ?, 'High', 'Open' /* The values for the new incident */
         FROM DUAL WHERE NOT EXISTS (
-            SELECT 1 FROM incident_reports WHERE target_id = ? AND status IN ('Open', 'Investigating')
-        )
+            /* This subquery checks for existing duplicates */
+            SELECT 1 FROM incident_reports 
+            WHERE target_id = ? AND incident_type = 'container' AND DATE(start_time) = CURDATE() AND status IN ('Open', 'Investigating')
+        ) 
     ");
 
 
@@ -183,7 +185,7 @@ try {
             // --- CORRECT PLACEMENT for Incident Creation Logic ---
             // Status just changed to unhealthy, create a new incident if no open one exists
             $snapshot = json_encode($report['log_message'] ?? 'No log available.');
-            $stmt_create_incident->bind_param("ssisi", $report['container_id'], $report['container_name'], $host_id, $snapshot, $report['container_id']);
+            $stmt_create_incident->bind_param("ssiss", $report['container_id'], $report['container_name'], $host_id, $snapshot, $report['container_id']);
             $stmt_create_incident->execute();
 
             // Send notification for the new incident if enabled

@@ -45,6 +45,7 @@ $router->get('/settings', 'pages/settings.php', ['auth', 'admin']);
 $router->get('/health-check', 'pages/health_check.php', ['auth', 'admin']);
 $router->get('/health-status', 'pages/health_status.php', ['auth']);
 $router->get('/changelog', 'pages/changelog.php', ['auth']);
+$router->get('/security-events', 'pages/security_events.php', ['auth', 'admin']); // Rute baru
 $router->get('/host-overview', 'pages/host_overview.php', ['auth', 'admin']); // Rute baru
 $router->get('/central-logs', 'pages/central_log_viewer.php', ['auth', 'admin']); // Rute baru
 $router->get('/resource-hotspots', 'pages/resource_hotspots.php', ['auth', 'admin']); // Rute baru
@@ -108,6 +109,7 @@ $router->get('/api/configurations/preview', 'api/preview_handler.php', ['auth', 
 $router->get('/api/health-check', 'api/health_check_handler.php', ['auth', 'admin']);
 $router->get('/api/swarm/nodes', 'api/swarm_nodes_handler.php', ['auth', 'admin']);
 $router->get('/api/health-status', 'api/health_status_handler.php', ['auth']);
+$router->get('/api/security/events', 'api/security_events_handler.php', ['auth', 'admin']); // Rute baru
 $router->get('/api/templates/{id}', 'api/template_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers', 'api/host_detail_handler.php', ['auth', 'admin']);
 $router->get('/api/cron', 'api/cron_handler.php', ['auth', 'admin']);
@@ -154,6 +156,7 @@ $router->post('/api/hosts/{id}/containers/{container_id}/check-update', 'api/con
 $router->post('/api/webhook/deploy', 'api/webhook_handler.php'); // No auth middleware, security is via token
 $router->post('/api/webhook/regenerate-token', 'api/webhook_token_handler.php', ['auth', 'admin']);
 $router->get('/api/hosts/{id}/containers/{container_id}/logs', 'api/container_log_handler.php', ['auth', 'admin']);
+$router->post('/api/security/ingest', 'api/security_ingest_handler.php'); // Rute baru untuk Falco
 $router->post('/api/health-report', 'api/health_report_handler.php'); // For health agent callbacks
 $router->get('/api/containers/list', 'api/container_list_handler.php', ['auth', 'admin']); // New endpoint for SLA report dropdown
 $router->get('/api/sla-report', 'api/sla_report_handler.php', ['auth', 'admin']);

@@ -231,7 +231,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             </li>
 
             <?php
-            $monitoring_active = str_starts_with($request_path, '/health-status') || str_starts_with($request_path, '/sla-report') || str_starts_with($request_path, '/incident-reports') || str_starts_with($request_path, '/host-overview') || str_starts_with($request_path, '/container-events') || str_starts_with($request_path, '/central-logs') || str_starts_with($request_path, '/resource-hotspots') || str_starts_with($request_path, '/network-inspector') || str_starts_with($request_path, '/stats');
+            $monitoring_active = str_starts_with($request_path, '/health-status') || str_starts_with($request_path, '/sla-report') || str_starts_with($request_path, '/incident-reports') || str_starts_with($request_path, '/security-events') || str_starts_with($request_path, '/host-overview') || str_starts_with($request_path, '/container-events') || str_starts_with($request_path, '/central-logs') || str_starts_with($request_path, '/resource-hotspots') || str_starts_with($request_path, '/network-inspector') || str_starts_with($request_path, '/stats');
             $monitoring_expanded = $monitoring_active || in_array('monitoring-submenu', $open_menus_cookie);
             ?>
             <li class="nav-item">
@@ -255,6 +255,9 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                             </a></li>
                         <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/incident-reports') ?>">
                                 <span>Incident Reports</span><span class="badge bg-primary rounded-pill" id="sidebar-incident-badge" style="display: none;"></span>
+                            </a></li>
+                        <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/security-events') ?>">
+                                <span>Security Events</span><span class="badge bg-danger rounded-pill" id="sidebar-security-badge" style="display: none;"></span>
                             </a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/host-overview') ?>">Host Overview</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/container-events') ?>">Container Events</a></li>
@@ -309,84 +312,80 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
 <div class="content-wrapper">
     <nav class="top-navbar d-flex justify-content-between align-items-center">
-        <button class="btn" id="sidebar-toggle-btn" title="Toggle sidebar">
-            <i class="bi bi-list fs-4"></i>
-        </button>
         <div class="d-flex align-items-center">
+            <button class="btn" id="sidebar-toggle-btn" title="Toggle sidebar">
+                <i class="bi bi-list fs-4"></i>
+            </button>
+        </div>
+        <div class="d-flex align-items-center" id="top-nav-actions">
             <?php if ($_SESSION['role'] === 'admin'): ?>
-             <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="sync-stacks-btn" title="Sync Stacks to Git" style="width: 44px; height: 44px;">
-                <i class="bi bi-git fs-4"></i>
-                <span id="sync-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;">
-                    
-                    <span class="visually-hidden">pending changes</span>
-                </span>
-            </button>
-            <a href="<?= base_url('/backup-restore') ?>" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="backup-status-btn" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Automatic Backup Status" style="width: 44px; height: 44px;">
-                <i id="backup-status-icon" class="bi bi-database-down fs-4 text-secondary"></i>
-            </a>
-            <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="unhealthy-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Unhealthy Items Alert">
-                <i class="bi bi-heartbreak-fill text-danger fs-4"></i>
-                <span id="unhealthy-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-dark">
-                    
-                    <span class="visually-hidden">Unhealthy items</span>
-                </span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="unhealthy-alert-btn" id="unhealthy-alert-dropdown">
-                <li><h6 class="dropdown-header">Unhealthy Services / Containers</h6></li>
-                <li><hr class="dropdown-divider"></li>
-                <div id="unhealthy-alert-items-container" style="max-height: 400px; overflow-y: auto;">
-                    <!-- Alert items will be injected here -->
+            <!-- Container untuk semua tombol notifikasi -->
+            <div class="monitoring-alerts-container">
+                <!-- Wrapper untuk tombol-tombol yang bisa disembunyikan -->
+                <div class="monitoring-alerts-wrapper">
+                    <a href="<?= base_url('/groups') ?>" id="deploy-notification-btn" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" style="display: none; width: 44px; height: 44px;" title="Pending Changes to Deploy">
+                        <i class="bi bi-cloud-upload-fill text-primary fs-4"></i>
+                    </a>
+                    <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" id="pending-updates-alert-btn" style="display: none; width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Pending Updates">
+                        <i class="bi bi-arrow-clockwise text-info fs-4"></i>
+                        <span id="pending-updates-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"><span class="visually-hidden">Pending updates</span></span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="pending-updates-alert-btn" id="pending-updates-alert-dropdown">
+                        <li><h6 class="dropdown-header">Stacks with Pending Updates</h6></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <div id="pending-updates-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-center" href="<?= base_url('/pending-updates') ?>" id="view-all-pending-stacks-link">View All Pending Updates</a></li>
+                    </ul>
+                    <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" id="incident-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Open Incidents">
+                        <i class="bi bi-shield-fill-exclamation text-primary fs-4"></i>
+                        <span id="incident-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-dark"><span class="visually-hidden">Open incidents</span></span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="incident-alert-btn" id="incident-alert-dropdown">
+                        <li><h6 class="dropdown-header">Open Incidents</h6></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <div id="incident-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-center" href="<?= base_url('/incident-reports') ?>">View All Incidents</a></li>
+                    </ul>
+                    <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" id="sla-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="SLA Violation Alert">
+                        <i class="bi bi-shield-exclamation text-warning fs-4"></i>
+                        <span id="sla-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"><span class="visually-hidden">SLA violations</span></span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="sla-alert-btn" id="sla-alert-dropdown">
+                        <li><h6 class="dropdown-header">Items Below Minimum SLA Target</h6></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <div id="sla-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-center" href="<?= base_url('/sla-report') ?>">View Full Report</a></li>
+                    </ul>
+                    <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" id="unhealthy-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Unhealthy Items Alert">
+                        <i class="bi bi-heartbreak-fill text-danger fs-4"></i>
+                        <span id="unhealthy-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-dark"><span class="visually-hidden">Unhealthy items</span></span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="unhealthy-alert-btn" id="unhealthy-alert-dropdown">
+                        <li><h6 class="dropdown-header">Unhealthy Services / Containers</h6></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <div id="unhealthy-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-center" href="<?= base_url('/health-status') ?>">View Health Status</a></li>
+                    </ul>
+                    <a href="<?= base_url('/backup-restore') ?>" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" id="backup-status-btn" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Automatic Backup Status" style="width: 44px; height: 44px;">
+                        <i id="backup-status-icon" class="bi bi-database-down fs-4 text-secondary"></i>
+                    </a>
+                    <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" id="sync-stacks-btn" title="Sync Stacks to Git" style="width: 44px; height: 44px;">
+                        <i class="bi bi-git fs-4"></i>
+                        <span id="sync-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="display: none;"><span class="visually-hidden">pending changes</span></span>
+                    </button>
                 </div>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item text-center" href="<?= base_url('/health-status') ?>">View Health Status</a></li>
-            </ul>
-            <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="sla-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="SLA Violation Alert">
-                <i class="bi bi-shield-exclamation text-warning fs-4"></i>
-                <span id="sla-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                    
-                    <span class="visually-hidden">SLA violations</span>
-                </span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="sla-alert-btn" id="sla-alert-dropdown">
-                <li><h6 class="dropdown-header">Items Below Minimum SLA Target</h6></li>
-                <li><hr class="dropdown-divider"></li>
-                <div id="sla-alert-items-container" style="max-height: 400px; overflow-y: auto;">
-                    <!-- Alert items will be injected here -->
-                </div>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item text-center" href="<?= base_url('/sla-report') ?>">View Full Report</a></li>
-            </ul>
-            <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="incident-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Open Incidents">
-                <i class="bi bi-shield-fill-exclamation text-primary fs-4"></i>
-                <span id="incident-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-dark">
-                    <span class="visually-hidden">Open incidents</span>
-                </span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="incident-alert-btn" id="incident-alert-dropdown">
-                <li><h6 class="dropdown-header">Open Incidents</h6></li>
-                <li><hr class="dropdown-divider"></li>
-                <div id="incident-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item text-center" href="<?= base_url('/incident-reports') ?>">View All Incidents</a></li>
-            </ul>
-            <!-- IDE: Tombol Notifikasi Update Tertunda -->
-            <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" id="pending-updates-alert-btn" style="display: none; width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Pending Updates">
-                <i class="bi bi-arrow-clockwise text-info fs-4"></i>
-                <span id="pending-updates-alert-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                    <span class="visually-hidden">Pending updates</span>
-                </span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="pending-updates-alert-btn" id="pending-updates-alert-dropdown">
-                <li><h6 class="dropdown-header">Stacks with Pending Updates</h6></li>
-                <li><hr class="dropdown-divider"></li>
-                <div id="pending-updates-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item text-center" href="<?= base_url('/pending-updates') ?>" id="view-all-pending-stacks-link">View All Pending Updates</a></li>
-            </ul>
-            <a href="<?= base_url('/groups') ?>" id="deploy-notification-btn" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center" style="display: none; width: 44px; height: 44px;" title="Pending Changes to Deploy">
-                <i class="bi bi-cloud-upload-fill text-primary fs-4"></i>
-            </a>
-            <?php endif; ?>
+                <!-- Tombol utama yang selalu terlihat -->
+                <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" id="monitoring-alert-toggle-btn" title="Show Monitoring Alerts" style="width: 44px; height: 44px;">
+                    <i class="bi bi-bell fs-4"></i>
+                    <span id="main-alert-indicator" class="position-absolute top-0 start-100 translate-middle p-2 bg-danger border border-light rounded-circle" style="display: none;">
+                        <span class="visually-hidden">New alerts</span>
+                    </span>
+                </button>
+            </div>
             <div class="nav-item dropdown">
                 <a href="#" class="btn btn-light rounded-circle d-flex align-items-center justify-content-center" id="appMenuDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Menu" style="width: 44px; height: 44px;">
                     <i class="bi bi-grid-3x3-gap-fill fs-4"></i>
@@ -419,11 +418,25 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                     <li><a class="dropdown-item" href="<?= base_url('/users') ?>"><i class="bi bi-people-fill me-2 text-muted"></i>User Management</a></li>
                     <li><hr class="dropdown-divider"></li>
 
+                    <li><h6 class="dropdown-header">Theme</h6></li>
+                    <li class="px-3 py-2">
+                        <div class="btn-group w-100" role="group" aria-label="Theme switcher">
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="light" title="Light"><i class="bi bi-sun-fill"></i></a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="dark" title="Dark"><i class="bi bi-moon-stars-fill"></i></a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="ocean" title="Ocean"><i class="bi bi-water"></i></a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="forest" title="Forest"><i class="bi bi-tree-fill"></i></a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="sunrise" title="Sunrise"><i class="bi bi-sunrise-fill"></i></a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="midnight" title="Midnight"><i class="bi bi-moon-fill"></i></a>
+                        </div>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+
                     <li><h6 class="dropdown-header">Hi, <?= htmlspecialchars($_SESSION['username']) ?>!</h6></li>
                     <li><a class="dropdown-item" href="<?= base_url('/my-profile/change-password') ?>"><i class="bi bi-key-fill me-2 text-muted"></i>Change Password</a></li>
                     <li><a class="dropdown-item no-spa" id="logout-link" href="<?= base_url('/logout') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
                 </ul>
             </div>
+            <?php endif; ?>
         </div>
     </nav>
 

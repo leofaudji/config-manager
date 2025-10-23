@@ -237,32 +237,6 @@ window.pageInit = function() {
             .catch(error => contentEl.textContent = 'Error loading log: ' + error.message);
     }
 
-    function renderPagination(containerId, totalPages, currentPage, callback) {
-        const container = document.getElementById(containerId); // NOSONAR
-        if (!container) return;
-        container.innerHTML = '';
-        if (totalPages <= 1) return;
-        
-        const ul = document.createElement('ul');
-        ul.className = 'pagination pagination-sm';
-
-        for (let i = 1; i <= totalPages; i++) {
-            const li = document.createElement('li');
-            li.className = `page-item ${i === currentPage ? 'active' : ''}`;
-            const a = document.createElement('a');
-            a.className = 'page-link';
-            a.href = 'javascript:void(0);';
-            a.textContent = i;
-            a.addEventListener('click', (e) => {
-                e.preventDefault();
-                callback(i);
-            });
-            li.appendChild(a);
-            ul.appendChild(li);
-        }
-        container.appendChild(ul);
-    }
-
     // --- IDE: Refactored Auto-Refresh Logic ---
     function handleAutoRefresh() {
         if (window.currentPageInterval) {

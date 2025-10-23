@@ -65,6 +65,36 @@ function formatBytes(bytes, decimals = 2) {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+/**
+ * Renders pagination controls in a specified container.
+ * @param {HTMLElement|string} containerOrId The container element or its ID.
+ * @param {number} totalPages The total number of pages.
+ * @param {number} currentPage The current active page.
+ * @param {Function} callback The function to call when a page link is clicked. It receives the page number as an argument.
+ */
+function renderPagination(containerOrId, totalPages, currentPage, callback) {
+    const container = (typeof containerOrId === 'string') ? document.getElementById(containerOrId) : containerOrId;
+    if (!container) return;
+    container.innerHTML = '';
+    if (totalPages <= 1) return;
+
+    const ul = document.createElement('ul');
+    ul.className = 'pagination pagination-sm mb-0';
+
+    for (let i = 1; i <= totalPages; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        const a = document.createElement('a');
+        a.className = 'page-link';
+        a.href = '#'; // Use # for proper link behavior
+        a.textContent = i;
+        a.dataset.page = i;
+        a.addEventListener('click', (e) => { e.preventDefault(); callback(i); });
+        li.appendChild(a);
+        ul.appendChild(li);
+    }
+    container.appendChild(ul);
+}
 // --- SPA Navigation Logic ---
 const mainContent = document.querySelector('.main-content');
 
@@ -2129,9 +2159,54 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // --- Theme Switcher Logic ---
+    function applyTheme(theme) {
+        document.body.classList.remove('dark-mode', 'theme-ocean', 'theme-forest', 'theme-sunrise', 'theme-midnight');
+        if (theme === 'dark') {
+            document.body.classList.add('dark-mode');
+        } else if (theme === 'ocean') {
+            document.body.classList.add('theme-ocean');
+        } else if (theme === 'forest') {
+            document.body.classList.add('theme-forest');
+        } else if (theme === 'sunrise') {
+            document.body.classList.add('theme-sunrise');
+        } else if (theme === 'midnight') {
+            document.body.classList.add('theme-midnight');
+        }
+        // Update active state in dropdown
+        document.querySelectorAll('.theme-switcher').forEach(link => {
+            if (link.dataset.theme === theme) {
+                link.classList.add('active');
+            } else {
+                link.classList.remove('active');
+            }
+        });
+        // Save theme to cookie
+        document.cookie = `theme=${theme};path=/;max-age=31536000;samesite=lax`; // Expires in 1 year
+    }
+
+    // Apply theme on initial load
+    const savedTheme = document.body.dataset.theme || 'light';
+    applyTheme(savedTheme);
+
+    // Add click listener for theme switchers
+    document.body.addEventListener('click', function(e) {
+        const themeSwitcher = e.target.closest('.theme-switcher');
+        if (themeSwitcher) {
+            e.preventDefault();
+            const theme = themeSwitcher.dataset.theme;
+            applyTheme(theme);
+            // If a CodeMirror editor exists on the page, update its theme
+            if (window.activeCodeMirrorEditor) {
+                window.activeCodeMirrorEditor.setOption("theme", ['dark', 'ocean', 'forest', 'sunrise', 'midnight'].includes(theme) ? "monokai" : "default");
+            }
+        }
+    });
+
     // --- Sidebar Active Link Logic ---
     updateActiveLink(window.location.href);
     
+    // --- Consolidated Global Status Updater ---
     // --- Consolidated Global Status Updater ---
     function updateGlobalStatus() {
         fetch(`${basePath}/api/sidebar/status`)
@@ -2139,6 +2214,9 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(result => {
                 if (result.status !== 'success') return;
                 const data = result.data;
+
+                // --- IDE: Flag untuk melacak notifikasi ---
+                let hasAnyNotification = false;
 
                 // 1. Update Sidebar Badges
                 const unhealthyBadge = document.getElementById('sidebar-unhealthy-badge');
@@ -2217,10 +2295,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 const unhealthyAlertItemsContainer = document.getElementById('unhealthy-alert-items-container');
                 if (unhealthyAlertBtn && unhealthyAlertBadge && unhealthyAlertItemsContainer) {
                     if (data.unhealthy_items.count > 0) {
-                        unhealthyAlertBtn.classList.add('btn-pulse');
+                        // unhealthyAlertBtn.classList.add('btn-pulse'); // Dihapus sesuai permintaan
                         unhealthyAlertBtn.style.display = 'flex';
                         unhealthyAlertBadge.textContent = data.unhealthy_items.count;
                         unhealthyAlertBadge.style.display = 'inline-block';
+                        hasAnyNotification = true; // --- IDE: Tandai ada notifikasi ---
 
                         let itemsHtml = '';
                         data.unhealthy_items.alerts.forEach(alert => {
@@ -2238,7 +2317,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         });
                         unhealthyAlertItemsContainer.innerHTML = itemsHtml;
                     } else {
-                        unhealthyAlertBtn.classList.remove('btn-pulse');
+                        // unhealthyAlertBtn.classList.remove('btn-pulse'); // Dihapus sesuai permintaan
                         unhealthyAlertBadge.style.display = 'none';
                         unhealthyAlertItemsContainer.innerHTML = '<li><span class="dropdown-item text-muted">All items are healthy.</span></li>';
                     }
@@ -2250,9 +2329,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 const slaAlertItemsContainer = document.getElementById('sla-alert-items-container');
                 if (slaAlertBtn && slaAlertBadge && slaAlertItemsContainer) {
                     if (data.sla_violations.count > 0) {
-                        slaAlertBtn.classList.add('btn-pulse');
+                        // slaAlertBtn.classList.add('btn-pulse'); // Dihapus sesuai permintaan
                         slaAlertBadge.textContent = data.sla_violations.count;
                         slaAlertBadge.style.display = 'inline-block';
+                        hasAnyNotification = true; // --- IDE: Tandai ada notifikasi ---
 
                         let itemsHtml = '';
                         data.sla_violations.alerts.forEach(alert => {
@@ -2275,7 +2355,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         });
                         slaAlertItemsContainer.innerHTML = itemsHtml;
                     } else {
-                        slaAlertBtn.classList.remove('btn-pulse');
+                        // slaAlertBtn.classList.remove('btn-pulse'); // Dihapus sesuai permintaan
                         slaAlertBadge.style.display = 'none';
                         slaAlertItemsContainer.innerHTML = '<li><span class="dropdown-item text-muted">No recent downtime.</span></li>';
                     }
@@ -2289,7 +2369,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (gitStatus.changes_count > 0) {
                         syncBadge.textContent = gitStatus.changes_count;
                         syncBadge.style.display = 'block';
-                        syncStacksBtn.classList.add('btn-pulse');
+                        // syncStacksBtn.classList.add('btn-pulse'); // Dihapus sesuai permintaan
+                        hasAnyNotification = true; // --- IDE: Tandai ada notifikasi ---
 
                         // Store diff data and set button to open modal
                         syncStacksBtn.dataset.diff = gitStatus.diff;
@@ -2298,7 +2379,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     } else {
                         // No changes, ensure button has default (direct sync) behavior
                         syncBadge.style.display = 'none';
-                        syncStacksBtn.classList.remove('btn-pulse');
+                        // syncStacksBtn.classList.remove('btn-pulse'); // Dihapus sesuai permintaan
                         syncStacksBtn.removeAttribute('data-bs-toggle');
                         syncStacksBtn.removeAttribute('data-bs-target');
                         syncStacksBtn.dataset.diff = '';
@@ -2311,9 +2392,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 const incidentAlertItemsContainer = document.getElementById('incident-alert-items-container');
                 if (incidentAlertBtn && incidentAlertBadge && incidentAlertItemsContainer && data.open_incidents) {
                     if (data.open_incidents.count > 0) {
-                        incidentAlertBtn.classList.add('btn-pulse');
+                        // incidentAlertBtn.classList.add('btn-pulse'); // Dihapus sesuai permintaan
                         incidentAlertBadge.textContent = data.open_incidents.count;
                         incidentAlertBadge.style.display = 'inline-block';
+                        hasAnyNotification = true; // --- IDE: Tandai ada notifikasi ---
 
                         let itemsHtml = '';
                         data.open_incidents.alerts.forEach(alert => {
@@ -2334,7 +2416,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         });
                         incidentAlertItemsContainer.innerHTML = itemsHtml;
                     } else {
-                        incidentAlertBtn.classList.remove('btn-pulse');
+                        // incidentAlertBtn.classList.remove('btn-pulse'); // Dihapus sesuai permintaan
                         incidentAlertBadge.style.display = 'none';
                         incidentAlertItemsContainer.innerHTML = '<li><span class="dropdown-item text-muted">No open incidents.</span></li>';
                     }
@@ -2358,6 +2440,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     } else if (status.status === 'error') {
                         iconColorClass = 'text-danger';
                         title = `Backup Status: Failed\nDetails: ${status.details}`;
+                        hasAnyNotification = true; // --- IDE: Tandai ada notifikasi ---
                         badgeClass = 'bg-danger';
                     }
                     
@@ -2390,6 +2473,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         pendingUpdatesBtn.style.display = 'flex';
                         pendingUpdatesBadge.textContent = count;
                         pendingUpdatesBadge.style.display = 'inline-block';
+                        hasAnyNotification = true; // --- IDE: Tandai ada notifikasi ---
                         if (sidebarPendingUpdatesBadge) {
                             sidebarPendingUpdatesBadge.textContent = count;
                             sidebarPendingUpdatesBadge.style.display = 'inline-block';
@@ -2415,6 +2499,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // 4. Update Deploy Notification Button
                 updateDeployNotification(data.config_dirty);
+
+                // --- IDE: Update Ikon Notifikasi Utama ---
+                const mainAlertToggleBtn = document.getElementById('monitoring-alert-toggle-btn');
+                if (mainAlertToggleBtn) {
+                    // Jika ada notifikasi dari deploy yang pending, tandai juga
+                    if (data.config_dirty) hasAnyNotification = true;
+
+                    mainAlertToggleBtn.classList.toggle('has-notification', hasAnyNotification);
+                }
 
             })
             .catch(error => console.error('Error fetching global status:', error));

@@ -16,6 +16,8 @@
     --sidebar-link-hover-color: var(--cf-text-color); /* Darker text on hover */
     --sidebar-link-active-color: #ffffff;
     --sidebar-link-active-bg: var(--cf-blue); /* Blue background for active link */
+    --sidebar-search-bg: rgba(0, 0, 0, 0.05);
+    --sidebar-search-color: var(--cf-text-color);
 }
 
 body.dark-mode {
@@ -34,7 +36,101 @@ body.dark-mode {
     --sidebar-link-color: #adb5bd; /* Made the default link color slightly brighter for better readability */
     --sidebar-link-hover-color: var(--cf-text-color);
     --sidebar-link-active-bg: var(--cf-blue);
+    --sidebar-search-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-search-color: var(--cf-text-color);
 }
+
+/* --- IDE: Tema Sidebar "Ocean" --- */
+body.theme-ocean {
+    --sidebar-bg: linear-gradient(to top, #0f2027, #203a43, #2c5364); /* Gradien biru tua */
+    --sidebar-link-color: #bde0fe; /* Teks biru muda */
+    --sidebar-link-hover-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-link-hover-color: #ffffff;
+    --sidebar-link-active-bg: #ffffff; /* Latar belakang putih untuk item aktif */
+    --sidebar-link-active-color: #0f2027; /* Teks biru tua untuk item aktif */
+    --cf-border-color: #2c5364; /* Warna border yang cocok dengan gradien */
+    --sidebar-search-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-search-color: var(--sidebar-link-color);
+}
+
+body.theme-ocean .sidebar {
+    background: var(--sidebar-bg);
+}
+
+body.theme-ocean .sidebar .navbar-brand,
+body.theme-ocean .sidebar .nav-link {
+    color: var(--sidebar-link-color);
+}
+/* --- Akhir IDE --- */
+
+/* --- IDE: Tema Sidebar "Forest" --- */
+body.theme-forest {
+    --sidebar-bg: linear-gradient(to top, #1E3A1F, #2A5230, #3B7A44); /* Gradien hijau tua */
+    --sidebar-link-color: #C8E6C9; /* Teks hijau muda */
+    --sidebar-link-hover-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-link-hover-color: #ffffff;
+    --sidebar-link-active-bg: #ffffff; /* Latar belakang putih untuk item aktif */
+    --sidebar-link-active-color: #1E3A1F; /* Teks hijau tua untuk item aktif */
+    --cf-border-color: #3B7A44; /* Warna border yang cocok dengan gradien */
+    --sidebar-search-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-search-color: var(--sidebar-link-color);
+}
+
+body.theme-forest .sidebar {
+    background: var(--sidebar-bg);
+}
+
+body.theme-forest .sidebar .navbar-brand,
+body.theme-forest .sidebar .nav-link {
+    color: var(--sidebar-link-color);
+}
+/* --- Akhir IDE --- */
+
+/* --- IDE: Tema Sidebar "Sunrise" --- */
+body.theme-sunrise {
+    --sidebar-bg: linear-gradient(to top, #F7B733, #FC4A1A); /* Gradien oranye-kuning */
+    --sidebar-link-color: #4A1D04; /* Teks coklat tua */
+    --sidebar-link-hover-bg: rgba(255, 255, 255, 0.2);
+    --sidebar-link-hover-color: #000000;
+    --sidebar-link-active-bg: #ffffff; /* Latar belakang putih untuk item aktif */
+    --sidebar-link-active-color: #FC4A1A; /* Teks oranye untuk item aktif */
+    --cf-border-color: #F7B733; /* Warna border yang cocok dengan gradien */
+    --sidebar-search-bg: rgba(0, 0, 0, 0.07);
+    --sidebar-search-color: var(--sidebar-link-color);
+}
+
+body.theme-sunrise .sidebar {
+    background: var(--sidebar-bg);
+}
+
+body.theme-sunrise .sidebar .navbar-brand,
+body.theme-sunrise .sidebar .nav-link {
+    color: var(--sidebar-link-color);
+}
+/* --- Akhir IDE --- */
+
+/* --- IDE: Tema Sidebar "Midnight" --- */
+body.theme-midnight {
+    --sidebar-bg: linear-gradient(to top, #141E30, #243B55); /* Gradien biru malam */
+    --sidebar-link-color: #A7C0E0; /* Teks biru pucat */
+    --sidebar-link-hover-bg: rgba(255, 255, 255, 0.08);
+    --sidebar-link-hover-color: #ffffff;
+    --sidebar-link-active-bg: #ffffff; /* Latar belakang putih untuk item aktif */
+    --sidebar-link-active-color: #141E30; /* Teks biru tua untuk item aktif */
+    --cf-border-color: #243B55; /* Warna border yang cocok dengan gradien */
+    --sidebar-search-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-search-color: var(--sidebar-link-color);
+}
+
+body.theme-midnight .sidebar {
+    background: var(--sidebar-bg);
+}
+
+body.theme-midnight .sidebar .navbar-brand,
+body.theme-midnight .sidebar .nav-link {
+    color: var(--sidebar-link-color);
+}
+/* --- Akhir IDE --- */
 
 body {
     background-color: var(--cf-bg-color);
@@ -150,6 +246,7 @@ body.dark-mode .sidebar .navbar-brand {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    border-bottom: 1px solid transparent; /* FIX: Add transparent border to prevent jump */
 }
 
 .sidebar-nav .nav-link:hover {
@@ -161,7 +258,7 @@ body.dark-mode .sidebar .navbar-brand {
     /* --- IDE 2: Indikator Link Aktif --- */
     color: var(--bs-primary); /* Ubah warna teks menjadi warna primer */
     background-color: transparent; /* Hapus latar belakang solid */
-    font-weight: bold;
+    font-weight: 500; /* FIX: Keep font-weight consistent to prevent jump */
     /* Tambahkan garis vertikal di kiri sebagai indikator */
     border-left: 3px solid var(--bs-primary);
     /* --- Akhir Ide 2 --- */
@@ -306,21 +403,17 @@ body.dark-mode .sidebar .navbar-brand {
 }
 
 #sidebar-search-input {
-    background-color: rgba(0,0,0,0.05);
+    background-color: var(--sidebar-search-bg);
     border: 1px solid transparent;
-    color: var(--cf-text-color);
+    color: var(--sidebar-search-color);
     border-radius: 0.375rem;
     padding-left: 2.2rem; /* Make space for the search icon */
     padding-right: 2.2rem; /* Make space for the clear button */
 }
 
 #sidebar-search-input:focus {
-    background-color: var(--cf-input-bg-color);
+    background-color: var(--sidebar-search-bg);
     border-color: var(--cf-blue);
-}
-
-body.dark-mode #sidebar-search-input {
-    background-color: rgba(255,255,255,0.1);
 }
 
 .sidebar-header {
@@ -656,4 +749,58 @@ body.dark-mode .sidebar-nav::-webkit-scrollbar-thumb:hover {
 /* Remove the default dropdown arrow */
 .profile-pill::after {
     display: none;
+}
+
+/* --- Monitoring Alert Button Animation --- */
+.monitoring-alerts-container {
+    position: relative;
+    display: flex;
+    flex-direction: row; /* Mengembalikan ke urutan normal */
+    align-items: center;
+}
+
+.monitoring-alerts-wrapper {
+    display: flex;
+    align-items: center;
+    /* Initial state: hidden */
+    transition: all 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+.monitoring-alerts-wrapper .monitoring-alert-item {
+    transform: scale(0);
+    opacity: 0;
+    width: 0 !important; /* Mulai dari lebar 0 */
+    margin-right: 0 !important; /* Mulai dari margin 0 */
+    transition: all 0.3s ease-out;
+}
+
+.monitoring-alerts-container.active .monitoring-alerts-wrapper .monitoring-alert-item {
+    transform: scale(1);
+    opacity: 1;
+    width: 44px !important; /* Lebar asli tombol */
+    margin-right: 0.5rem !important; /* Jarak asli antar tombol */
+}
+
+/* Staggered animation delay */
+.monitoring-alerts-container.active .monitoring-alerts-wrapper .monitoring-alert-item:nth-child(1) { transition-delay: 0.05s; }
+.monitoring-alerts-container.active .monitoring-alerts-wrapper .monitoring-alert-item:nth-child(2) { transition-delay: 0.1s; }
+.monitoring-alerts-container.active .monitoring-alerts-wrapper .monitoring-alert-item:nth-child(3) { transition-delay: 0.15s; }
+.monitoring-alerts-container.active .monitoring-alerts-wrapper .monitoring-alert-item:nth-child(4) { transition-delay: 0.2s; }
+.monitoring-alerts-container.active .monitoring-alerts-wrapper .monitoring-alert-item:nth-child(5) { transition-delay: 0.25s; }
+.monitoring-alerts-container.active .monitoring-alerts-wrapper .monitoring-alert-item:nth-child(6) { transition-delay: 0.3s; }
+
+/* --- Gaya Ikon Notifikasi Utama --- */
+#monitoring-alert-toggle-btn > i {
+    color: var(--bs-secondary); /* Warna abu-abu default */
+    transition: color 0.3s ease-in-out;
+}
+
+/* --- IDE: Tambahkan efek pulse pada tombol notifikasi utama --- */
+#monitoring-alert-toggle-btn.has-notification {
+    animation: pulse 2s infinite;
+}
+
+#monitoring-alert-toggle-btn.has-notification > i,
+#monitoring-alert-toggle-btn.active > i {
+    color: var(--bs-danger); /* Warna merah saat ada notifikasi atau saat aktif */
 }
