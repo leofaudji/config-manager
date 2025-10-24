@@ -15,12 +15,12 @@ class CronManager {
     public function __construct() {
         $this->checkPrerequisites();
         $this->scripts = [
-            'collect_stats' => PROJECT_ROOT . '/collect_stats.php',
-            'autoscaler' => PROJECT_ROOT . '/autoscaler.php',
-            'health_monitor' => PROJECT_ROOT . '/health_monitor.php',
-            'system_cleanup' => PROJECT_ROOT . '/system_cleanup.php',
-            'system_backup' => PROJECT_ROOT . '/system_backup.php',
-            'scheduled_deployment_runner' => PROJECT_ROOT . '/scheduled_deployment_runner.php'
+            'collect_stats' => PROJECT_ROOT . '/jobs/collect_stats.php',
+            'autoscaler' => PROJECT_ROOT . '/jobs/autoscaler.php',
+            'health_monitor' => PROJECT_ROOT . '/jobs/health_monitor.php',
+            'system_cleanup' => PROJECT_ROOT . '/jobs/system_cleanup.php',
+            'system_backup' => PROJECT_ROOT . '/jobs/system_backup.php',
+            'scheduled_deployment_runner' => PROJECT_ROOT . '/jobs/scheduled_deployment_runner.php'
         ];
     }
 

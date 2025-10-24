@@ -46,6 +46,7 @@ $router->get('/health-check', 'pages/health_check.php', ['auth', 'admin']);
 $router->get('/health-status', 'pages/health_status.php', ['auth']);
 $router->get('/changelog', 'pages/changelog.php', ['auth']);
 $router->get('/security-events', 'pages/security_events.php', ['auth', 'admin']); // Rute baru
+$router->get('/security-workflow', 'pages/security_workflow.php', ['auth', 'admin']); // Rute baru
 $router->get('/host-overview', 'pages/host_overview.php', ['auth', 'admin']); // Rute baru
 $router->get('/central-logs', 'pages/central_log_viewer.php', ['auth', 'admin']); // Rute baru
 $router->get('/resource-hotspots', 'pages/resource_hotspots.php', ['auth', 'admin']); // Rute baru

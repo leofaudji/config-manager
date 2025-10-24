@@ -4,8 +4,8 @@
 // This script should be run by a cron job every minute.
 // * * * * * /usr/bin/php /var/www/html/config-manager/scheduled_deployment_runner.php >> /var/log/scheduled_deployment.log 2>&1
 
-require_once __DIR__ . '/includes/bootstrap.php';
-require_once __DIR__ . '/includes/DeploymentRunner.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/DeploymentRunner.php';
 
 function colorize_log($message, $color = "default") {
     $colors = [

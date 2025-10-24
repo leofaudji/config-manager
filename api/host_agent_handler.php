@@ -246,20 +246,33 @@ try {
                 $dockerClient->pullImage($falco_image);
                 stream_message("Image pull completed.");
 
+                // --- NEW: Create a dedicated network for Falco components ---
+                $falco_network_name = 'falco-net';
+                stream_message("Ensuring Falco network '{$falco_network_name}' exists...");
+                // Pass 'false' to create a bridge network, not an overlay one.
+                $dockerClient->ensureNetworkExists($falco_network_name, false);
+                stream_message("Network '{$falco_network_name}' is ready.");
+
                 $volumes = [
                     '/var/run/docker.sock:/host/var/run/docker.sock:ro',
                     '/dev:/host/dev:ro',
                     '/proc:/host/proc:ro',
                     '/boot:/host/boot:ro',
                     '/lib/modules:/host/lib/modules:ro',
-                    '/usr:/host/usr:ro'
+                    '/usr:/host/usr:ro',
+                    // Mount the falco config to enable gRPC output
+                    'falco_rules.yaml:/etc/falco/falco_rules.local.yaml'
                 ];
 
                 stream_message("Creating and starting Falco container...");
                 $falco_config = [
                     'Image' => $falco_image,
                     // Attach to the default bridge network to allow communication from falcosidekick
-                    'HostConfig' => ['Binds' => $volumes, 'Privileged' => true, 'NetworkMode' => 'bridge']
+                    'HostConfig' => ['Binds' => $volumes, 'Privileged' => true],
+                    'Env' => [
+                        'FALCO_GRPC_ENABLED=true',
+                        'FALCO_GRPC_BIND_ADDRESS=0.0.0.0:5060'
+                    ]
                 ];
                 $dockerClient->createAndStartContainer($container_name, $falco_config);
 
@@ -277,64 +290,42 @@ try {
                 stream_message("Pulling Falcosidekick image '{$sidekick_image}'...");
                 $dockerClient->pullImage($sidekick_image);
                 stream_message("Image pull completed.");
-
-                // --- DEFINITIVE FIX: Use a bind mount for the configuration file ---
-                // This avoids all race conditions related to copying files into a running or starting container.
-                // The config file is created on the host and mounted directly into the container.
-                $base_compose_path = get_setting('default_compose_path');
-                if (empty($base_compose_path)) throw new Exception("Default Compose File Path must be configured in settings to deploy Falcosidekick.");
-                $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
-                $deployment_dir = rtrim($base_compose_path, '/') . '/' . $safe_host_name . '/' . $container_name;
-                if (!is_dir($deployment_dir) && !mkdir($deployment_dir, 0755, true)) throw new Exception("Could not create deployment directory for Falcosidekick config: {$deployment_dir}");
-
-                stream_message("Creating and starting Falcosidekick container...");
-
-                // --- FIX: Explicitly create and use a config file for Falcosidekick ---
-                // This is more reliable than environment variables, which can be ignored.
+                
+                // --- NEW FIX: Create the config file locally and copy it into the container ---
+                // This avoids issues with remote host paths and permissions.
+                // 1. Create the config content.
                 $webui_url = rtrim($config_manager_url, '/') . '/api/security/ingest';
                 $sidekick_config_content = <<<YAML
+grpc:
+  checkcert: false # Simplifies connection to Falco within the same Docker network
 webui:
   url: "{$webui_url}"
   customheaders:
     X-API-KEY: "{$api_token}"
     X-FALCO-HOSTNAME: "{$host['name']}"
 YAML;
-                // Create a temporary file for the config
-                $temp_config_file = tempnam(sys_get_temp_dir(), 'falcosidekick-config-');
+                // 2. Create a temporary local file to hold the config.
+                $temp_config_file = tempnam(sys_get_temp_dir(), 'falco_cfg');
                 file_put_contents($temp_config_file, $sidekick_config_content);
 
-                // --- FIX: Use a more robust multi-step process to avoid race conditions ---
-                // 1. Create the container but DO NOT start it yet.
-                // 1. Create the container with a placeholder command to keep it running.
+                // 3. Define the container configuration, but without the bind mount.
+                stream_message("Creating and starting Falcosidekick container...");
                 $sidekick_config = [
                     'Image' => $sidekick_image,
-                    // FIX: Add environment variable to tell falcosidekick where to find falco
-                    'Env' => ['FALCO_GRPC_HOSTNAME=falco-sensor'],
-                    // FIX: The image has an ENTRYPOINT of /falcosidekick, so Cmd should only contain the arguments.
-                    'Cmd' => ['-c', '/etc/config.yaml'],
-                    // FIX: Use a placeholder command to keep the container running while we configure it.
-                    'Cmd' => ['sleep', 'infinity'],
-                    // Explicitly attach to the default bridge network to allow communication with falco-sensor
-                    'HostConfig' => ['NetworkMode' => 'bridge']
+                    'Env' => ['FALCO_GRPC_HOSTNAME=falco-sensor'], // Tell falcosidekick where to find falco
+                    'Cmd' => ['-c', '/config.yaml'], // Point to the new, reliable path in the root directory
+                    'HostConfig' => [
+                        // Connect to the dedicated Falco network
+                        'NetworkMode' => $falco_network_name
+                    ]
                 ];
                 $containerId = $dockerClient->createContainer($container_name, $sidekick_config);
-                $containerId = $dockerClient->createAndStartContainer($container_name, $sidekick_config);
+                
+                // 4. Copy the local temporary config file into the running container.
+                $dockerClient->copyToContainer($containerId, $temp_config_file, '/config.yaml'); // Copy to the root directory
+                unlink($temp_config_file); // Clean up the temporary file.
+                $dockerClient->startContainer($containerId); // 5. Start the container now that the config is in place.
 
-                // 2. Copy the config file into the created (but not running) container.
-                // 2. Copy the config file to a temporary location inside the running container.
-                stream_message("Injecting configuration into Falcosidekick container...");
-                $dockerClient->copyToContainer($containerId, $temp_config_file, '/etc/config.yaml');
-
-                // 3. Now, start the container. It will start with the correct config file already in place.
-                stream_message("Starting Falcosidekick container...");
-                $dockerClient->startContainer($containerId);
-                // 3. Execute a command to replace the 'sleep' process with the actual 'falcosidekick' process.
-                stream_message("Starting Falcosidekick process...");
-                $start_command = 'exec /falcosidekick -c /etc/config.yaml';
-                $dockerClient->execInContainer($containerId, ['/bin/sh', '-c', $start_command]);
-
-                // Clean up the temporary file
-                unlink($temp_config_file);
                 stream_message("Falcosidekick configuration complete.");
 
             }

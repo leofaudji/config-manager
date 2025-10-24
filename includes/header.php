@@ -255,9 +255,6 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/incident-reports') ?>">
                                 <span>Incident Reports</span><span class="badge bg-primary rounded-pill" id="sidebar-incident-badge" style="display: none;"></span>
                             </a></li>
-                        <li class="nav-item"><a class="nav-link d-flex justify-content-between align-items-center" href="<?= base_url('/security-events') ?>">
-                                <span>Security Events</span><span class="badge bg-danger rounded-pill" id="sidebar-security-badge" style="display: none;"></span>
-                            </a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/host-overview') ?>">Host Overview</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/container-events') ?>">Container Events</a></li>
                         <li class="nav-item"><a class="nav-link" href="<?= base_url('/central-logs') ?>">Centralized Logs</a></li>

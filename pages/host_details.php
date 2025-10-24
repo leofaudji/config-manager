@@ -82,7 +82,12 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                     <button id="restart-falco-btn" class="btn btn-outline-warning" data-type="falco" data-action="restart" style="display: none;" title="Restart"><i class="bi bi-arrow-clockwise"></i></button>
                                     <button id="remove-falco-btn" class="btn btn-outline-danger" data-type="falco" data-action="remove" style="display: none;" title="Remove"><i class="bi bi-trash-fill"></i></button>
                                 </div>
-                                <button class="btn btn-sm btn-outline-secondary view-container-logs-btn ms-2" data-container-name="falco-sensor" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
+                                <div class="btn-group btn-group-sm ms-2" role="group">
+                                    <button class="btn btn-outline-secondary view-container-logs-btn" data-container-name="falco-sensor" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
+                                    <a href="<?= base_url('/security-workflow') ?>" class="btn btn-sm btn-outline-info" target="_blank" title="View Security Workflow">
+                                        <i class="bi bi-diagram-3"></i>
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         <!-- Falcosidekick Row -->
@@ -98,7 +103,12 @@ require_once __DIR__ . '/../includes/host_nav.php';
                                     <button id="deploy-falcosidekick-btn" class="btn btn-outline-success" data-type="falcosidekick" data-action="deploy" title="Deploy/Redeploy"><i class="bi bi-cloud-arrow-down-fill"></i></button>
                                     <button id="remove-falcosidekick-btn" class="btn btn-outline-danger" data-type="falcosidekick" data-action="remove" style="display: none;" title="Remove"><i class="bi bi-trash-fill"></i></button>
                                 </div>
-                                <button class="btn btn-sm btn-outline-secondary view-container-logs-btn ms-2" data-container-name="falcosidekick" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
+                                <div class="btn-group btn-group-sm ms-2" role="group">
+                                    <button class="btn btn-outline-secondary view-container-logs-btn" data-container-name="falcosidekick" data-bs-toggle="modal" data-bs-target="#viewLogsModal" title="Container Log"><i class="bi bi-card-text"></i></button>
+                                    <a href="<?= base_url('/security-workflow') ?>" class="btn btn-sm btn-outline-info" target="_blank" title="View Security Workflow">
+                                        <i class="bi bi-diagram-3"></i>
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                        

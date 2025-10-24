@@ -164,6 +164,11 @@ require_once __DIR__ . '/../includes/header.php';
                             <input type="number" class="form-control" id="minimum_sla_percentage" name="minimum_sla_percentage" value="<?= htmlspecialchars($settings['minimum_sla_percentage'] ?? '99.9') ?>" min="0" max="100" step="0.01">
                             <small class="form-text text-muted">Set the target SLA percentage for color-coding in reports.</small>
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="host_down_threshold_minutes" class="form-label">Host Down Threshold (minutes)</label>
+                            <input type="number" class="form-control" id="host_down_threshold_minutes" name="host_down_threshold_minutes" value="<?= htmlspecialchars($settings['host_down_threshold_minutes'] ?? '5') ?>" min="1">
+                            <small class="form-text text-muted">Time in minutes without a health report before a host is considered "down".</small>
+                        </div>
                     </div>
                     <hr>
                     <h5 class="card-title mb-4">SLA Maintenance Window</h5>

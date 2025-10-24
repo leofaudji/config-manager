@@ -9,7 +9,7 @@ if (!defined('PROJECT_ROOT')) {
     define('PROJECT_ROOT', __DIR__);
 }
 
-require_once PROJECT_ROOT . '/includes/bootstrap.php';
+require_once PROJECT_ROOT . '/../includes/bootstrap.php';
 
 echo "Memulai Automatic Backup pada " . date('Y-m-d H:i:s') . "\n";
 

@@ -7,7 +7,7 @@
 set_time_limit(55); // Run for slightly less than a minute
 
 if (!defined('PROJECT_ROOT')) {
-    define('PROJECT_ROOT', __DIR__);
+    define('PROJECT_ROOT', dirname(__DIR__));
 }
 
 require_once PROJECT_ROOT . '/includes/bootstrap.php';

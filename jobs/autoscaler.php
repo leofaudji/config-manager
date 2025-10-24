@@ -8,8 +8,8 @@
 set_time_limit(280); // Sedikit di bawah 5 menit
 
 // Bootstrap aplikasi
-require_once __DIR__ . '/includes/bootstrap.php';
-require_once __DIR__ . '/includes/DockerClient.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/DockerClient.php';
 
 function colorize_log($message, $color = "default") {
     $colors = [
@@ -192,6 +192,97 @@ try {
             echo colorize_log("  -> ERROR memproses stack '{$stack['stack_name']}': " . $e->getMessage() . "\n", "error");
             log_activity('SYSTEM', 'Autoscaler Error', "Gagal memproses stack '{$stack['stack_name']}': " . $e->getMessage());
         }
+    }
+
+    // --- Handle Stale/Down Hosts to ensure SLA accuracy (Moved from system_cleanup) ---
+    $host_down_threshold_minutes = (int)get_setting('host_down_threshold_minutes', 5);
+    echo "INFO: Mencari host yang tidak melapor selama lebih dari {$host_down_threshold_minutes} menit...\n";
+
+    $cutoff_time = date('Y-m-d H:i:s', strtotime("-{$host_down_threshold_minutes} minutes"));
+    $stmt_down_hosts = $conn->prepare("SELECT id, name FROM docker_hosts WHERE last_report_at < ? AND is_down_notified = 0");
+    $stmt_down_hosts->bind_param("s", $cutoff_time);
+    $stmt_down_hosts->execute();
+    $newly_down_hosts = $stmt_down_hosts->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt_down_hosts->close();
+
+    if (empty($newly_down_hosts)) {
+        echo "INFO: Tidak ada host yang down ditemukan.\n";
+    } else {
+        $stmt_get_open_events = $conn->prepare("
+            SELECT h.container_id, h.container_name, h.status
+            FROM container_health_history h
+            INNER JOIN (
+                SELECT container_id, MAX(id) as max_id
+                FROM container_health_history
+                WHERE host_id = ?
+                GROUP BY container_id
+            ) hm ON h.id = hm.max_id
+            WHERE h.end_time IS NULL AND h.status != 'unhealthy'
+        ");
+
+        $stmt_close_event = $conn->prepare("UPDATE container_health_history SET end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW()) WHERE container_id = ? AND end_time IS NULL");
+        $stmt_create_unhealthy_event = $conn->prepare("INSERT INTO container_health_history (host_id, container_id, container_name, status, start_time) VALUES (?, ?, ?, 'unhealthy', NOW())");
+        $stmt_mark_notified = $conn->prepare("UPDATE docker_hosts SET is_down_notified = 1 WHERE id = ?");
+        $stmt_create_incident = $conn->prepare("
+            INSERT INTO incident_reports (incident_type, target_id, target_name, host_id, start_time, monitoring_snapshot, severity)
+            SELECT 'host', ?, ?, ?, NOW(), ?, 'Critical'
+            FROM DUAL WHERE NOT EXISTS (
+                SELECT 1 FROM incident_reports 
+                WHERE target_id = ? AND incident_type = 'host' AND status IN ('Open', 'Investigating')
+            )
+        ");
+
+        foreach ($newly_down_hosts as $host) {
+            echo "  -> Host '{$host['name']}' (ID: {$host['id']}) dianggap down. Memproses kontainer...\n";
+            log_activity('SYSTEM', 'Host Down Detected', "Host '{$host['name']}' is considered down. Creating synthetic downtime for SLA.", $host['id']);
+
+            // Send notification only if enabled
+            if ((bool)get_setting('notification_host_down_enabled', true)) {
+                send_notification(
+                    "Host Down: {$host['name']}",
+                    "Host '{$host['name']}' is not reporting and is considered down. Synthetic downtime records are being created for SLA accuracy.",
+                    'error',
+                    ['host_id' => $host['id'], 'host_name' => $host['name']]
+                );
+            }
+
+            // Create a new incident for the host going down
+            $snapshot = json_encode(['message' => "Host failed to report in within the {$host_down_threshold_minutes} minute threshold."]);
+            $target_id_str = (string)$host['id'];
+            $stmt_create_incident->bind_param("ssisi", $target_id_str, $host['name'], $host['id'], $snapshot, $target_id_str);
+            $stmt_create_incident->execute();
+
+            // Send notification for the new incident if enabled
+            if ($stmt_create_incident->affected_rows > 0 && (bool)get_setting('notification_incident_created_enabled', true)) {
+                send_notification(
+                    "New Incident (Host Down): {$host['name']}",
+                    "A new incident has been opened for host '{$host['name']}' which is considered down.",
+                    'error',
+                    ['incident_type' => 'host', 'target_name' => $host['name'], 'host_id' => $host['id']]
+                );
+            }
+
+            // Mark as notified to prevent spam
+            $stmt_mark_notified->bind_param("i", $host['id']);
+            $stmt_mark_notified->execute();
+
+            $stmt_get_open_events->bind_param("i", $host['id']);
+            $stmt_get_open_events->execute();
+            $open_events = $stmt_get_open_events->get_result()->fetch_all(MYSQLI_ASSOC);
+
+            foreach ($open_events as $event) {
+                echo "    - Menandai '{$event['container_name']}' sebagai unhealthy.\n";
+                $stmt_close_event->bind_param("s", $event['container_id']);
+                $stmt_close_event->execute();
+                $stmt_create_unhealthy_event->bind_param("iss", $host['id'], $event['container_id'], $event['container_name']);
+                $stmt_create_unhealthy_event->execute();
+            }
+        }
+        $stmt_get_open_events->close();
+        $stmt_close_event->close();
+        $stmt_create_unhealthy_event->close();
+        $stmt_mark_notified->close();
+        $stmt_create_incident->close();
     }
 } catch (Exception $e) {
     echo colorize_log("Terjadi error kritis pada skrip autoscaler: " . $e->getMessage() . "\n", "error");

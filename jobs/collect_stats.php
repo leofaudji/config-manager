@@ -6,7 +6,7 @@
 
 // Define PROJECT_ROOT if it's not already defined (when running from CLI)
 if (!defined('PROJECT_ROOT')) {
-    define('PROJECT_ROOT', __DIR__);
+    define('PROJECT_ROOT', dirname(__DIR__));
 }
 
 require_once PROJECT_ROOT . '/includes/bootstrap.php';
