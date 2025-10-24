@@ -142,29 +142,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $incident_id = $matches[1];
 
     try {
-        $status = $_POST['status'] ?? null;
-        $investigation_notes = $_POST['investigation_notes'] ?? null;
-        $resolution_notes = $_POST['resolution_notes'] ?? null;
-        $severity = $_POST['severity'] ?? null;
-        $assignee_user_id = !empty($_POST['assignee_user_id']) ? (int)$_POST['assignee_user_id'] : null;
-        $executive_summary = $_POST['executive_summary'] ?? null;
-        $root_cause = $_POST['root_cause'] ?? null;
-        $lessons_learned = $_POST['lessons_learned'] ?? null;
-        $action_items = $_POST['action_items'] ?? [];
+        // --- FIX: Logic to set end_time on resolution/closure ---
+        // 1. Get the current status and start time from the database before updating
+        $stmt_get_old = $conn->prepare("SELECT status, start_time FROM incident_reports WHERE id = ?");
+        $stmt_get_old->bind_param("i", $incident_id);
+        $stmt_get_old->execute();
+        $old_incident = $stmt_get_old->get_result()->fetch_assoc();
+        $stmt_get_old->close();
+
+        if (!$old_incident) {
+            throw new Exception("Incident not found.");
+        }
+
+        $old_status = $old_incident['status'];
+        $new_status = $_POST['status'] ?? $old_status;
+
+        // 2. Build the update query dynamically
+        $set_clauses = [
+            "status = ?", "severity = ?", "assignee_user_id = ?",
+            "investigation_notes = ?", "resolution_notes = ?", "executive_summary = ?",
+            "root_cause = ?", "lessons_learned = ?", "action_items = ?"
+        ];
 
         // Filter out empty action items before encoding
+        $action_items = $_POST['action_items'] ?? [];
         $filtered_action_items = array_filter($action_items, fn($item) => !empty(trim($item['task'])));
         $action_items_json = json_encode(array_values($filtered_action_items)); // Re-index array
 
-        if (!in_array($status, ['Open', 'Investigating', 'On Hold', 'Resolved', 'Closed']) || !in_array($severity, ['Critical', 'High', 'Medium', 'Low'])) {
-            throw new Exception("Invalid status value provided.");
+        $params = [
+            $new_status, $_POST['severity'] ?? null,
+            !empty($_POST['assignee_user_id']) ? (int)$_POST['assignee_user_id'] : null,
+            $_POST['investigation_notes'] ?? null, $_POST['resolution_notes'] ?? null,
+            $_POST['executive_summary'] ?? null, $_POST['root_cause'] ?? null,
+            $_POST['lessons_learned'] ?? null, $action_items_json
+        ];
+        $types = "ssissssss";
+
+        // If status is changing to Resolved/Closed and it wasn't already, set end_time
+        if (in_array($new_status, ['Resolved', 'Closed']) && !in_array($old_status, ['Resolved', 'Closed'])) {
+            $set_clauses[] = "end_time = NOW()";
+            $set_clauses[] = "duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW())";
         }
 
-        $stmt = $conn->prepare("UPDATE incident_reports SET status = ?, severity = ?, assignee_user_id = ?, investigation_notes = ?, resolution_notes = ?, executive_summary = ?, root_cause = ?, lessons_learned = ?, action_items = ? WHERE id = ?");
-        $stmt->bind_param("ssissssssi", $status, $severity, $assignee_user_id, $investigation_notes, $resolution_notes, $executive_summary, $root_cause, $lessons_learned, $action_items_json, $incident_id);
+        $sql = "UPDATE incident_reports SET " . implode(', ', $set_clauses) . " WHERE id = ?";
+        $params[] = $incident_id;
+        $types .= "i";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$params);
+        // --- End FIX ---
+
+        $investigation_notes = $_POST['investigation_notes'] ?? null;
+        $resolution_notes = $_POST['resolution_notes'] ?? null;
+        $executive_summary = $_POST['executive_summary'] ?? null;
+        $root_cause = $_POST['root_cause'] ?? null;
+        $lessons_learned = $_POST['lessons_learned'] ?? null;
         
         if ($stmt->execute()) {
-            log_activity($_SESSION['username'], 'Incident Updated', "Updated incident report #{$incident_id}. Set status to {$status}.");
+            log_activity($_SESSION['username'], 'Incident Updated', "Updated incident report #{$incident_id}. Set status to {$new_status}.");
             echo json_encode([
                 'status' => 'success', 
                 'message' => 'Incident report updated successfully.',

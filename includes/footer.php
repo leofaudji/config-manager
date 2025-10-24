@@ -269,12 +269,16 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
 <!-- Global Search Modal -->
 <div class="modal" id="globalSearchModal" tabindex="-1" aria-labelledby="globalSearchModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+  <div class="modal-dialog modal-dialog-scrollable modal-xl">
     <div class="modal-content">
+      <div class="progress" id="global-search-progress" style="height: 3px; display: none;">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+      </div>
       <div class="modal-header border-0">
-        <div class="input-group">
-            <span class="input-group-text bg-transparent border-0 pe-2"><i class="bi bi-search"></i></span>
-            <input type="text" class="form-control border-0 shadow-none" id="global-search-input" placeholder="Search for hosts, stacks, containers, images, volumes..." autocomplete="off">
+        <div class="input-group global-search-input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input type="text" class="form-control" id="global-search-input" placeholder="Search for hosts, stacks, containers, images, volumes..." autocomplete="off">
+            <button type="button" class="btn-close" id="global-search-clear-btn" style="display: none;" aria-label="Clear search"></button>
         </div>
       </div>
       <div class="modal-body pt-0">
@@ -346,7 +350,8 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
         const searchBtn = document.getElementById('global-search-btn');
         const searchInput = document.getElementById('global-search-input');
         const resultsContainer = document.getElementById('global-search-results-container');
-        const clearBtn = document.getElementById('global-search-clear-btn');
+        const clearBtn = document.getElementById('global-search-clear-btn'); // Tombol clear baru
+        const progressBar = document.getElementById('global-search-progress');
         let clearOnHide = true; // Flag to control clearing on hide
         let focusedPane = 'results'; // 'results' or 'categories'
         let searchTimeout;
@@ -433,7 +438,8 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
         const performSearch = () => {
             const query = searchInput.value.trim();
-            focusedPane = 'results'; // Reset focus to results on new search
+            if (progressBar) progressBar.style.display = 'block'; // Tampilkan progress bar
+            if (clearBtn) clearBtn.style.display = query ? 'block' : 'none';
             // if (clearBtn) clearBtn.style.display = query ? 'block' : 'none'; // Dihapus karena sudah ada di tempat lain
 
             // --- IDE: Command Palette Logic ---
@@ -461,6 +467,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
             if (query.length < 2 && !command) { // Allow commands with short args
                 resultsContainer.innerHTML = '<div class="text-center text-muted p-4">Please enter at least 2 characters.</div>';
+                if (progressBar) progressBar.style.display = 'none'; // Sembunyikan progress bar
                 resetModalFooter();
                 return;
             }
@@ -486,6 +493,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
                     if (result.data.length === 0) {
                         resultsContainer.innerHTML = '<div class="text-center text-muted p-4">No results found.</div>';
+                        if (progressBar) progressBar.style.display = 'none'; // Sembunyikan progress bar
                         return;
                     }
 
@@ -497,10 +505,31 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
                     const categories = Object.keys(groupedResults);
 
+                    // --- IDE: Definisikan ikon untuk setiap kategori ---
+                    const categoryIcons = {
+                        'Hosts': 'bi-hdd-network-fill',
+                        'Stacks': 'bi-stack',
+                        'Containers': 'bi-box-seam',
+                        'Images': 'bi-hdd-stack',
+                        'Volumes': 'bi-database',
+                        'Networks': 'bi-diagram-3',
+                        'Routers': 'bi-bezier2',
+                        'Services': 'bi-gear-wide-connected',
+                        'Middlewares': 'bi-layers-fill',
+                        'Groups': 'bi-collection-fill',
+                        'Pages': 'bi-file-earmark-text',
+                        'Incidents': 'bi-shield-fill-exclamation',
+                        'Users': 'bi-people-fill',
+                        'Templates': 'bi-journal-code',
+                        'Cron Jobs': 'bi-clock-history',
+                        'Security': 'bi-shield-lock-fill',
+                        'Default': 'bi-app-indicator' // Ikon fallback
+                    };
+
                     let categoriesHtml = '<ul class="nav flex-column search-categories-list">';
-                    categoriesHtml += `<li class="nav-item"><a class="nav-link active" href="#" data-category="all">All Results <span class="badge bg-secondary float-end">${result.data.length}</span></a></li>`;
+                    categoriesHtml += `<li class="nav-item"><a class="nav-link active" href="#" data-category="all"><i class="bi bi-grid-fill me-2"></i>All Results <span class="badge bg-secondary float-end">${result.data.length}</span></a></li>`;
                     categories.forEach(cat => {
-                        categoriesHtml += `<li class="nav-item"><a class="nav-link" href="#" data-category="${cat}">${cat} <span class="badge bg-secondary float-end">${groupedResults[cat].length}</span></a></li>`;
+                        categoriesHtml += `<li class="nav-item"><a class="nav-link" href="#" data-category="${cat}"><i class="bi ${categoryIcons[cat] || categoryIcons['Default']} me-2"></i>${cat} <span class="badge bg-secondary float-end">${groupedResults[cat].length}</span></a></li>`;
                     });
                     categoriesHtml += '</ul>';
 
@@ -575,6 +604,10 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                 })
                 .catch(error => {
                     resultsContainer.innerHTML = `<div class="alert alert-danger m-3">${error.message}</div>`;
+                })
+                .finally(() => {
+                    // Selalu sembunyikan progress bar setelah selesai
+                    if (progressBar) progressBar.style.display = 'none';
                 });
         };
 
@@ -650,20 +683,20 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             }
         });
 
-        searchInput.addEventListener('input', function() {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(performSearch, 300); // Debounce
-        });
+        // --- IDE: Input and Clear Button Logic ---
+        searchInput.addEventListener('input', debounce(performSearch, 300));
 
-        // --- IDE: Add clear button logic ---
         if (clearBtn) {
             clearBtn.addEventListener('click', function() {
                 searchInput.value = '';
                 this.style.display = 'none';
-                resultsContainer.innerHTML = `
-                    <div class="text-center text-muted p-4">
-                        <p class="mb-1">Start typing to search.</p>
-                    </div>`;
+                // Tampilkan kembali recent searches atau pesan default
+                const recentSearches = getRecentSearches();
+                if (recentSearches.length > 0) {
+                    renderRecentSearches();
+                } else {
+                    resultsContainer.innerHTML = `<div class="text-center text-muted p-4"><p class="mb-1">Start typing to search.</p></div>`;
+                }
                 resetModalFooter();
                 searchInput.focus();
             });
@@ -720,7 +753,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
             const activeItem = resultsContainer.querySelector('.global-search-item.active');
             const activeWrapper = activeItem ? activeItem.closest('.global-search-item-wrapper') : null;
-            let currentIndex = activeItem ? Array.from(items).indexOf(activeItem) : -1;
+            let currentIndex = activeItem ? Array.from(resultItems).indexOf(activeItem) : -1;
 
             if (e.key === 'ArrowDown') {
                 activeItem?.classList.remove('active');

@@ -10,6 +10,8 @@
     --cf-modal-bg: #ffffff;
     --cf-dropdown-item-hover-bg: rgba(0, 0, 0, 0.04); /* Warna hover untuk item dropdown (lebih cerah) */
     --cf-header-btn-hover-bg: rgba(0, 0, 0, 0.075); /* Warna hover untuk tombol header */
+    --cf-search-active-bg: #6f42c1; /* Warna ungu untuk kategori pencarian aktif */
+    --cf-search-active-color: #ffffff;
     --sidebar-width: 290px;
     --sidebar-bg: var(--cf-card-bg-color); /* Light background */
     --sidebar-link-color: #495057; /* Made the default link color darker */
@@ -32,6 +34,8 @@ body.dark-mode {
     --cf-modal-bg: #2a2a2a;
     --cf-dropdown-item-hover-bg: rgba(255, 255, 255, 0.1); /* Warna hover untuk item dropdown (mode gelap) */
     --cf-header-btn-hover-bg: rgba(255, 255, 255, 0.1); /* Warna hover untuk tombol header (mode gelap) */
+    --cf-search-active-bg: #855fcf; /* Warna ungu yang lebih terang untuk mode gelap */
+    --cf-search-active-color: #ffffff;
     --sidebar-bg: #1e1e1e;
     --sidebar-link-color: #adb5bd; /* Made the default link color slightly brighter for better readability */
     --sidebar-link-hover-color: var(--cf-text-color);
@@ -669,29 +673,35 @@ body.dark-mode .text-muted {
 
 
 /* --- Custom Scrollbar Styling --- */
-.sidebar-nav::-webkit-scrollbar {
+.sidebar-nav::-webkit-scrollbar,
+.search-results-pane::-webkit-scrollbar {
     width: 6px; /* Make scrollbar thinner */
 }
 
-.sidebar-nav::-webkit-scrollbar-track {
+.sidebar-nav::-webkit-scrollbar-track,
+.search-results-pane::-webkit-scrollbar-track {
     background: transparent; /* Membuat track tidak terlihat */
 }
 
-.sidebar-nav::-webkit-scrollbar-thumb {
+.sidebar-nav::-webkit-scrollbar-thumb,
+.search-results-pane::-webkit-scrollbar-thumb {
     background-color: rgba(0, 0, 0, 0.2); /* Warna thumb yang lembut */
     border-radius: 10px;
     border: none; /* Remove border */
 }
 
-.sidebar-nav::-webkit-scrollbar-thumb:hover {
+.sidebar-nav::-webkit-scrollbar-thumb:hover,
+.search-results-pane::-webkit-scrollbar-thumb:hover {
     background-color: rgba(0, 0, 0, 0.4); /* Warna lebih gelap saat di-hover */
 }
 
 /* Untuk Dark Mode */
-body.dark-mode .sidebar-nav::-webkit-scrollbar-thumb {
+body.dark-mode .sidebar-nav::-webkit-scrollbar-thumb,
+body.dark-mode .search-results-pane::-webkit-scrollbar-thumb {
     background-color: rgba(255, 255, 255, 0.2);
 }
-body.dark-mode .sidebar-nav::-webkit-scrollbar-thumb:hover {
+body.dark-mode .sidebar-nav::-webkit-scrollbar-thumb:hover,
+body.dark-mode .search-results-pane::-webkit-scrollbar-thumb:hover {
     background-color: rgba(255, 255, 255, 0.4);
 }
 
@@ -889,6 +899,34 @@ body.dark-mode .sidebar-nav::-webkit-scrollbar-thumb:hover {
     border-radius: 0.375rem; /* Add a slight radius on hover/active */
 }
 
+/* --- IDE: Styling untuk input pencarian global --- */
+.global-search-input-group {
+    position: relative; /* Tambahkan ini agar posisi absolut .btn-close bekerja dengan benar */
+    border: 1px solid var(--cf-border-color);
+    border-radius: var(--bs-border-radius-lg); /* Sudut yang lebih besar dan lembut */
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+.global-search-input-group:focus-within {
+    border-color: var(--cf-blue);
+    box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+}
+.global-search-input-group .input-group-text,
+.global-search-input-group .form-control {
+    background-color: transparent;
+    border: none;
+}
+.global-search-input-group .form-control:focus {
+    box-shadow: none; /* Hapus shadow default dari Bootstrap */
+}
+.global-search-input-group .btn-close {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5;
+}
+/* --- Akhir IDE --- */
+
 /* --- FIX: Quick Actions for Search Results --- */
 .search-item-actions {
     opacity: 0;
@@ -949,7 +987,13 @@ body.dark-mode .highlight-row {
 .search-categories-pane {
     width: 200px;
     flex-shrink: 0;
-    border-right: 1px solid var(--cf-border-color);
+    /* --- IDE: Ganti border solid dengan gradien halus --- */
+    border-right: 1px solid transparent; /* Hapus border solid asli */
+    background-image: linear-gradient(to left, var(--cf-border-color), transparent);
+    background-repeat: no-repeat;
+    background-size: 1px 100%;
+    background-position: right center;
+    /* --- Akhir IDE --- */
     padding-right: 0.5rem;
 }
 
@@ -969,13 +1013,14 @@ body.dark-mode .highlight-row {
 }
 
 .search-categories-list .nav-link.active {
-    background-color: var(--cf-blue);
-    color: #fff;
+    background-color: var(--cf-search-active-bg);
+    color: var(--cf-search-active-color);
     font-weight: 500;
 }
 
 .search-results-pane {
     overflow-y: auto;
+    scroll-behavior: smooth; /* --- IDE: Tambahkan scrolling yang halus --- */
 }
 
 .search-results-list .list-group-item {
@@ -990,5 +1035,31 @@ body.dark-mode .highlight-row {
 .search-results-list .global-search-item:hover,
 .search-results-list .global-search-item.active {
     background-color: var(--cf-dropdown-item-hover-bg);
+}
+/* --- End IDE --- */
+
+/* --- IDE: Global Search Progress Bar Styling --- */
+#globalSearchModal .modal-content {
+    position: relative; /* Make this the positioning context for the progress bar */
+}
+#globalSearchModal .progress {
+    position: absolute; /* Position it relative to modal-content */
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 10; /* Ensure it's on top of other content */
+}
+/* --- End IDE --- */
+
+/* --- IDE: Global Search Progress Bar Styling --- */
+#globalSearchModal .modal-content {
+    position: relative; /* Make this the positioning context for the progress bar */
+}
+#globalSearchModal .progress {
+    position: absolute; /* Position it relative to modal-content */
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 10; /* Ensure it's on top of other content */
 }
 /* --- End IDE --- */

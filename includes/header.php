@@ -363,7 +363,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         <li><hr class="dropdown-divider"></li>
                         <div id="sla-alert-items-container" style="max-height: 400px; overflow-y: auto;"></div>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-center" href="<?= base_url('/sla-report') ?>">View Full Report</a></li>
+                        <li><a class="dropdown-item text-center" href="<?= base_url('/sla-report?filter=violations') ?>">View Full Report</a></li>
                     </ul>
                     <button type="button" class="btn btn-light rounded-circle me-2 position-relative d-flex align-items-center justify-content-center monitoring-alert-item" id="unhealthy-alert-btn" style="width: 44px; height: 44px;" data-bs-toggle="dropdown" aria-expanded="false" title="Unhealthy Items Alert">
                         <i class="bi bi-heartbreak-fill text-danger fs-4"></i>
@@ -404,7 +404,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 
                     <li><h6 class="dropdown-header">Monitoring</h6></li>
                     <li>
-                        <a class="dropdown-item d-flex justify-content-between align-items-center" href="<?= base_url('/sla-report') ?>">
+                        <a class="dropdown-item d-flex justify-content-between align-items-center" href="<?= base_url('/sla-report?filter=violations') ?>">
                             <span><i class="bi bi-clipboard-data-fill me-2 text-muted"></i>SLA Report</span>
                             <span class="badge bg-warning rounded-pill" id="dropdown-sla-badge" style="display: none;"></span>
                         </a>

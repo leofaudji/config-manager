@@ -132,6 +132,7 @@ try {
             'name' => $row['name'],
             'description' => isset($row['server_url']) && stripos($row['server_url'], $search_query) !== false ? 'Server URL: ' . htmlspecialchars($row['server_url']) : $description,
             'score' => calculate_score($row['name'], $search_query),
+            'url' => base_url('/services?search=' . urlencode($row['name']) . '&highlight=true'),
             'actions' => [
                 ['name' => 'Copy Name', 'type' => 'copy', 'value' => $row['name'], 'icon' => 'bi-clipboard'],
             ],
@@ -224,6 +225,26 @@ try {
         }
     }
     // --- End IDE ---
+
+    // --- IDE: Add Cron Jobs to search ---
+    $cron_jobs = [
+        ['name' => 'Health Monitor Cron', 'url' => base_url('/cron-jobs'), 'icon' => 'bi-heart-pulse-fill', 'description' => 'Manages the health monitoring cron job.'],
+        ['name' => 'Autoscaler Cron', 'url' => base_url('/cron-jobs'), 'icon' => 'bi-arrows-angle-expand', 'description' => 'Manages the service autoscaler cron job.'],
+        ['name' => 'System Cleanup Cron', 'url' => base_url('/cron-jobs'), 'icon' => 'bi-trash3-fill', 'description' => 'Manages the database and log cleanup cron job.'],
+        ['name' => 'Automatic Backup Cron', 'url' => base_url('/cron-jobs'), 'icon' => 'bi-database-down', 'description' => 'Manages the automatic backup cron job.'],
+        ['name' => 'Scheduled Deployment Cron', 'url' => base_url('/cron-jobs'), 'icon' => 'bi-calendar-check', 'description' => 'Manages the scheduled deployment runner.'],
+    ];
+
+    foreach ($cron_jobs as $item) {
+        if (stripos($item['name'], $search_query) !== false || stripos($item['description'], $search_query) !== false) {
+            $results[] = array_merge($item, [
+                'category' => 'Cron Jobs',
+                'score' => calculate_score($item['name'], $search_query)
+            ]);
+        }
+    }
+    // --- End IDE ---
+
 
     // 5. Search Stacks
     $stmt_stacks = $conn->prepare("
@@ -501,6 +522,28 @@ try {
     }
     $stmt_incidents->close();
 
+    // --- IDE: Search Security Events ---
+    $stmt_sec_events = $conn->prepare("
+        SELECT id, rule, output, host_id, container_name 
+        FROM security_events 
+        WHERE rule LIKE ? OR output LIKE ? 
+        ORDER BY event_time DESC 
+        LIMIT 5
+    ");
+    $stmt_sec_events->bind_param("ss", $search_param, $search_param);
+    $stmt_sec_events->execute();
+    $res_sec_events = $stmt_sec_events->get_result();
+    while ($row = $res_sec_events->fetch_assoc()) {
+        $results[] = [
+            'category' => 'Security',
+            'name' => $row['rule'],
+            'description' => 'Container: ' . ($row['container_name'] ?? 'N/A') . ' - ' . substr($row['output'], 0, 100) . '...',
+            'score' => calculate_score($row['rule'], $search_query),
+            'url' => base_url('/security-events?search=' . urlencode($row['rule'])),
+            'icon' => 'bi-shield-lock-fill'
+        ];
+    }
+    $stmt_sec_events->close();
     // --- NEW: Sort results by score DESC, then by name ASC ---
     usort($results, function($a, $b) {
         // FIX: Handle cases where score might be missing as a fallback
