@@ -1,0 +1,8 @@
+# --- FIX: Use the 'no-driver' variant for two-stage deployments ---
+# This base image contains the Falco binary but does NOT have an entrypoint
+# that tries to load a driver, which is perfect since we pre-load it with falco-driver-loader.
+FROM falcosecurity/falco-no-driver:0.38.1
+
+# --- FIX: Ensure the default falco.yaml is present in the final image ---
+# This provides the necessary base configuration for scap to initialize correctly.
+COPY --from=falcosecurity/falco:latest /etc/falco/falco.yaml /etc/falco/falco.yaml

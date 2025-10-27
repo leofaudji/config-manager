@@ -104,6 +104,19 @@ class DockerClient
     }
 
     /**
+     * Waits for a container to stop and returns its exit code.
+     * @param string $containerId The ID of the container.
+     * @return array The response from the API, including 'StatusCode'.
+     * @throws Exception
+     */
+    public function waitContainer(string $containerId): array
+    {
+        // This endpoint blocks until the container stops.
+        // We set a long timeout to accommodate long-running tasks like driver compilation.
+        return $this->request("/containers/{$containerId}/wait", 'POST', null, 'application/json', [], 300); // 5 minute timeout
+    }
+
+    /**
      * Prunes unused containers.
      * @return array The response from the API, including containers deleted and space reclaimed.
      * @throws Exception
@@ -271,6 +284,38 @@ class DockerClient
             $output[] = $data['status'] . (isset($data['progress']) ? ' ' . $data['progress'] : '');
         }
         return implode("\n", $output);
+    }
+
+    /**
+     * Builds a Docker image from a Dockerfile.
+     *
+     * @param string $dockerfileContent The raw content of the Dockerfile.
+     * @param string $contextPath The path to the build context (can be a directory or a single file).
+     * @param string $imageTag The tag for the new image (e.g., 'my-app:latest').
+     * @return string The output from the build process.
+     * @throws Exception
+     */
+    public function buildImage(string $dockerfileContent, string $contextPath, string $imageTag): string
+    {
+        // The Docker API requires the Dockerfile to be sent as part of a tar archive
+        // of the build context.
+        $tar_path = sys_get_temp_dir() . '/' . uniqid('docker_build_') . '.tar';
+        $phar = new PharData($tar_path);
+        $phar->addFromString('Dockerfile', $dockerfileContent);
+        
+        // --- FIX: Handle both directory and single file paths for the build context ---
+        if (is_dir($contextPath)) {
+            // If it's a directory, iterate through it
+            $contextFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($contextPath), RecursiveIteratorIterator::LEAVES_ONLY);
+            foreach ($contextFiles as $file) {
+                if (!$file->isDir()) $phar->addFile($file->getRealPath(), $file->getBasename());
+            }
+        } elseif (is_file($contextPath)) {
+            // If it's a single file, just add that file.
+            $phar->addFile($contextPath, basename($contextPath));
+        }
+
+        return $this->request("/build?t=" . urlencode($imageTag), 'POST', file_get_contents($tar_path), 'application/x-tar', [], 600);
     }
 
     /**

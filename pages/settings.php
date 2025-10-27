@@ -423,6 +423,15 @@ require_once __DIR__ . '/../includes/header.php';
                                 <i class="bi bi-stars"></i> Clear Global Search Cache
                             </button>
                         </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-title mb-0">Manual Actions</h6>
+                                    <p class="text-muted small mb-0">Perform one-off data management tasks.</p>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-warning" id="clear-search-cache-btn">
+                                    <i class="bi bi-stars"></i> Clear Global Search Cache
+                                </button>
+                            </div>                        </div>
                     </div>
                 </div>
             </div>

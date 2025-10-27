@@ -1036,6 +1036,33 @@ body.dark-mode .highlight-row {
 .search-results-list .global-search-item.active {
     background-color: var(--cf-dropdown-item-hover-bg);
 }
+
+/* --- IDE: Theme-aware active search category --- */
+body.theme-ocean .search-categories-list .nav-link.active {
+    background-color: #2c5364; /* Warna dari gradien Ocean */
+    color: #ffffff;
+}
+
+body.theme-forest .search-categories-list .nav-link.active {
+    background-color: #3B7A44; /* Warna dari gradien Forest */
+    color: #ffffff;
+}
+
+body.theme-sunrise .search-categories-list .nav-link.active {
+    background-color: #FC4A1A; /* Warna dari gradien Sunrise */
+    color: #ffffff;
+}
+
+body.theme-midnight .search-categories-list .nav-link.active {
+    background-color: #243B55; /* Warna dari gradien Midnight */
+    color: #ffffff;
+}
+
+/* Fallback untuk dark mode (jika tidak ada tema spesifik) */
+body.dark-mode .search-categories-list .nav-link.active {
+    background-color: var(--cf-search-active-bg);
+    color: var(--cf-search-active-color);
+}
 /* --- End IDE --- */
 
 /* --- IDE: Global Search Progress Bar Styling --- */

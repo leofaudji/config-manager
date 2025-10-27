@@ -65,7 +65,16 @@ try {
         $stmt_router->close();
 
         if (!$router_result || !preg_match('/Host\(`([^`]+)`\)/', $router_result['rule'], $matches)) {
-            echo "  -> Tidak dapat menemukan Host rule untuk service. Melewati.\n";
+            echo "  -> Tidak dapat menemukan Host rule untuk service '{$service['name']}'. Menghapus status kesehatan usang.\n";
+            
+            // If the router rule is gone, the service is effectively gone from a routing perspective.
+            // Clean up its health status entry.
+            $stmt_delete_status = $conn->prepare("DELETE FROM service_health_status WHERE service_id = ?");
+            $stmt_delete_status->bind_param("i", $service['id']);
+            $stmt_delete_status->execute();
+            $stmt_delete_status->close();
+            log_activity('SYSTEM', 'Health Status Cleanup', "Menghapus status kesehatan untuk service '{$service['name']}' karena router rule tidak ditemukan.");
+
             continue;
         }
         $hostname = $matches[1];

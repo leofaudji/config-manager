@@ -2,6 +2,9 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/DockerClient.php';
 
+// --- FIX: Prevent script timeout during long operations like pulling images ---
+set_time_limit(0); // 0 = no time limit
+
 // --- NEW: Extract path from request URI ---
 $request_uri_path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $basePath = BASE_PATH;
@@ -241,41 +244,109 @@ try {
                 stream_message("Agent script copied successfully.");
             } elseif ($agent_type === 'falco') {
                 // --- Deployment logic for Falco ---
-                $falco_image = 'falcosecurity/falco:latest';
+                // FIX: Use the correct driver-loader image for pulling
+                $falco_image = 'falcosecurity/falco-driver-loader:latest';
                 stream_message("Pulling Falco image '{$falco_image}'...");
                 $dockerClient->pullImage($falco_image);
                 stream_message("Image pull completed.");
+ 
+                $volumes = [
+                    '/var/run/docker.sock:/host/var/run/docker.sock:ro', '/dev:/host/dev:ro',
+                    '/proc:/host/proc:ro', '/boot:/host/boot:ro',
+                    '/lib/modules:/host/lib/modules:ro', '/usr:/host/usr:ro',
+                    '/sys/fs/bpf:/sys/fs/bpf', // FIX: Mount the BPF filesystem for eBPF probe interaction
+                    '/root/.falco:/root/.falco:ro', // FIX: Mount the driver location for the main Falco container
+                    '/etc:/host/etc:ro' // FIX: Add /etc mount for scap_init to succeed
+                ];
+
+                // --- FIX: Create falco_rules.local.yaml and copy it into the container ---
+                // This avoids bind mount issues where the source file doesn't exist.
+                $falco_rules_content = <<<YAML
+- macro: container_entrypoint
+  condition: (proc.name=docker-entrypoi or proc.name=tini)
+
+- rule: The program "docker" is run inside a container
+  desc: An event will be generated when the "docker" program is run inside a container.
+  # FIX: Added 'evt.type = execve' to scope the rule to execution events, resolving the LOAD_NO_EVTTYPE error.
+  # This is a critical performance and stability fix.
+  condition: evt.type = execve and container.id != host and proc.name = docker and not container_entrypoint
+  output: "Docker client run inside container (user=%user.name container_id=%container.id container_name=%container.name image=%container.image.repository:%container.image.tag command=%proc.cmdline)"
+  priority: WARNING
+YAML;
+                $temp_rules_file = tempnam(sys_get_temp_dir(), 'falco_rules');
+                file_put_contents($temp_rules_file, $falco_rules_content);
+                stream_message("Created temporary Falco rules file.");
+
+                // --- FIX: Implement a two-stage Falco deployment ---
+                // Stage 1: Run the driver-loader to install the kernel module/eBPF probe.
+                // This container will run, install the driver, and then exit.
+                stream_message("Stage 1: Running falco-driver-loader to install kernel driver...");
+                // --- DEFINITIVE FIX: The driver-loader needs the *exact same* volumes as the main container ---
+                // It especially needs /etc to correctly identify the host OS and find kernel headers.
+                $driver_loader_volumes = [
+                    '/var/run/docker.sock:/host/var/run/docker.sock:ro', '/dev:/host/dev:ro',
+                    '/proc:/host/proc:ro', '/boot:/host/boot:ro',
+                    '/lib/modules:/host/lib/modules:ro', '/usr:/host/usr:ro',
+                    '/etc:/host/etc:ro'
+                ];
+                $driver_loader_config = [
+                    'Image' => 'falcosecurity/falco-driver-loader:latest',
+                    'HostConfig' => ['Binds' => $driver_loader_volumes, 'Privileged' => true],
+                    'Env' => ['DRIVER_REPO=https://download.falco.org/driver'],
+                ];
+
+                // --- FIX: Replace undefined 'runContainerAndWait' with explicit create, start, wait, and remove logic ---
+                $loader_container_name = 'falco-driver-loader-init';
+                try {
+                    // 1. Create and start the container
+                    $loader_container_id = $dockerClient->createAndStartContainer($loader_container_name, $driver_loader_config);
+                    stream_message("Driver loader container '{$loader_container_name}' (ID: " . substr($loader_container_id, 0, 12) . ") started. Waiting for it to complete...");
+
+                    // 2. Wait for the container to finish and get its exit code
+                    $wait_result = $dockerClient->waitContainer($loader_container_id);
+                    if ($wait_result['StatusCode'] !== 0) {
+                        throw new Exception("Falco driver loader failed with exit code " . $wait_result['StatusCode'] . ". Check container logs for details.");
+                    }
+                    stream_message("Stage 1: Driver installation completed successfully.");
+                } finally {
+                    // 3. Always remove the temporary loader container, whether it succeeded or failed.
+                    $dockerClient->removeContainer($loader_container_name, true);
+                }
 
                 // --- NEW: Create a dedicated network for Falco components ---
-                $falco_network_name = 'falco-net';
+                $falco_network_name = 'falco-net'; 
                 stream_message("Ensuring Falco network '{$falco_network_name}' exists...");
-                // Pass 'false' to create a bridge network, not an overlay one.
                 $dockerClient->ensureNetworkExists($falco_network_name, false);
                 stream_message("Network '{$falco_network_name}' is ready.");
 
-                $volumes = [
-                    '/var/run/docker.sock:/host/var/run/docker.sock:ro',
-                    '/dev:/host/dev:ro',
-                    '/proc:/host/proc:ro',
-                    '/boot:/host/boot:ro',
-                    '/lib/modules:/host/lib/modules:ro',
-                    '/usr:/host/usr:ro',
-                    // Mount the falco config to enable gRPC output
-                    'falco_rules.yaml:/etc/falco/falco_rules.local.yaml'
-                ];
-
+                // Stage 2: Run the main Falco sensor container which now has the driver available.
                 stream_message("Creating and starting Falco container...");
+                // --- DEFINITIVE FIX: Use the official 'no-driver' image directly and mount the rules file ---
+                // Mount the temporary rules file to a unique path inside the container to avoid conflicts
+                // with existing files in the base image.
+                $volumes[] = $temp_rules_file . ':/etc/falco/custom_rules.yaml:ro';
+
                 $falco_config = [
-                    'Image' => $falco_image,
-                    // Attach to the default bridge network to allow communication from falcosidekick
-                    'HostConfig' => ['Binds' => $volumes, 'Privileged' => true],
-                    'Env' => [
-                        'FALCO_GRPC_ENABLED=true',
-                        'FALCO_GRPC_BIND_ADDRESS=0.0.0.0:5060'
-                    ]
+                    'Image' => 'falcosecurity/falco-no-driver:0.38.1',
+                    'Entrypoint' => ['/usr/bin/falco'], // FIX: Explicitly define the executable for the Cmd arguments.
+                    // --- FIX: Provide the essential command-line arguments for Falco ---
+                    // These arguments tell Falco which rule files to load and are critical for a stable startup.
+                    'Cmd' => [
+                        '--cri',
+                        '/host/var/run/docker.sock', // Path to container runtime socket
+                        '-r',
+                        '/etc/falco/falco_rules.yaml', // Default rules
+                        '-r',
+                        '/etc/falco/custom_rules.yaml' // Our custom rules, loaded from the mounted file
+                    ],
+                    'HostConfig' => [
+                        'Binds' => $volumes,
+                        'Privileged' => true,
+                        'NetworkMode' => $falco_network_name // FIX: Attach Falco to its dedicated network
+                    ],
+                    'Env' => ['FALCO_GRPC_ENABLED=true', 'FALCO_GRPC_BIND_ADDRESS=0.0.0.0:5060'],
                 ];
                 $dockerClient->createAndStartContainer($container_name, $falco_config);
-
             } elseif ($agent_type === 'falcosidekick') {
                 // --- Deployment logic for Falcosidekick ---
                 // FIX: Use a specific version for stability
@@ -292,8 +363,7 @@ try {
                 stream_message("Image pull completed.");
                 
                 // --- NEW FIX: Create the config file locally and copy it into the container ---
-                // This avoids issues with remote host paths and permissions.
-                // 1. Create the config content.
+                // This is now part of a build process to ensure the file exists before the container starts.
                 $webui_url = rtrim($config_manager_url, '/') . '/api/security/ingest';
                 $sidekick_config_content = <<<YAML
 grpc:
@@ -304,27 +374,58 @@ webui:
     X-API-KEY: "{$api_token}"
     X-FALCO-HOSTNAME: "{$host['name']}"
 YAML;
-                // 2. Create a temporary local file to hold the config.
-                $temp_config_file = tempnam(sys_get_temp_dir(), 'falco_cfg');
+                // Create a temporary directory for the build context
+                $build_context_dir = rtrim(sys_get_temp_dir(), '/') . '/falcosidekick_build_' . uniqid();
+                if (!mkdir($build_context_dir, 0700, true)) {
+                    throw new Exception("Could not create temporary build directory.");
+                }
+                // Place the generated config.yaml inside the build context
+                file_put_contents($build_context_dir . '/config.yaml', $sidekick_config_content);
+                // --- FIX: Create a temporary file for the config instead of a directory ---
+                $temp_config_file = tempnam(sys_get_temp_dir(), 'sidekick_config');
                 file_put_contents($temp_config_file, $sidekick_config_content);
 
-                // 3. Define the container configuration, but without the bind mount.
+                // Get the Dockerfile content
+                $dockerfile_path = PROJECT_ROOT . '/includes/Dockerfile.falcosidekick';
+                if (!file_exists($dockerfile_path)) throw new Exception("Dockerfile for Falcosidekick not found.");
+                $dockerfile_content = file_get_contents($dockerfile_path);
+
+                // Define a unique tag for the custom image on the target host
+                $custom_image_tag = 'config-manager/falcosidekick-custom:' . $host['id'];
+
+                // Build the custom image on the target host
+                stream_message("Building custom Falcosidekick image '{$custom_image_tag}' on host '{$host['name']}'...");
+                $build_output = $dockerClient->buildImage($dockerfile_content, $build_context_dir, $custom_image_tag);
+                // --- FIX: Pass only the Dockerfile content and the single config file path ---
+                // This avoids creating a tarball of the entire temp directory.
+                $build_output = $dockerClient->buildImage($dockerfile_content, $temp_config_file, $custom_image_tag);
+                stream_message("Image build completed.");
+                
+                // --- FIX: Replace insecure shell_exec with a robust PHP-native recursive delete ---
+                // This avoids spawning a shell from the web server process, which is a security risk.
+                $files = new RecursiveIteratorIterator(
+                    new RecursiveDirectoryIterator($build_context_dir, RecursiveDirectoryIterator::SKIP_DOTS),
+                    RecursiveIteratorIterator::CHILD_FIRST
+                );
+                foreach ($files as $fileinfo) {
+                    $todo = ($fileinfo->isDir() ? 'rmdir' : 'unlink');
+                    $todo($fileinfo->getRealPath());
+                }
+                rmdir($build_context_dir);
+                stream_message("Cleaned up temporary build directory.");
+                unlink($temp_config_file); // Clean up the temp config file
+
+                // FIX: Define network name here as well to ensure it's always available.
+                $falco_network_name = 'falco-net';
+
                 stream_message("Creating and starting Falcosidekick container...");
                 $sidekick_config = [
-                    'Image' => $sidekick_image,
+                    'Image' => $custom_image_tag, // Use the newly built image
                     'Env' => ['FALCO_GRPC_HOSTNAME=falco-sensor'], // Tell falcosidekick where to find falco
                     'Cmd' => ['-c', '/config.yaml'], // Point to the new, reliable path in the root directory
-                    'HostConfig' => [
-                        // Connect to the dedicated Falco network
-                        'NetworkMode' => $falco_network_name
-                    ]
+                    'HostConfig' => ['NetworkMode' => $falco_network_name]
                 ];
-                $containerId = $dockerClient->createContainer($container_name, $sidekick_config);
-                
-                // 4. Copy the local temporary config file into the running container.
-                $dockerClient->copyToContainer($containerId, $temp_config_file, '/config.yaml'); // Copy to the root directory
-                unlink($temp_config_file); // Clean up the temporary file.
-                $dockerClient->startContainer($containerId); // 5. Start the container now that the config is in place.
+                $dockerClient->createAndStartContainer($container_name, $sidekick_config);
 
                 stream_message("Falcosidekick configuration complete.");
 

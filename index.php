@@ -176,6 +176,8 @@ $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin
 $router->post('/api/notifications/agent-relay', 'api/notification_relay_handler.php'); // New endpoint for agent notifications
 $router->post('/api/routers/bulk-move', 'api/router_bulk_handler.php', ['auth', 'admin']);
 $router->post('/api/routers/bulk-delete', 'api/router_bulk_handler.php', ['auth', 'admin']);
+$router->get('/api/agent/version', 'api/agent/version.php'); // Endpoint untuk self-update agen
+$router->get('/api/agent/download', 'api/agent/download.php', ['auth', 'admin']); // Endpoint untuk self-update agen
 $router->get('/api/services/status', 'actions/get_service_status.php', ['auth']);
 $router->get('/api/services/{id}/details', 'api/service_detail_handler.php', ['auth', 'admin']);
 $router->get('/sla-report', 'pages/sla_report.php', ['auth', 'admin']);

@@ -224,8 +224,8 @@ try {
         $stmt_create_unhealthy_event = $conn->prepare("INSERT INTO container_health_history (host_id, container_id, container_name, status, start_time) VALUES (?, ?, ?, 'unhealthy', NOW())");
         $stmt_mark_notified = $conn->prepare("UPDATE docker_hosts SET is_down_notified = 1 WHERE id = ?");
         $stmt_create_incident = $conn->prepare("
-            INSERT INTO incident_reports (incident_type, target_id, target_name, host_id, start_time, monitoring_snapshot, severity)
-            SELECT 'host', ?, ?, ?, NOW(), ?, 'Critical'
+            INSERT INTO incident_reports (incident_type, target_id, target_name, host_id, start_time, monitoring_snapshot, severity, status)
+            SELECT 'host', ?, ?, ?, NOW(), ?, 'Critical', 'Open'
             FROM DUAL WHERE NOT EXISTS (
                 SELECT 1 FROM incident_reports 
                 WHERE target_id = ? AND incident_type = 'host' AND status IN ('Open', 'Investigating')

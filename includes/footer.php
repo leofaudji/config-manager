@@ -593,8 +593,15 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                         e.preventDefault();
                         e.stopPropagation(); // Prevent the main link from being triggered
 
-                        // Update active state
-                        categoryPane.querySelector('.nav-link.active').classList.remove('active');
+                        // --- IDE: Theme-aware active category (Enhanced for Contrast) ---
+                        const currentActive = categoryPane.querySelector('.nav-link.active');
+                        if (currentActive) {
+                            currentActive.classList.remove('active');
+                            // Reset inline styles when not active
+                            currentActive.style.backgroundColor = '';
+                            currentActive.style.color = '';
+                        }
+
                         link.classList.add('active');
 
                         // Re-render results

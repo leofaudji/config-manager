@@ -2,7 +2,7 @@
 // File: health-agent/agent.php
 
 // --- Self-Update Configuration ---
-define('AGENT_VERSION', '2.0.0'); // Ganti versi ini setiap kali Anda mengubah skrip
+define('AGENT_VERSION', '2.0.1'); // Ganti versi ini setiap kali Anda mengubah skrip
 
 set_time_limit(0); // Run indefinitely
 
@@ -87,7 +87,6 @@ function run_self_update_check() {
             $dockerClient->restartContainer($agent_container_id);
             exit(); // Stop the old script immediately
         } else {
-            echo $download_url ;
             echo "[SELF-UPDATE] FAILED: Could not download new script. HTTP Code: {$http_code}. Update aborted.\n";
             @unlink($new_script_path); // Clean up failed download
         }
@@ -719,7 +718,7 @@ function run_check_cycle() {
                     } else {
                         // For Standalone, just restart the container.
                         log_message("    -> Mode Standalone terdeteksi. Merestart kontainer '{$container_name}'.");
-                        $dockerClient->restartContainer($container_id);
+                        //$dockerClient->restartContainer($container_id);
                         $healing_message = "Restart command sent successfully to container '{$container_name}'.";
                         log_message("  -> SUKSES: {$healing_message}");
                     }
