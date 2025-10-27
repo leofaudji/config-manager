@@ -9,41 +9,34 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     exit;
 }
 
-$log_base_path = get_setting('default_compose_path');
-if (empty($log_base_path)) {
-    http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => 'Default Compose File Path is not configured in settings.']);
+$log_id = $_GET['id'] ?? null;
+if (!$log_id) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Log ID is required.']);
     exit;
 }
 
+$conn = Database::getInstance()->getConnection();
+
 try {
-    // Handle request for a specific log file content
-    if (isset($_GET['file'])) {
-        $relative_path = $_GET['file'];
-        // Security check: Prevent directory traversal attacks
-        if (str_contains($relative_path, '..')) {
-            throw new Exception("Invalid file path specified (directory traversal detected).");
-        }
+    // Find the log file path from the database
+    $stmt = $conn->prepare("SELECT log_file_path FROM activity_log WHERE id = ?");
+    $stmt->bind_param("i", $log_id);
+    $stmt->execute();
+    $log_file_path = $stmt->get_result()->fetch_assoc()['log_file_path'] ?? null;
+    $stmt->close();
 
-        $full_path = rtrim($log_base_path, '/') . '/' . $relative_path;
-
-        // Normalize paths for comparison to prevent bypasses
-        $normalized_base = realpath($log_base_path);
-        $normalized_full_path = realpath(dirname($full_path)); // Check directory existence
-
-        if ($normalized_base === false || $normalized_full_path === false || strpos($normalized_full_path, $normalized_base) !== 0) {
-            throw new Exception("Invalid file path specified (outside of allowed directory).");
-        }
-
-        if (!file_exists($full_path) || !is_readable($full_path)) {
-            throw new Exception("Log file not found or is not readable.");
-        }
-        $content = file_get_contents($full_path);
-        echo json_encode(['status' => 'success', 'content' => $content]);
-        exit;
+    if (!$log_file_path || !file_exists($log_file_path) || !is_readable($log_file_path)) {
+        throw new Exception("Log file not found, not readable, or the process has not started yet.");
     }
+
+    $log_content = file_get_contents($log_file_path);
+    echo json_encode(['status' => 'success', 'content' => $log_content]);
+
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
 }
+
+$conn->close();
 ?>

@@ -1,161 +1,131 @@
 <?php
-// This script does not check for login, as it's called by an external service.
-// Security is handled by a secret token.
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../includes/DeploymentRunner.php';
 
-// Start a session to be able to set a username for logging.
-// Check if a session is not already active before starting one.
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-// --- Security Check ---
-$provided_token = $_GET['token'] ?? '';
-$stored_token = get_setting('webhook_secret_token');
+header('Content-Type: application/json');
 
-if (empty($provided_token) || empty($stored_token) || !hash_equals($stored_token, $provided_token)) {
-    http_response_code(403);
-    header('Content-Type: application/json');
-    echo json_encode(['status' => 'error', 'message' => 'Forbidden: Invalid or missing token.']);
-    log_activity('webhook_caller', 'Webhook Failed', 'A webhook call was rejected due to an invalid token. IP: ' . ($_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN'));
-    exit;
+/**
+ * Streams a message to a dedicated webhook log file.
+ * @param string $message The message to log.
+ * @param string $level The log level (e.g., INFO, ERROR).
+ */
+function log_webhook_activity($message, $level = 'INFO') {
+    $log_path = get_setting('cron_log_path', '/var/log');
+    $log_file = rtrim($log_path, '/') . '/webhook_activity.log';
+    $line = date('[Y-m-d H:i:s]') . " [{$level}] " . trim($message) . "\n";
+    file_put_contents($log_file, $line, FILE_APPEND);
 }
 
-// --- Payload Validation ---
-$payload = file_get_contents('php://input');
-$data = json_decode($payload, true);
-
-// Check for a valid payload and a push event
-if (json_last_error() !== JSON_ERROR_NONE || !isset($data['ref'])) {
-    http_response_code(400);
-    header('Content-Type: application/json');
-    echo json_encode(['status' => 'error', 'message' => 'Bad Request: Invalid or missing payload.']);
-    exit;
-}
-
-// --- Logic to Trigger Deployment ---
 try {
-    $target_branch = get_setting('git_branch', 'main');
-    $pushed_branch_ref = $data['ref']; // e.g., "refs/heads/main"
+    // --- 1. Security Validation ---
+    $provided_token = $_GET['token'] ?? '';
+    $expected_token = get_setting('webhook_secret_token');
 
-    // Check if the push was to the configured target branch
-    if ($pushed_branch_ref !== 'refs/heads/' . $target_branch) {
-        // It's a push to a different branch, so we can ignore it.
-        // Respond with a success message to let the Git provider know we received it.
-        http_response_code(200);
-        header('Content-Type: application/json');
-        echo json_encode(['status' => 'success', 'message' => "Webhook received for branch '{$pushed_branch_ref}', but deployment is only configured for '{$target_branch}'. Ignoring."]);
+    if (empty($provided_token) || empty($expected_token) || !hash_equals($expected_token, $provided_token)) {
+        http_response_code(401);
+        log_webhook_activity('Unauthorized webhook trigger attempt. Invalid token.', 'ERROR');
+        log_activity('webhook_bot', 'Webhook Failed', 'Invalid token provided from IP: ' . ($_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN'));
+        echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
         exit;
     }
 
-   
-    // If we're here, it's a push to the correct branch. Trigger the deployment.
-    // --- NEW: Find and redeploy all stacks linked to this repository ---
-    $repo_url_from_payload = $data['repository']['clone_url'] ?? null;
-    if (!$repo_url_from_payload) {
-        throw new Exception("Could not determine repository URL from webhook payload.");
+    // --- 2. Parse Git Provider Payload ---
+    $payload = json_decode(file_get_contents('php://input'), true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        http_response_code(400);
+        log_webhook_activity('Invalid JSON payload received.', 'ERROR');
+        log_activity('webhook_bot', 'Webhook Failed', 'Invalid JSON payload from IP: ' . ($_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN'));
+        echo json_encode(['status' => 'error', 'message' => 'Invalid JSON payload']);
+        exit;
     }
 
+    // --- NEW: Handle GitHub/Gitea 'ping' event for successful webhook setup ---
+    $event_type = $_SERVER['HTTP_X_GITHUB_EVENT'] ?? $_SERVER['HTTP_X_GITEA_EVENT'] ?? null;
+    if ($event_type === 'ping') {
+        http_response_code(200);
+        log_webhook_activity("Received successful 'ping' event from Git provider. Webhook is configured correctly.");
+        log_activity('webhook_bot', 'Webhook Ping', 'Received successful ping from IP: ' . ($_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN'));
+        echo json_encode(['status' => 'success', 'message' => 'Pong! Webhook is configured correctly.']);
+        exit;
+    }
+
+    //print_r($payload) ;
+    // Extract repository URL and branch from payload (supports GitHub and GitLab)
+    $repo_url = $payload['repository']['ssh_url'] ?? $payload['repository']['git_ssh_url'] ?? $payload['repository']['clone_url'] ?? $payload['project']['git_ssh_url'] ?? null;
+    $ref = $payload['ref'] ?? null; // e.g., "refs/heads/main"
+
+    if (!$repo_url || !$ref) {
+        http_response_code(400);
+        log_webhook_activity('Payload missing repository URL or ref.', 'ERROR');
+        log_activity('webhook_bot', 'Webhook Failed', 'Payload missing repository URL or ref from IP: ' . ($_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN'));
+        echo json_encode(['status' => 'error', 'message' => 'Payload missing repository URL or ref.']);
+        exit;
+    }
+
+    $branch_pushed = str_replace('refs/heads/', '', $ref);
+    log_webhook_activity("Webhook received for repo '{$repo_url}' on branch '{$branch_pushed}'.");
+
+    // --- 3. Find Matching Stacks in DB ---
     $conn = Database::getInstance()->getConnection();
-    // Find all stacks that use this Git repository as their source
-    $stmt = $conn->prepare("SELECT s.id, s.stack_name, s.host_id, s.deployment_details, s.last_webhook_triggered_at, s.webhook_update_policy, h.name as host_name FROM application_stacks s JOIN docker_hosts h ON s.host_id = h.id WHERE s.source_type = 'git' AND JSON_UNQUOTE(JSON_EXTRACT(s.deployment_details, '$.git_url')) = ?");
-    $stmt->bind_param("s", $repo_url_from_payload);
+    $stmt = $conn->prepare(
+        "SELECT id, deployment_details, stack_name, host_id 
+         FROM application_stacks 
+         WHERE source_type = 'git' 
+           AND JSON_UNQUOTE(JSON_EXTRACT(deployment_details, '$.git_url')) = ? 
+           AND JSON_UNQUOTE(JSON_EXTRACT(deployment_details, '$.git_branch')) = ?"
+    );
+    $stmt->bind_param("ss", $repo_url, $branch_pushed);
     $stmt->execute();
     $stacks_to_update = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
     if (empty($stacks_to_update)) {
-        http_response_code(200);
-        header('Content-Type: application/json');
-        echo json_encode(['status' => 'success', 'message' => "Webhook received for '{$repo_url_from_payload}', but no stacks are configured to use this repository. Nothing to do."]);
-        log_activity('webhook_bot', 'Webhook Ignored', "Webhook received for '{$repo_url_from_payload}', but no stacks are configured to use this repository.");
+        log_webhook_activity("No stacks found matching the repository and branch. Nothing to do.");
+        echo json_encode(['status' => 'success', 'message' => 'Webhook received, but no matching stacks found for auto-deployment.']);
         exit;
     }
 
-    $cooldown_period = (int)get_setting('webhook_cooldown_period', 300); // Default 5 menit
-    $updated_stacks = [];
-    $ignored_stacks = [];
-    $scheduled_stacks = [];
-
+    // --- 4. Trigger Deployments in Background ---
+    $triggered_count = 0;
     foreach ($stacks_to_update as $stack) {
-        // --- NEW: Cooldown Logic ---
-        if ($stack['last_webhook_triggered_at']) {
-            $last_triggered_time = strtotime($stack['last_webhook_triggered_at']);
-            $time_since_last = time() - $last_triggered_time;
-            if ($time_since_last < $cooldown_period) {
-                $wait_time = $cooldown_period - $time_since_last;
-                $ignored_stacks[] = "{$stack['stack_name']} (cooldown, tunggu {$wait_time} detik lagi)";
-                log_activity('webhook_bot', 'Webhook Ignored (Cooldown)', "Redeployment untuk stack '{$stack['stack_name']}' diabaikan karena masih dalam periode cooldown.");
-                continue; // Lewati stack ini
-            }
-        }
+        $deployment_details = json_decode($stack['deployment_details'], true);
+        if (!$deployment_details) continue;
 
-        // --- IDE: Check update policy ---
-        if ($stack['webhook_update_policy'] === 'scheduled') {
-            // Mark for pending update instead of deploying
-            $update_stmt = $conn->prepare("UPDATE application_stacks SET webhook_pending_update = 1, webhook_pending_since = NOW() WHERE id = ?");
-            $update_stmt->bind_param("i", $stack['id']);
-            $update_stmt->execute();
-            $update_stmt->close();
-            $scheduled_stacks[] = "{$stack['stack_name']} (on {$stack['host_name']})";
-            log_activity('webhook_bot', 'Webhook Update Scheduled', "Update for stack '{$stack['stack_name']}' on host '{$stack['host_name']}' has been scheduled due to a push to '{$target_branch}'.");
-        } else { // 'realtime' policy
-            // --- Trigger the actual deployment ---
-            // We will simulate a form submission to the app_launcher_handler.
-            $deployment_details = json_decode($stack['deployment_details'], true);
-            if (!$deployment_details) {
-                log_activity('webhook_bot', 'Webhook Redeploy Failed', "Could not decode deployment details for stack '{$stack['stack_name']}'. Skipping.");
-                continue;
-            }
+        // Add necessary info for the deployment helper
+        $deployment_details['host_id'] = $stack['host_id'];
+        $deployment_details['stack_name'] = $stack['stack_name'];
+        $deployment_details['update_stack'] = 'true';
 
-            // Prepare the POST data for the app launcher
-            $post_data = $deployment_details;
-            $post_data['host_id'] = $stack['host_id'];
-            $post_data['stack_name'] = $stack['stack_name'];
-            $post_data['update_stack'] = 'true'; // This is crucial to tell the launcher it's an update
+        // This is the new flag that tells the helper to build the image
+        $deployment_details['build_from_dockerfile'] = (bool)get_setting('webhook_build_image_enabled', false);
 
-            // FIX: Directly call the deployment logic instead of making a fragile internal HTTP call.
-            DeploymentRunner::runInBackground($post_data);
-            log_activity('webhook_bot', 'Webhook Redeploy Triggered', "Redeployment triggered for stack '{$stack['stack_name']}' on host '{$stack['host_name']}' due to a push to '{$target_branch}'.");
-            $updated_stacks[] = "{$stack['stack_name']} (on {$stack['host_name']})";
+        try {
+            // --- NEW: Generate a unique log file path for this specific deployment ---
+            $base_log_path = get_setting('default_compose_path');
+            $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $stack['host_name'] ?? 'unknown_host');
+            $log_dir = rtrim($base_log_path, '/') . '/' . $safe_host_name . '/' . $stack['stack_name'];
+            $log_file_path = $log_dir . '/deployment.log'; // This will be updated with a unique name later
+            $deployment_details['log_file_path'] = $log_file_path; // Pass this to the runner
+
+            // Use the runner to execute the deployment in a separate process
+            DeploymentRunner::runInBackground($deployment_details);
+            $log_message = "Triggered background build & deploy for stack '{$stack['stack_name']}' on host ID {$stack['host_id']}.";
+            log_webhook_activity($log_message);
+            log_activity('webhook_bot', 'Webhook Triggered', $log_message, $stack['host_id'], $log_file_path);
+            $triggered_count++;
+        } catch (Exception $e) {
+            $error_message = "Failed to trigger deployment for stack '{$stack['stack_name']}': " . $e->getMessage();
+            log_webhook_activity($error_message, 'ERROR');
+            log_activity('webhook_bot', 'Webhook Failed', $error_message, $stack['host_id']);
         }
     }
 
-    // --- NEW: Send a notification ---
-    if (!empty($updated_stacks)) {
-        $notification_title = "Webhook Deployment Triggered";
-        $notification_message = "Push to '{$target_branch}' triggered redeployment for: " . implode(', ', $updated_stacks);
-        send_notification($notification_title, $notification_message, 'info');
-    }
-    if (!empty($scheduled_stacks)) {
-        $notification_title = "Webhook Update Scheduled";
-        $notification_message = "Push to '{$target_branch}' scheduled updates for: " . implode(', ', $scheduled_stacks);
-        send_notification($notification_title, $notification_message, 'info');
-    }
-
-    $message = 'Webhook processed.';
-    if (!empty($updated_stacks)) {
-        $message .= ' Redeployment triggered for: ' . implode(', ', $updated_stacks) . '.';
-    }
-    if (!empty($scheduled_stacks)) {
-        $message .= ' Updates scheduled for: ' . implode(', ', $scheduled_stacks) . '.';
-    }
-    if (!empty($ignored_stacks)) {
-        $message .= ' Ignored stacks (cooldown): ' . implode(', ', $ignored_stacks) . '.';
-    }
-    
-    // Respond with a success message
-    //header('Content-Type: application/json');
-    echo json_encode(['status' => 'success', 'message' => $message]);
-    // Close the connection at the very end of the successful execution path.
-    if (isset($conn)) {
-        $conn->close();
-    }
+    echo json_encode(['status' => 'success', 'message' => "Webhook processed. Triggered deployments for {$triggered_count} stack(s)."]);
 
 } catch (Exception $e) {
     http_response_code(500);
-    header('Content-Type: application/json');
-    echo json_encode(['status' => 'error', 'message' => 'Webhook processing failed: ' . $e->getMessage()]);
-    log_activity('webhook_bot', 'Webhook Deployment Failed', 'Error during webhook-triggered deployment: ' . $e->getMessage());
+    log_webhook_activity('Critical error in webhook handler: ' . $e->getMessage(), 'ERROR');
+    echo json_encode(['status' => 'error', 'message' => 'An internal server error occurred.']);
 }
+
 ?>

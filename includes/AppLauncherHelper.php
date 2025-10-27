@@ -348,11 +348,24 @@ class AppLauncherHelper
      * @param array $host The host details array.
      * @param string $stack_name The name of the stack being deployed.
      */
-    private static function openLogFile(array $host, string $stack_name): void
+    private static function openLogFile(array $post_data, string $stack_name): void
     {
+        // If a specific log file path is provided (e.g., from webhook), use it.
+        if (!empty($post_data['log_file_path'])) {
+            self::$log_file_path = $post_data['log_file_path'];
+            $log_dir = dirname(self::$log_file_path);
+            if (!is_dir($log_dir)) {
+                @mkdir($log_dir, 0755, true);
+            }
+            self::$log_file_handle = @fopen(self::$log_file_path, 'w');
+            return;
+        }
+
+        // Fallback to the original logic if no specific path is provided
         $base_log_path = get_setting('default_compose_path');
+        $host_name = $post_data['host_name'] ?? 'unknown_host';
         if ($base_log_path) {
-            $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host['name']);
+            $safe_host_name = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $host_name);
             $log_dir = rtrim($base_log_path, '/') . '/' . $safe_host_name . '/' . $stack_name;
             if (!is_dir($log_dir)) {
                 // Attempt to create the directory. The '@' suppresses warnings on failure.
@@ -368,7 +381,6 @@ class AppLauncherHelper
             self::$log_file_handle = @fopen(self::$log_file_path, 'w');
         }
     }
-
     /**
      * Closes the log file handle if it's open.
      * This should be called by the script that initiates the deployment.
@@ -379,6 +391,109 @@ class AppLauncherHelper
             fflush(self::$log_file_handle); // Explicitly flush the buffer to disk
         }
         if (self::$log_file_handle) @fclose(self::$log_file_handle);
+    }
+
+    /**
+     * Clones a Git repo, builds a Docker image from its Dockerfile,
+     * updates the compose file to use the new image, and deploys the stack.
+     * This is the core of the Git-triggered CI/CD workflow.
+     *
+     * @param array $post_data The deployment parameters from the webhook.
+     * @return void
+     * @throws Exception
+     */
+    public static function buildAndDeployFromGit(array $post_data): void
+    {
+        $start_time = microtime(true);
+        $conn = Database::getInstance()->getConnection();
+        $git = new GitHelper();
+        $repo_path = null;
+
+        $host_id = $post_data['host_id'];
+        $stack_name = $post_data['stack_name'];
+
+        // The log file is opened here, and will be closed in the finally block
+        self::openLogFile($post_data, $stack_name); // Pass full post_data
+
+        try {
+            self::stream_message("Starting CI/CD build & deploy for stack '{$stack_name}'.");
+
+            // 1. Get Host and Git details from post data
+            $stmt_host = $conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
+            $stmt_host->bind_param("i", $host_id);
+            $stmt_host->execute();
+            $host = $stmt_host->get_result()->fetch_assoc();
+            $stmt_host->close();
+            if (!$host) throw new Exception("Host not found for build process.");
+
+            $dockerClient = new DockerClient($host);
+
+            $git_url = trim($post_data['git_url'] ?? '');
+            $git_branch = trim($post_data['git_branch'] ?? 'main');
+            if (empty($git_url)) throw new Exception("Git URL is missing from deployment details.");
+
+            // 2. Clone repo and get commit hash
+            self::stream_message("Cloning repository '{$git_url}' (branch: {$git_branch})...");
+            $repo_path = $git->cloneOrPull($git_url, $git_branch);
+            $commit_hash = trim($git->execute("rev-parse --short HEAD", $repo_path));
+            self::stream_message("Cloned to '{$repo_path}'. Latest commit: {$commit_hash}");
+
+            // 3. Find Dockerfile
+            $dockerfile_path = $repo_path . '/Dockerfile';
+            if (!file_exists($dockerfile_path)) {
+                throw new Exception("Dockerfile not found in the root of the repository.");
+            }
+            $dockerfile_content = file_get_contents($dockerfile_path);
+
+            // 4. Build the image
+            // The image name is constructed from the registry user (namespace) and the stack name.
+            $image_name_base = strtolower(trim($host['registry_username'] . '/' . $stack_name));
+            $new_image_tag = "{$image_name_base}:{$commit_hash}";
+            self::stream_message("Building new image: {$new_image_tag}");
+
+            // The buildImage method takes the Dockerfile content and the repo path as build context
+            $build_output = $dockerClient->buildImage($dockerfile_content, $repo_path, $new_image_tag);
+            self::stream_message("Build output:\n" . $build_output, 'SHELL');
+            self::stream_message("Image build complete.");
+
+            // 5. Push the image to the host's configured registry
+            self::stream_message("Pushing image '{$new_image_tag}' to registry...");
+            $push_output = $dockerClient->pullImage($new_image_tag); // pullImage also handles push auth
+            self::stream_message("Push output:\n" . $push_output, 'SHELL');
+            self::stream_message("Image push complete.");
+
+            // 6. Modify the compose file to use the new image
+            $compose_file_name = $post_data['compose_path'] ?? 'docker-compose.yml';
+            $compose_file_full_path = $repo_path . '/' . $compose_file_name;
+            if (!file_exists($compose_file_full_path)) throw new Exception("Compose file '{$compose_file_name}' not found.");
+
+            $compose_data = DockerComposeParser::YAMLLoad($compose_file_full_path);
+            if (!isset($compose_data['services']) || empty($compose_data['services'])) throw new Exception("No services found in compose file.");
+
+            // Assume the first service is the one to be updated
+            $first_service_key = array_key_first($compose_data['services']);
+            $compose_data['services'][$first_service_key]['image'] = $new_image_tag;
+            self::stream_message("Updated compose file to use image '{$new_image_tag}'.");
+
+            // 7. Re-run the standard deployment logic with the modified compose data
+            $post_data['compose_content_editor'] = Spyc::YAMLDump($compose_data, 2, 0);
+            $post_data['source_type'] = 'editor'; // Switch source type to use the modified content
+
+            self::executeDeployment($post_data);
+
+            $end_time = microtime(true);
+            $duration = (int)round($end_time - $start_time);
+            self::stream_message("CI/CD process finished in {$duration} seconds.");
+
+        } catch (Exception $e) {
+            self::stream_message("CI/CD process failed: " . $e->getMessage(), 'ERROR');
+            throw $e; // Re-throw to be caught by the parent process if any
+        } finally {
+            if ($repo_path && is_dir($repo_path)) {
+                $git->cleanup($repo_path);
+            }
+            self::closeLogFile();
+        }
     }
 
     /**
@@ -393,6 +508,13 @@ class AppLauncherHelper
     public static function executeDeployment(array $post_data): void
     {
         $start_time = microtime(true); // Start the timer
+
+        // --- NEW: Check if this is a build & deploy request from a webhook ---
+        if (isset($post_data['build_from_dockerfile']) && $post_data['build_from_dockerfile'] === true) {
+            self::buildAndDeployFromGit($post_data);
+            return; // The buildAndDeployFromGit function handles the rest, so we exit here.
+        }
+
         $conn = Database::getInstance()->getConnection();
         
         // --- NEW: Setup Log File ---
@@ -442,12 +564,18 @@ class AppLauncherHelper
             if (!($host = $result->fetch_assoc())) throw new Exception("Host not found.");
             $stmt->close();
 
-            // --- REFACTORED: Open log file using the new method ---
-            self::openLogFile($host, $stack_name);
+            // --- REFACTORED: Open log file using the new method. ---
+            // We need to ensure the full $post_data array is passed so that
+            // openLogFile can find the 'log_file_path' key if it exists (from a webhook).
+            // We also add the host name to the array for the fallback logic.
+            $post_data['host_name'] = $host['name'] ?? 'unknown_host';
+            self::openLogFile($post_data, $stack_name);
 
             $dockerClient = new DockerClient($host);
             $dockerInfo = $dockerClient->getInfo();
             $is_swarm_manager = (isset($dockerInfo['Swarm']['ControlAvailable']) && $dockerInfo['Swarm']['ControlAvailable'] === true);
+            // Add swarm status to form_params for applyFormSettings
+            $form_params['is_swarm_manager'] = $is_swarm_manager;
 
             // Generate Compose Content
             $compose_content = '';

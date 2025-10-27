@@ -268,6 +268,13 @@ require_once __DIR__ . '/../includes/header.php';
                         Webhook akan secara otomatis men-deploy ulang semua stack yang sumbernya adalah 'Git' dan cocok dengan branch yang dikonfigurasi di bawah "Git Integration".
                     </div>
                     <div class="mb-3" style="max-width: 300px;">
+                        <div class="form-check form-switch mt-2 mb-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="webhook_build_image_enabled" name="webhook_build_image_enabled" value="1" <?= (get_setting('webhook_build_image_enabled', '0') == '1') ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="webhook_build_image_enabled">Build Image from Dockerfile</label>
+                            <small class="form-text text-muted d-block">If enabled, the webhook will attempt to build a new Docker image from a `Dockerfile` in the repo root and push it to the host's configured registry before deploying. The image name will be `[registry_user]/[stack_name]:[commit_hash]`.</small>
+                        </div>
+                    </div>
+                    <div class="mb-3" style="max-width: 300px;">
                         <label for="webhook_cooldown_period" class="form-label">Cooldown Period (seconds)</label>
                         <input type="number" class="form-control" id="webhook_cooldown_period" name="webhook_cooldown_period" value="<?= (int)($settings['webhook_cooldown_period'] ?? 300) ?>" min="0">
                         <small class="form-text text-muted">Abaikan pemicu webhook berikutnya untuk stack yang sama dalam interval waktu ini. 300 detik = 5 menit.</small>

@@ -44,6 +44,7 @@ try {
         'agent_log_levels' => implode(',', $_POST['agent_log_levels'] ?? []),
         'health_agent_image' => trim($_POST['health_agent_image'] ?? ''),
         'webhook_cooldown_period' => (int)($_POST['webhook_cooldown_period'] ?? 300),
+        'webhook_build_image_enabled' => isset($_POST['webhook_build_image_enabled']) ? 1 : 0,
         'minimum_sla_percentage' => (float)($_POST['minimum_sla_percentage'] ?? 99.9),
         'maintenance_window_enabled' => isset($_POST['maintenance_window_enabled']) ? 1 : 0,
         'maintenance_window_day' => $_POST['maintenance_window_day'] ?? 'Sunday',

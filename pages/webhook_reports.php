@@ -36,6 +36,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <th>Status</th>
                         <th>Details</th>
                         <th>Source IP</th>
+                        <th class="text-end">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="logs-container">
@@ -50,7 +51,7 @@ require_once __DIR__ . '/../includes/header.php';
             <nav id="logs-pagination"></nav>
             <div class="ms-3">
                 <select name="limit" class="form-select form-select-sm" id="limit-selector" style="width: auto;">
-                    <option value="10">10</option>
+                    <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                     <option value="-1">All</option>
@@ -58,6 +59,24 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
         </div>
     </div>
+</div>
+
+<!-- Deployment Log Modal -->
+<div class="modal fade" id="deploymentLogModal" tabindex="-1" aria-labelledby="deploymentLogModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deploymentLogModalLabel">Deployment Log</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body bg-dark text-light font-monospace">
+        <pre id="deployment-log-content" class="mb-0" style="white-space: pre-wrap; word-break: break-all;"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -68,27 +87,18 @@ window.pageInit = function() {
     const filterForm = document.getElementById('webhook-filter-form');
     const searchInput = document.getElementById('search-input');
     const statusFilter = document.getElementById('status-filter');
-    const autoRefreshSwitch = document.getElementById('auto-refresh-switch');
     const limitSelector = document.getElementById('limit-selector');
+    const deploymentLogModal = new bootstrap.Modal(document.getElementById('deploymentLogModal'));
+    const deploymentLogContent = document.getElementById('deployment-log-content');
+    const deploymentLogModalLabel = document.getElementById('deploymentLogModalLabel');
 
-    let currentPage = 1;
-
-    function loadLogs(page = 1, isAutoRefresh = false) {
-        currentPage = page;
-        if (!isAutoRefresh) {
-            container.innerHTML = '<tr><td colspan="4" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div></td></tr>';
-        }
+    function loadLogs(page = 1) {
+        container.innerHTML = '<tr><td colspan="5" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div></td></tr>';
 
         const searchTerm = searchInput.value.trim();
         const status = statusFilter.value;
         const limit = limitSelector.value;
         const url = `<?= base_url('/api/logs/view') ?>?type=webhook&page=${page}&limit=${limit}&search=${encodeURIComponent(searchTerm)}&status=${status}`;
-
-        // Save state to localStorage
-        localStorage.setItem('webhook_reports_page', page);
-        localStorage.setItem('webhook_reports_limit', limit);
-        localStorage.setItem('webhook_reports_search', searchTerm);
-        localStorage.setItem('webhook_reports_status', status);
 
         fetch(url)
             .then(response => response.json())
@@ -103,87 +113,51 @@ window.pageInit = function() {
                         if (log.action.includes('Failed')) badgeClass = 'danger';
                         if (log.action.includes('Ignored')) badgeClass = 'warning';
 
+                        const logButton = log.action.includes('Triggered')
+                            ? `<button class="btn btn-sm btn-outline-primary view-log-btn" data-log-id="${log.id}" title="View Deployment Log"><i class="bi bi-card-text"></i></button>`
+                            : '';
+
                         html += `
                             <tr>
                                 <td><small class="text-muted">${log.created_at}</small></td>
                                 <td><span class="badge bg-${badgeClass}">${log.action.replace('Webhook ', '')}</span></td>
                                 <td>${log.details}</td>
                                 <td><code>${log.ip_address}</code></td>
+                                <td class="text-end">${logButton}</td>
                             </tr>
                         `;
                     });
                 } else {
-                    html = '<tr><td colspan="4" class="text-center">No webhook activity found.</td></tr>';
+                    html = '<tr><td colspan="5" class="text-center">No webhook activity found.</td></tr>';
                 }
                 container.innerHTML = html;
                 infoContainer.innerHTML = result.info;
-
-                // Build pagination
-                let paginationHtml = '';
-                if (result.total_pages > 1) {
-                    paginationHtml += '<ul class="pagination pagination-sm mb-0">';
-                    for (let i = 1; i <= result.total_pages; i++) {
-                        paginationHtml += `<li class="page-item ${result.current_page == i ? 'active' : ''}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
-                    }
-                    paginationHtml += '</ul>';
-                }
-                paginationContainer.innerHTML = paginationHtml;
+                renderPagination(paginationContainer, result.total_pages, result.current_page, loadLogs);
             })
-            .catch(error => container.innerHTML = `<tr><td colspan="4" class="text-center text-danger">Failed to load logs: ${error.message}</td></tr>`);
+            .catch(error => container.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Failed to load logs: ${error.message}</td></tr>`);
     }
 
-    filterForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        loadLogs(1); // Reset to page 1 on new filter
-    });
+    container.addEventListener('click', function(e) {
+        const viewBtn = e.target.closest('.view-log-btn');
+        if (viewBtn) {
+            const logId = viewBtn.dataset.logId;
+            deploymentLogModalLabel.textContent = `Deployment Log for Activity #${logId}`;
+            deploymentLogContent.textContent = 'Loading log...';
+            deploymentLogModal.show();
 
-    paginationContainer.addEventListener('click', e => {
-        if (e.target.matches('.page-link')) {
-            e.preventDefault();
-            const page = e.target.dataset.page;
-            if (page) {
-                loadLogs(page);
-            }
+            fetch(`<?= base_url('/api/deployment-logs') ?>?id=${logId}`)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.status !== 'success') throw new Error(result.message);
+                    deploymentLogContent.textContent = result.content || 'Log file is empty or not found.';
+                })
+                .catch(error => deploymentLogContent.textContent = `Error loading log: ${error.message}`);
         }
     });
 
-    limitSelector.addEventListener('change', () => {
-        loadLogs(1); // Reset to page 1 when limit changes
-    });
-
-    // --- Auto-refresh logic ---
-    autoRefreshSwitch.addEventListener('change', function() {
-        localStorage.setItem('webhook_reports_auto_refresh', this.checked);
-        if (this.checked) {
-            if (window.currentPageInterval) clearInterval(window.currentPageInterval);
-            window.currentPageInterval = setInterval(() => loadLogs(currentPage, true), 15000);
-            showToast('Auto-refresh enabled (15s).', true);
-        } else {
-            if (window.currentPageInterval) {
-                clearInterval(window.currentPageInterval);
-                window.currentPageInterval = null;
-                showToast('Auto-refresh disabled.', true);
-            }
-        }
-    });
-
-    // Initial Load from localStorage
-    const savedAutoRefresh = localStorage.getItem('webhook_reports_auto_refresh') === 'true';
-    let savedPage = localStorage.getItem('webhook_reports_page') || '1';
-    let savedLimit = localStorage.getItem('webhook_reports_limit') || '25';
-    if (parseInt(savedLimit) === 0) savedLimit = '25'; // Prevent 0 from localStorage
-    const savedSearch = localStorage.getItem('webhook_reports_search') || '';
-    const savedStatus = localStorage.getItem('webhook_reports_status') || '';
-
-    autoRefreshSwitch.checked = savedAutoRefresh;
-    limitSelector.value = savedLimit;
-    searchInput.value = savedSearch;
-    statusFilter.value = savedStatus;
-
-    loadLogs(savedPage);
-    if (savedAutoRefresh) {
-        autoRefreshSwitch.dispatchEvent(new Event('change'));
-    }
+    filterForm.addEventListener('submit', (e) => { e.preventDefault(); loadLogs(1); });
+    limitSelector.addEventListener('change', () => loadLogs(1));
+    loadLogs(1);
 };
 </script>
 

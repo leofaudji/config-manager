@@ -135,7 +135,7 @@ try {
             break;
 
         case 'webhook':
-            $limit_get = isset($_GET['limit']) ? (int)$_GET['limit'] : 25; // Default to 25 if not set or invalid
+            $limit_get = isset($_GET['limit']) ? (int)$_GET['limit'] : 50; // Default to 50 if not set or invalid
             // Ensure limit is never zero for division, unless it's -1 (for 'All')
             if ($limit_get === 0) $limit_get = 25; 
             $limit = ($limit_get == -1) ? 1000000 : $limit_get;
