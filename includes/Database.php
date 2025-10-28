@@ -20,13 +20,10 @@ class Database
      */
     private function connect(): void
     {
-        // Ensure config is loaded
-        Config::load(PROJECT_ROOT . '/.env');
         $db_server = Config::get('DB_SERVER');
         $db_username = Config::get('DB_USERNAME');
         $db_password = Config::get('DB_PASSWORD');
         $db_name = Config::get('DB_NAME');
-
         // Suppress errors to handle them manually
         $this->conn = @new mysqli($db_server, $db_username, $db_password, $db_name);
 

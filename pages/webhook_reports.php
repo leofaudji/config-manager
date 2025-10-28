@@ -113,7 +113,8 @@ window.pageInit = function() {
                         if (log.action.includes('Failed')) badgeClass = 'danger';
                         if (log.action.includes('Ignored')) badgeClass = 'warning';
 
-                        const logButton = log.action.includes('Triggered')
+                        // --- FIX: Show button only if a log file path exists for this entry ---
+                        const logButton = log.log_file_path
                             ? `<button class="btn btn-sm btn-outline-primary view-log-btn" data-log-id="${log.id}" title="View Deployment Log"><i class="bi bi-card-text"></i></button>`
                             : '';
 
@@ -145,12 +146,20 @@ window.pageInit = function() {
             deploymentLogContent.textContent = 'Loading log...';
             deploymentLogModal.show();
 
+            // --- FIX: Handle raw text response and custom headers ---
             fetch(`<?= base_url('/api/deployment-logs') ?>?id=${logId}`)
-                .then(response => response.json())
-                .then(result => {
-                    if (result.status !== 'success') throw new Error(result.message);
-                    deploymentLogContent.textContent = result.content || 'Log file is empty or not found.';
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(text || 'Server error'); });
+                    }
+                    const processStatus = response.headers.get('X-Process-Status') || 'unknown';
+                    let statusBadge = '';
+                    if (processStatus === 'running') statusBadge = '<span class="badge bg-success ms-2">Running</span>';
+                    else if (processStatus === 'finished') statusBadge = '<span class="badge bg-secondary ms-2">Finished</span>';
+                    deploymentLogModalLabel.innerHTML = `Deployment Log for Activity #${logId} ${statusBadge}`;
+                    return response.text();
                 })
+                .then(logContent => deploymentLogContent.textContent = logContent || 'Log file is empty.')
                 .catch(error => deploymentLogContent.textContent = `Error loading log: ${error.message}`);
         }
     });

@@ -4,10 +4,10 @@ class Config
     public static function load(string $path): void
     {
         if (!file_exists($path)) {
-            throw new \InvalidArgumentException(sprintf('%s does not exist', $path));
+            throw new \InvalidArgumentException(sprintf('Configuration file not found at path: %s. Please ensure the .env file exists.', $path));
         }
         if (!is_readable($path)) {
-            throw new \RuntimeException(sprintf('%s file is not readable', $path));
+            throw new \RuntimeException(sprintf('Configuration file is not readable at path: %s. Please check file permissions for the web server user (e.g., www-data).', $path));
         }
 
         $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);

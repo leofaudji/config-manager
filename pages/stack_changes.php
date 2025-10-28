@@ -292,15 +292,23 @@ require_once __DIR__ . '/../includes/header.php';
             deploymentLogContent.textContent = 'Loading log...';
             deploymentLogModal.show();
 
-            fetch(`<?= base_url('/api/deployment-logs') ?>?file=${encodeURIComponent(logFilePath)}`)
-                .then(response => response.json())
-                .then(result => {
-                    if (result.status !== 'success') throw new Error(result.message);
-                    deploymentLogContent.textContent = result.content || 'Log file is empty or not found.';
+            // --- FIX: Handle raw text response and custom headers, same as webhook_reports.php ---
+            // Note: This assumes the log is identified by an ID from the activity_log table,
+            // which is a more robust approach. We need to find the log ID.
+            // For now, let's assume the button will have a data-log-id attribute.
+            const logId = viewBtn.dataset.logId; // We will add this data attribute to the button.
+            fetch(`<?= base_url('/api/deployment-logs') ?>?id=${logId}`)
+                .then(response => {
+                    if (!response.ok) return response.text().then(text => { throw new Error(text || 'Server error'); });
+                    const processStatus = response.headers.get('X-Process-Status') || 'unknown';
+                    let statusBadge = '';
+                    if (processStatus === 'running') statusBadge = '<span class="badge bg-success ms-2">Running</span>';
+                    else if (processStatus === 'finished') statusBadge = '<span class="badge bg-secondary ms-2">Finished</span>';
+                    deploymentLogModalLabel.innerHTML = `Deployment Log for Activity #${logId} ${statusBadge}`;
+                    return response.text();
                 })
-                .catch(error => {
-                    deploymentLogContent.textContent = `Error loading log: ${error.message}`;
-                });
+                .then(logContent => deploymentLogContent.textContent = logContent || 'Log file is empty.')
+                .catch(error => deploymentLogContent.textContent = `Error loading log: ${error.message}`);
         }
     });
     // --- Initial Load with Saved State ---

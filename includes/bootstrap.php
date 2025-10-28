@@ -21,9 +21,23 @@ if (!defined('PROJECT_ROOT')) {
     define('PROJECT_ROOT', dirname(__DIR__));
 }
 
+// --- NEW: Define storage path for logs, cache, etc. ---
+if (!defined('STORAGE_PATH')) {
+    define('STORAGE_PATH', PROJECT_ROOT . '/storage');
+}
+// --- NEW: Define logs path and ensure it exists ---
+if (!defined('LOGS_PATH')) {
+    define('LOGS_PATH', STORAGE_PATH . '/logs');
+    $deployment_logs_dir = LOGS_PATH . '/deployments';
+    if (!is_dir($deployment_logs_dir)) {
+        // Attempt to create with 0775 permissions, allowing web server and group to write.
+        @mkdir($deployment_logs_dir, 0775, true);
+    }
+}
+
 // Load environment variables from the root directory
 try {
-    Config::load(__DIR__ . '/../.env');
+    Config::load(PROJECT_ROOT . '/.env');
 } catch (\Exception $e) {
     die('Error: Could not load configuration. Make sure a .env file exists in the root directory. Details: ' . $e->getMessage());
 }

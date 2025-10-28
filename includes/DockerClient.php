@@ -251,13 +251,6 @@ class DockerClient
      * @throws Exception
      */
     public function pullImage(string $imageName): string {
-        // If the image name doesn't contain a registry (no '.' or ':port' in the first part),
-        // and no custom registry is configured for the host, explicitly prefix it with the Docker Hub registry.
-        // This forces the daemon to ignore local mirrors that might be misconfigured.
-        if (strpos($imageName, '/') === false && empty($this->host['registry_url'])) {
-            $imageName = 'docker.io/library/' . $imageName;
-        }
-
         $path = "/images/create?fromImage=" . urlencode($imageName);
         $headers = [];
 
@@ -272,8 +265,7 @@ class DockerClient
             $headers[] = 'X-Registry-Auth: ' . $auth_header_value;
         }
 
-        // This is a streaming request, so we handle it differently.
-        // We're using the rawRequest method but with POST and headers.
+        // This is a streaming request, handle it similarly to pushImage.
         $response_stream = $this->request($path, 'POST', null, 'application/json', $headers, 300);
 
         // Process the streaming response to make it readable
@@ -284,6 +276,57 @@ class DockerClient
             $output[] = $data['status'] . (isset($data['progress']) ? ' ' . $data['progress'] : '');
         }
         return implode("\n", $output);
+    }
+
+    /**
+     * Pushes an image to a registry.
+     * @param string $imageName The name of the image to push (e.g., my-registry/my-app:latest).
+     * @return string The output from the push command.
+     * @throws Exception
+     */
+    public function pushImage(string $imageName): string
+    {
+        $path = "/images/" . urlencode($imageName) . "/push";
+        $headers = [];
+
+        // Add the auth header if registry credentials are configured for the host.
+        if (!empty($this->host['registry_username']) && !empty($this->host['registry_password'])) {
+            $auth_details = [
+                'username' => $this->host['registry_username'],
+                'password' => $this->host['registry_password'],
+                'serveraddress' => $this->host['registry_url'] ?: 'https://index.docker.io/v1/' // Default to Docker Hub
+            ];
+            $auth_header_value = base64_encode(json_encode($auth_details));
+            $headers[] = 'X-Registry-Auth: ' . $auth_header_value;
+        }
+
+        // This is a streaming request, handle it similarly to pullImage.
+        $response_stream = $this->request($path, 'POST', null, 'application/json', $headers, 600); // 10-minute timeout for push
+
+        // Process the streaming response to make it readable.
+        $lines = explode("\n", trim($response_stream));
+        $output = array_map(fn($line) => json_decode($line, true)['status'] ?? '', $lines);
+
+        return implode("\n", array_filter($output));
+    }
+
+    /**
+     * Tags an existing image with a new name/tag.
+     * @param string $sourceImage The current name of the image (e.g., my-app:latest).
+     * @param string $newTag The new tag to apply (e.g., my-app:1.2.3).
+     * @return bool True on success.
+     * @throws Exception
+     */
+    public function tagImage(string $sourceImage, string $newTag): bool
+    {
+        // The new tag is provided as 'repo' and 'tag' query parameters.
+        list($repo, $tag) = explode(':', $newTag, 2);
+        $path = "/images/" . urlencode($sourceImage) . "/tag?repo=" . urlencode($repo) . "&tag=" . urlencode($tag);
+
+        // This is a non-streaming POST request with an empty body.
+        $this->request($path, 'POST');
+
+        return true; // request() throws an exception on failure.
     }
 
     /**
@@ -308,7 +351,12 @@ class DockerClient
             // If it's a directory, iterate through it
             $contextFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($contextPath), RecursiveIteratorIterator::LEAVES_ONLY);
             foreach ($contextFiles as $file) {
-                if (!$file->isDir()) $phar->addFile($file->getRealPath(), $file->getBasename());
+                if (!$file->isDir()) {
+                    // --- DEFINITIVE FIX: Preserve the directory structure in the tar archive ---
+                    // Get the relative path of the file from the context root.
+                    $relativePath = substr($file->getRealPath(), strlen($contextPath) + 1);
+                    $phar->addFile($file->getRealPath(), $relativePath);
+                }
             }
         } elseif (is_file($contextPath)) {
             // If it's a single file, just add that file.

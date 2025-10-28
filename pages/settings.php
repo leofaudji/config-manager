@@ -359,6 +359,11 @@ require_once __DIR__ . '/../includes/header.php';
                             <input type="text" class="form-control" id="cron_log_path" name="cron_log_path" value="<?= htmlspecialchars($settings['cron_log_path'] ?? '/var/log') ?>">
                             <small class="form-text text-muted">Directory where cron job output logs will be stored (e.g., `health_monitor.log`).</small>
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="deployment_log_path" class="form-label">Deployment Log Path</label>
+                            <input type="text" class="form-control" id="deployment_log_path" name="deployment_log_path" value="<?= htmlspecialchars($settings['deployment_log_path'] ?? LOGS_PATH . '/deployments') ?>">
+                            <small class="form-text text-muted">Directory where background deployment logs will be stored.</small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -430,15 +435,6 @@ require_once __DIR__ . '/../includes/header.php';
                                 <i class="bi bi-stars"></i> Clear Global Search Cache
                             </button>
                         </div>
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-title mb-0">Manual Actions</h6>
-                                    <p class="text-muted small mb-0">Perform one-off data management tasks.</p>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-outline-warning" id="clear-search-cache-btn">
-                                    <i class="bi bi-stars"></i> Clear Global Search Cache
-                                </button>
-                            </div>                        </div>
                     </div>
                 </div>
             </div>

@@ -72,7 +72,8 @@ require_once __DIR__ . '/../includes/header.php';
         <p class="card-text">Update the configuration for an existing application. The application will be redeployed with the new settings.</p>
         <form id="main-form" action="<?= base_url('/api/app-launcher/deploy') ?>" method="POST">
             <input type="hidden" name="update_stack" value="true">
-            
+            <input type="hidden" name="is_manual_update" value="true">
+
             <div class="accordion" id="appLauncherAccordion">
                 <!-- Step 1: Host Selection -->
                 <div class="accordion-item">

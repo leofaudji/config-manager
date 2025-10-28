@@ -64,7 +64,7 @@ function expandCidrToIpRange(string $cidr): array
     return $range;
 }
 
-function log_activity(string $username, string $action, string $details = '', ?int $host_id = null, ?string $log_file_path = null): void {
+function log_activity(string $username, string $action, string $details = '', ?int $host_id = null, ?string $log_file_path = null, ?int $pid = null): int {
     try {
         $conn = Database::getInstance()->getConnection();
         $ip_address = 'UNKNOWN';
@@ -73,13 +73,16 @@ function log_activity(string $username, string $action, string $details = '', ?i
         } elseif (isset($_SERVER['REMOTE_ADDR'])) { // NOSONAR
             $ip_address = $_SERVER['REMOTE_ADDR'];
         }
-        $stmt = $conn->prepare("INSERT INTO activity_log (username, action, details, ip_address, host_id, log_file_path) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssssis", $username, $action, $details, $ip_address, $host_id, $log_file_path);
+        $stmt = $conn->prepare("INSERT INTO activity_log (username, action, details, ip_address, host_id, log_file_path, pid) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssssisi", $username, $action, $details, $ip_address, $host_id, $log_file_path, $pid);
         $stmt->execute();
+        $log_id = $stmt->insert_id;
         $stmt->close();
+        return $log_id;
     } catch (Exception $e) {
         // Log error to a file, don't kill the script
         error_log("Failed to log activity: " . $e->getMessage());
+        return 0;
     }
 }
 

@@ -298,6 +298,8 @@ CREATE TABLE `activity_log` (
   `details` text DEFAULT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
   `host_id` int(11) DEFAULT NULL,
+  `pid` int(11) DEFAULT NULL COMMENT 'Process ID of the background deployment worker',
+  `log_file_path` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `host_id` (`host_id`),

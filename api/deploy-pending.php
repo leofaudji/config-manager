@@ -63,11 +63,11 @@ try {
     $stmt_reset->execute();
     $stmt_reset->close();
 
-    stream_message("---");
-    stream_message("Deployment finished successfully!", "SUCCESS");
+    AppLauncherHelper::stream_message("---");
+    AppLauncherHelper::stream_message("Deployment finished successfully!", "SUCCESS");
     echo "_DEPLOYMENT_COMPLETE_";
 
 } catch (Exception $e) {
-    stream_message($e->getMessage(), 'ERROR');
+    AppLauncherHelper::stream_message($e->getMessage(), 'ERROR');
     echo "_DEPLOYMENT_FAILED_";
 }

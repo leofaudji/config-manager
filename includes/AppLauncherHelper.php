@@ -357,7 +357,12 @@ class AppLauncherHelper
             if (!is_dir($log_dir)) {
                 @mkdir($log_dir, 0755, true);
             }
-            self::$log_file_handle = @fopen(self::$log_file_path, 'w');
+            self::$log_file_handle = fopen(self::$log_file_path, 'w');
+            if (!self::$log_file_handle) {
+                error_log("AppLauncherHelper: Failed to open log file for writing: " . self::$log_file_path);
+                // Optionally, log this failure to the main activity log as well
+                log_activity('SYSTEM', 'Deployment Log Error', "Failed to open deployment log file: " . self::$log_file_path);
+            }
             return;
         }
 
@@ -377,8 +382,11 @@ class AppLauncherHelper
                 }
             }
             self::$log_file_path = $log_dir . '/deployment.log';
-            // Open in 'w' mode to overwrite previous log for this deployment
-            self::$log_file_handle = @fopen(self::$log_file_path, 'w');
+            self::$log_file_handle = fopen(self::$log_file_path, 'w');
+            if (!self::$log_file_handle) {
+                error_log("AppLauncherHelper: Failed to open fallback log file for writing: " . self::$log_file_path);
+                log_activity('SYSTEM', 'Deployment Log Error', "Failed to open fallback deployment log file: " . self::$log_file_path);
+            }
         }
     }
     /**
@@ -446,8 +454,18 @@ class AppLauncherHelper
             $dockerfile_content = file_get_contents($dockerfile_path);
 
             // 4. Build the image
-            // The image name is constructed from the registry user (namespace) and the stack name.
-            $image_name_base = strtolower(trim($host['registry_username'] . '/' . $stack_name));
+            // --- FIX: Robust image name generation to prevent "invalid reference format" ---
+            $registry_user = trim($host['registry_username'] ?? '');
+            // Sanitize stack name to be a valid image name component
+            $safe_stack_name = strtolower(preg_replace('/[^a-zA-Z0-9_.-]/', '_', $stack_name));
+
+            if (!empty($registry_user)) {
+                // If a registry user/namespace is provided, use it.
+                $image_name_base = strtolower(trim($registry_user)) . '/' . $safe_stack_name;
+            } else {
+                // Otherwise, just use the stack name. This is valid for local images.
+                $image_name_base = $safe_stack_name;
+            }
             $new_image_tag = "{$image_name_base}:{$commit_hash}";
             self::stream_message("Building new image: {$new_image_tag}");
 
@@ -457,10 +475,13 @@ class AppLauncherHelper
             self::stream_message("Image build complete.");
 
             // 5. Push the image to the host's configured registry
-            self::stream_message("Pushing image '{$new_image_tag}' to registry...");
-            $push_output = $dockerClient->pullImage($new_image_tag); // pullImage also handles push auth
-            self::stream_message("Push output:\n" . $push_output, 'SHELL');
-            self::stream_message("Image push complete.");
+            // --- FIX: Only push if a registry user is configured ---
+            if (!empty($registry_user)) {
+                self::stream_message("Pushing image '{$new_image_tag}' to registry...");
+                $push_output = $dockerClient->pushImage($new_image_tag);
+                self::stream_message("Push output:\n" . $push_output, 'SHELL');
+                self::stream_message("Image push complete.");
+            }
 
             // 6. Modify the compose file to use the new image
             $compose_file_name = $post_data['compose_path'] ?? 'docker-compose.yml';
@@ -493,6 +514,149 @@ class AppLauncherHelper
                 $git->cleanup($repo_path);
             }
             self::closeLogFile();
+        }
+    }
+
+    /**
+     * Efficiently handles a webhook trigger for multiple stacks using the same Git repo.
+     * It clones the repo once, builds the image once, and then deploys to each stack.
+     *
+     * @param array $payload The grouped payload from the webhook handler.
+     * @return void
+     * @throws Exception
+     */
+    public static function executeGroupedDeploymentFromGit(array $payload): void
+    {
+        $start_time = microtime(true);
+        $conn = Database::getInstance()->getConnection();
+        $git = new GitHelper();
+        $repo_path = null;
+
+        $git_url = $payload['git_url'];
+        $git_branch = $payload['git_branch'];
+        $stacks_to_deploy = $payload['stacks'];
+
+        self::stream_message("Starting EFFICIENT grouped CI/CD process for repo '{$git_url}'.");
+        self::stream_message("Stacks to be updated: " . implode(', ', array_column($stacks_to_deploy, 'stack_name')));
+
+        try {
+            // --- Clone, Build, Push (ONCE) ---
+            self::stream_message("Cloning repository '{$git_url}' (branch: {$git_branch})...");
+            $repo_path = $git->cloneOrPull($git_url, $git_branch);
+            $commit_hash = trim($git->execute("rev-parse --short HEAD", $repo_path));
+            self::stream_message("Cloned to '{$repo_path}'. Latest commit: {$commit_hash}");
+
+            if ($payload['build_from_dockerfile']) {
+                // --- Get image name and version details ---
+                $first_stack_details = $stacks_to_deploy[0];
+                $compose_file_name_for_build = $first_stack_details['compose_path'] ?? 'docker-compose.yml';
+                $compose_file_full_path_for_build = $repo_path . '/' . $compose_file_name_for_build;
+                if (!file_exists($compose_file_full_path_for_build)) throw new Exception("Compose file '{$compose_file_name_for_build}' not found for stack '{$first_stack_details['stack_name']}'.");
+
+                $compose_data_for_build = DockerComposeParser::YAMLLoad(file_get_contents($compose_file_full_path_for_build));
+                $first_service_key_for_build = array_key_first($compose_data_for_build['services'] ?? []);
+                if (!$first_service_key_for_build) throw new Exception("No services found in compose file '{$compose_file_name_for_build}'.");
+                
+                $stable_image_tag = $compose_data_for_build['services'][$first_service_key_for_build]['image'] ?? null;
+                if (!$stable_image_tag) throw new Exception("No 'image' key found in the first service of '{$compose_file_name_for_build}'.");
+
+                // Read version from VERSION file
+                $version_file_path = $repo_path . '/VERSION';
+                $version_tag = null;
+                if (file_exists($version_file_path)) {
+                    $version_from_file = trim(file_get_contents($version_file_path));
+                    if (!empty($version_from_file)) {
+                        // Construct the versioned tag, e.g., "assistdevops/php8:11"
+                        $base_image_name = substr($stable_image_tag, 0, strrpos($stable_image_tag, ':'));
+                        $version_tag = "{$base_image_name}:{$version_from_file}";
+                    }
+                }
+
+                // --- Build and Push Logic ---
+                $dockerfile_path = $repo_path . '/Dockerfile';
+                if (!file_exists($dockerfile_path)) throw new Exception("Dockerfile not found in the root of the repository.");
+                $dockerfile_content = file_get_contents($dockerfile_path);
+
+                self::stream_message("Building new image with stable tag: {$stable_image_tag}");
+                $first_host_id = $stacks_to_deploy[0]['host_id'];
+                $stmt_host = $conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
+                $stmt_host->bind_param("i", $first_host_id);
+                $stmt_host->execute();
+                $build_host = $stmt_host->get_result()->fetch_assoc();
+                $stmt_host->close();
+                if (!$build_host) throw new Exception("Build host (ID: {$first_host_id}) not found.");
+                
+                $dockerClientForBuild = new DockerClient($build_host);
+                $build_output = $dockerClientForBuild->buildImage($dockerfile_content, $repo_path, $stable_image_tag);
+                self::stream_message("Build output:\n" . $build_output, 'SHELL');
+
+                if (!empty($build_host['registry_url'])) {
+                    // Push the stable tag first
+                    self::stream_message("Pushing image '{$stable_image_tag}' to registry '{$build_host['registry_url']}'...");
+                    $push_output = $dockerClientForBuild->pushImage($stable_image_tag);
+                    self::stream_message("Push output:\n" . $push_output, 'SHELL');
+
+                    // If a version tag was created, tag and push it as well
+                    if ($version_tag) {
+                        self::stream_message("Tagging '{$stable_image_tag}' as '{$version_tag}'...");
+                        $dockerClientForBuild->tagImage($stable_image_tag, $version_tag);
+                        self::stream_message("Pushing image '{$version_tag}' to registry '{$build_host['registry_url']}'...");
+                        $push_output_versioned = $dockerClientForBuild->pushImage($version_tag);
+                        self::stream_message("Push output:\n" . $push_output_versioned, 'SHELL');
+                    }
+                }
+            }
+
+            // --- Deploy to each stack (LOOP) ---
+            foreach ($stacks_to_deploy as $stack_details) {
+                self::stream_message("---");
+                $current_stack_name = $stack_details['stack_name'];
+                $current_host_name = $stack_details['host_name'];
+                self::stream_message("Processing stack '{$current_stack_name}' on host '{$current_host_name}'...");
+                
+                // --- NEW: Apply all saved App Launcher settings ---
+                // This makes the webhook deployment behave exactly like the App Launcher.
+                $compose_file_name = $stack_details['compose_path'] ?? 'docker-compose.yml';
+                $compose_file_full_path = $repo_path . '/' . $compose_file_name;
+                if (!file_exists($compose_file_full_path)) throw new Exception("Compose file '{$compose_file_name}' not found for stack '{$current_stack_name}'.");
+
+                $compose_data = DockerComposeParser::YAMLLoad(file_get_contents($compose_file_full_path));
+
+                // Get host details for applyFormSettings
+                $stmt_host_loop = $conn->prepare("SELECT * FROM docker_hosts WHERE id = ?");
+                $stmt_host_loop->bind_param("i", $stack_details['host_id']);
+                $stmt_host_loop->execute();
+                $current_host = $stmt_host_loop->get_result()->fetch_assoc();
+                $stmt_host_loop->close();
+                $dockerInfo = (new DockerClient($current_host))->getInfo();
+                $is_swarm_manager = (isset($dockerInfo['Swarm']['ControlAvailable']) && $dockerInfo['Swarm']['ControlAvailable'] === true);
+
+                // Apply all settings (ports, volumes, network, etc.) from the saved deployment_details
+                self::applyFormSettings($compose_data, $stack_details, $current_host, $is_swarm_manager);
+
+                // --- FIX: Preserve the original source_type ---
+                // Store the original source type before we temporarily change it for deployment.
+                $original_source_type = $stack_details['source_type'];
+
+                // Convert the modified compose data back to YAML and set it for deployment
+                $stack_details['compose_content_editor'] = Spyc::YAMLDump($compose_data, 2, 0);
+                $stack_details['source_type'] = 'editor';
+
+                $stack_details['original_source_type'] = $original_source_type;
+                // Call the standard deployment logic for this single stack
+                self::executeDeployment($stack_details);
+            }
+
+            $end_time = microtime(true);
+            $duration = (int)round($end_time - $start_time);
+            self::stream_message("---");
+            self::stream_message("Grouped CI/CD process finished in {$duration} seconds.", "SUCCESS");
+
+        } finally {
+            if ($repo_path && is_dir($repo_path)) {
+                $git->cleanup($repo_path);
+                self::stream_message("Cleaned up temporary repository.");
+            }
         }
     }
 
@@ -680,7 +844,11 @@ class AppLauncherHelper
             $cd_command = "cd " . escapeshellarg($deployment_dir);
             $main_compose_command = '';
             if ($is_swarm_manager) {
-                $main_compose_command = "docker stack deploy -c " . escapeshellarg($compose_file_name) . " " . escapeshellarg($stack_name) . " --with-registry-auth --prune 2>&1";
+                                // --- DEFINITIVE FIX for SWARM ---
+                // The most reliable method for the CLI is to perform a `docker login` first,
+                // then use the `--with-registry-auth` flag to pass those credentials to the nodes.
+                // This reverts the previous API-style flag which was incorrect for the CLI.
+                $main_compose_command = $login_command . "docker stack deploy --resolve-image always -c " . escapeshellarg($compose_file_name) . " " . escapeshellarg($stack_name) . " --with-registry-auth --prune 2>&1";            
             } else {
                 // --- FIX: Add --scale flag for standalone replicas ---
                 $scale_command = '';
@@ -692,10 +860,14 @@ class AppLauncherHelper
                         $scale_command = "--scale " . escapeshellarg($first_service_name . '=' . $replicas);
                     }
                 }
-                $main_compose_command = "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1 && docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes {$scale_command} 2>&1";
+                // --- DEFINITIVE FIX for STANDALONE with PULL --- (Previous fix was incorrect)
+                // The login command is executed first, then we explicitly pull, then we run 'up'.
+                // The `--pull always` flag is not universally available or reliable in all compose versions.
+                // A separate `pull` command is the most robust method.
+                $main_compose_command = $login_command . "docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " pull 2>&1 && docker compose -p " . escapeshellarg($stack_name) . " -f " . escapeshellarg($compose_file_name) . " up -d --force-recreate --remove-orphans --renew-anon-volumes {$scale_command} 2>&1";
             }
  
-            $script_to_run = $cd_command . ' && ' . $login_command . $main_compose_command;
+            $script_to_run = $cd_command . ' && ' . $main_compose_command;
             $full_command = 'env ' . $env_vars . ' sh -c ' . escapeshellarg($script_to_run);
 
             self::stream_exec($full_command, $return_var);
@@ -704,14 +876,19 @@ class AppLauncherHelper
 
             // Save to DB
             $deployment_details_json = json_encode($post_data, JSON_UNESCAPED_SLASHES);
+            // --- FIX: Ensure temporary source_type ('editor') is not saved in deployment_details ---
+            if (isset($post_data['original_source_type'])) {
+                $post_data_for_db = $post_data;
+                $post_data_for_db['source_type'] = $post_data['original_source_type'];
+                $deployment_details_json = json_encode($post_data_for_db, JSON_UNESCAPED_SLASHES);
+            }
+            $is_manual_update = isset($post_data['is_manual_update']) && $post_data['is_manual_update'] === 'true';
             $placement_to_save = $deploy_placement_constraint ?? '';
+
             $stmt_stack = $conn->prepare(
                 "INSERT INTO application_stacks (host_id, stack_name, source_type, compose_file_path, deployment_details, autoscaling_enabled, autoscaling_min_replicas, autoscaling_max_replicas, autoscaling_cpu_threshold_up, autoscaling_cpu_threshold_down, deploy_placement_constraint, webhook_update_policy, webhook_schedule_time) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE 
-                    source_type = VALUES(source_type), compose_file_path = VALUES(compose_file_path), deployment_details = VALUES(deployment_details), 
-                    autoscaling_enabled = VALUES(autoscaling_enabled), autoscaling_min_replicas = VALUES(autoscaling_min_replicas), autoscaling_max_replicas = VALUES(autoscaling_max_replicas), 
-                    autoscaling_cpu_threshold_up = VALUES(autoscaling_cpu_threshold_up), autoscaling_cpu_threshold_down = VALUES(autoscaling_cpu_threshold_down),
+                 ON DUPLICATE KEY UPDATE compose_file_path = VALUES(compose_file_path), deployment_details = VALUES(deployment_details), autoscaling_enabled = VALUES(autoscaling_enabled), autoscaling_min_replicas = VALUES(autoscaling_min_replicas), autoscaling_max_replicas = VALUES(autoscaling_max_replicas), autoscaling_cpu_threshold_up = VALUES(autoscaling_cpu_threshold_up), autoscaling_cpu_threshold_down = VALUES(autoscaling_cpu_threshold_down),
                     deploy_placement_constraint = VALUES(deploy_placement_constraint), webhook_update_policy = VALUES(webhook_update_policy), webhook_schedule_time = VALUES(webhook_schedule_time),
                     webhook_pending_update = 0, updated_at = NOW()"
             );
@@ -747,12 +924,9 @@ class AppLauncherHelper
      */
     public static function stream_message(string $message, string $type = 'INFO'): void
     {
-        $line = date('[Y-m-d H:i:s]') . " [{$type}] " . htmlspecialchars(trim($message)) . "\n";
+        $line = date('[Y-m-d H:i:s]') . " [{$type}] " . trim($message) . "\n";
         echo $line;
         flush();
-        if (self::$log_file_handle) {
-            fwrite(self::$log_file_handle, $line);
-        }
     }
 
     /**

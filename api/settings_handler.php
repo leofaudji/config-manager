@@ -61,6 +61,7 @@ try {
     $settings_to_update['backup_path'] = trim($_POST['backup_path'] ?? '/var/www/html/config-manager/backups');
     $settings_to_update['backup_retention_days'] = (int)($_POST['backup_retention_days'] ?? 7);
     $settings_to_update['notification_secret_token'] = trim($_POST['notification_secret_token'] ?? '');
+    $settings_to_update['deployment_log_path'] = rtrim(trim($_POST['deployment_log_path'] ?? ''), '/');
     $settings_to_update['header_notification_interval'] = (int)($_POST['header_notification_interval'] ?? 30);
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE for a safe upsert
@@ -82,7 +83,8 @@ try {
         'Git Persistent Repo Path' => $settings_to_update['git_persistent_repo_path'],
         'Temporary Directory Path' => $settings_to_update['temp_directory_path'],
         'Cron Job Log Path' => $settings_to_update['cron_log_path'],
-        'Backup Storage Path' => $settings_to_update['backup_path']
+        'Backup Storage Path' => $settings_to_update['backup_path'],
+        'Deployment Log Path' => $settings_to_update['deployment_log_path']
     ];
 
     foreach ($paths_to_create as $label => $path) {
