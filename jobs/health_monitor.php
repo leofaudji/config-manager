@@ -135,12 +135,6 @@ try {
         if ($new_status === 'unhealthy' && $service['status'] !== 'unhealthy') {
             echo "  -> STATUS TIDAK SEHAT TERDETEKSI! Mengirim notifikasi untuk service '{$service['name']}'.\n";
             log_activity('SYSTEM', 'Service Unhealthy', "Service '{$service['name']}' marked as unhealthy from HTTP check.", null);
-            send_notification(
-                "Service Unhealthy: " . $service['name'],
-                "The service '{$service['name']}' has been marked as unhealthy. Last log: {$log_message}",
-                'error',
-                ['service_name' => $service['name']]
-            );
         }
     }
 

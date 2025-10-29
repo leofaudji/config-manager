@@ -19,7 +19,7 @@ if (json_last_error() !== JSON_ERROR_NONE) {
 }
 
 // Relay the notification using the central function
-send_notification($data['title'] ?? 'Agent Alert', $data['message'] ?? 'No message.', $data['level'] ?? 'info', $data['context'] ?? []);
+//send_notification($data['title'] ?? 'Agent Alert', $data['message'] ?? 'No message.', $data['level'] ?? 'info', $data['context'] ?? []);
 
 echo json_encode(['status' => 'success', 'message' => 'Notification relayed.']);
 ?>

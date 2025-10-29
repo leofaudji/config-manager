@@ -2,7 +2,7 @@
 // File: health-agent/agent.php
 
 // --- Self-Update Configuration ---
-define('AGENT_VERSION', '2.0.3'); // Ganti versi ini setiap kali Anda mengubah skrip
+define('AGENT_VERSION', '2.0.4'); // Ganti versi ini setiap kali Anda mengubah skrip
 
 set_time_limit(0); // Run indefinitely
 
@@ -697,13 +697,6 @@ function run_check_cycle() {
             // --- Auto-Healing Logic ---
             if ($is_healthy === false && $autoHealingEnabled) {
                 log_message("  -> STATUS TIDAK SEHAT TERDETEKSI! Memicu auto-healing untuk kontainer '{$container_name}'.");
-                // --- NEW: Send notification when an unhealthy container is found ---
-                send_notification(
-                    "Container Unhealthy: " . $container_name,
-                    "The container '{$container_name}' on host '{$hostId}' has been marked as unhealthy. Auto-healing has been triggered.",
-                    'error',
-                    ['container_name' => $container_name, 'host_id' => $hostId]
-                );
                 
                 // --- NEW: Swarm-aware auto-healing ---
                 $service_id = $details['Config']['Labels']['com.docker.swarm.service.id'] ?? null;
@@ -718,7 +711,7 @@ function run_check_cycle() {
                     } else {
                         // For Standalone, just restart the container.
                         log_message("    -> Mode Standalone terdeteksi. Merestart kontainer '{$container_name}'.");
-                        //$dockerClient->restartContainer($container_id);
+                        $dockerClient->restartContainer($container_id);
                         $healing_message = "Restart command sent successfully to container '{$container_name}'.";
                         log_message("  -> SUKSES: {$healing_message}");
                     }

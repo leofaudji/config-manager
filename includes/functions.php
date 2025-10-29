@@ -86,6 +86,23 @@ function log_activity(string $username, string $action, string $details = '', ?i
     }
 }
 
+
+function format_duration_for_notification($seconds) {
+    if ($seconds === null || $seconds < 1) return 'N/A';
+    
+    $parts = [];
+    $periods = ['d' => 86400, 'h' => 3600, 'm' => 60, 's' => 1];
+    
+    foreach ($periods as $name => $value) {
+        if ($seconds >= $value) {
+            $num = floor($seconds / $value);
+            $parts[] = "{$num}{$name}";
+            $seconds %= $value;
+        }
+    }
+    return empty($parts) ? 'less than 1s' : implode(' ', $parts);
+}
+
 /**
  * Sends a notification to the configured external notification server.
  *
@@ -95,39 +112,79 @@ function log_activity(string $username, string $action, string $details = '', ?i
  * @param array $context Additional context data to include in the payload.
  * @return void
  */
-function send_notification(string $title, string $message, string $level = 'error', array $context = []): void {
+function send_notification(string $title, string $message, string $level = 'error', array $context = []): void
+{
     $is_enabled = (int)get_setting('notification_enabled', 0);
-    $url = get_setting('notification_server_url');
-    $token = get_setting('notification_secret_token');
+    $recipient_emails_str = $context['override_recipient_emails'] ?? get_setting('notification_email_to');
+    $customer_id = $context['override_customer_id'] ?? get_setting('notification_customer_id');
+    $url = $context['override_url'] ?? get_setting('notification_server_url');
 
-    if (!$is_enabled || empty($url)) {
-        return; // Do nothing if not enabled or URL is not set
+    if (!$is_enabled || empty($url) || empty($recipient_emails_str) || empty($customer_id)) {
+        return; // Do nothing if not enabled or URL/recipient email is not set
     }
 
-    $payload = array_merge([
-        'title' => $title,
-        'message' => $message,
-        'level' => $level,
-        'timestamp' => date('c'), // ISO 8601 timestamp
-        'source_app' => 'Config Manager'
-    ], $context);
-
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    // Determine the template based on the notification title
+    $template = 'up_server'; // Default template
+    if (stripos($title, 'incident') !== false) {
+        $template = (stripos($title, 'resolved') !== false || stripos($title, 'closed') !== false) ? 'server_recovered' : 'down_server';
+    }
+    if (stripos($title, 'down') !== false) {
+        $template = 'down_server';
+    } elseif (stripos($title, 'resolved') !== false || stripos($title, 'recovered') !== false) {
+        $template = 'up_server';
+    }
     
-    $headers = ['Content-Type: application/json'];
-    if (!empty($token)) {
-        $headers[] = 'X-Secret-Token: ' . $token;
+    // Build the final payload for the API
+    // The API is expected to handle multiple recipients in the 'to' field.
+    $final_payload = [
+        'to' => $recipient_emails_str, // Send the comma-separated string directly
+        'protocol' => 'email',
+        'template' => $template,
+        'customer_id' => $customer_id,
+        'data' => [
+            'nama_host' => $context['host_name'] ?? 'N/A',
+            'nama_container' => $context['container_name'] ?? 'N/A',
+            'port_down' => $context['port'] ?? 'N/A', 
+            'waktu_kejadian' => date('j M Y, H:i') . ' WIB', // This is now the recovery time
+            'durasi' => format_duration_for_notification($context['duration_seconds'] ?? null),
+            'log_content' => $context['monitoring_snapshot'] ?? (is_array($message) ? json_encode($message, JSON_PRETTY_PRINT) : $message),
+            'title' => $title,
+            'message' => is_array($message) ? 'See JSON log content.' : $message,
+        ],
+    ];
+
+    $curl = curl_init();
+    curl_setopt_array($curl, [
+        CURLOPT_URL => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => '',
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 30, // Increased timeout for external API
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_POSTFIELDS => json_encode($final_payload),
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+    ]);
+
+    $response = curl_exec($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($curl);
+    curl_close($curl);
+
+    // Log the outcome of the single notification attempt
+    if ($curl_error) {
+        log_activity('SYSTEM', 'Notification Failed', "Failed to send '{$title}' to {$recipient_emails_str}. cURL Error: {$curl_error}");
+    } elseif ($http_code < 200 || $http_code >= 300) {
+        log_activity('SYSTEM', 'Notification Failed', "Failed to send '{$title}' to {$recipient_emails_str}. Server responded with HTTP {$http_code}. Response: " . substr($response, 0, 200));
+    } else {
+        log_activity('SYSTEM', 'Notification Sent', "Successfully sent notification '{$title}' to {$recipient_emails_str}.");
     }
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+}
 
-    // Use a short timeout to avoid blocking the main process for too long
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
-
-    curl_exec($ch);
+/**
+ * Gets a specific setting value from the database.
+ * Caches all settings on first call to avoid multiple DB queries.
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curl_error = curl_error($ch);
     curl_close($ch);

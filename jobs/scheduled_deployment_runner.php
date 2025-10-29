@@ -71,7 +71,6 @@ try {
         $stmt_update->close();
 
         log_activity('SYSTEM', 'Scheduled Deploy Triggered', "Automatic scheduled deployment triggered for stack '{$stack['stack_name']}' on host '{$stack['host_name']}'.", $stack['host_id']);
-        send_notification("Scheduled Deployment Started", "Automatic deployment for '{$stack['stack_name']}' has started.", 'info');
     }
 } catch (Exception $e) {
     echo colorize_log("A critical error occurred: " . $e->getMessage() . "\n", "error");

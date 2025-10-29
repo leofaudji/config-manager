@@ -451,8 +451,10 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                             <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="dark" title="Dark"><i class="bi bi-moon-stars-fill"></i></a>
                             <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="ocean" title="Ocean"><i class="bi bi-water"></i></a>
                             <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="forest" title="Forest"><i class="bi bi-tree-fill"></i></a>
-                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="sunrise" title="Sunrise"><i class="bi bi-sunrise-fill"></i></a>
                             <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="midnight" title="Midnight"><i class="bi bi-moon-fill"></i></a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="dusk" title="Dusk"><i class="bi bi-sunset-fill"></i></a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="slate" title="Slate"><i class="bi bi-layers-half"></i></a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary theme-switcher" data-theme="crimson" title="Crimson"><i class="bi bi-droplet-fill"></i></a>
                         </div>
                     </li>
                     <li><hr class="dropdown-divider"></li>

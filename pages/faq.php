@@ -314,9 +314,14 @@ document.addEventListener('DOMContentLoaded', function() {
     searchInput.addEventListener('input', filterFAQ);
 });
 </script>
-<script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true });
+<script>
+window.pageInit = function() {
+    // Gunakan dynamic import di dalam pageInit
+    import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs').then((mermaidModule) => {
+        mermaidModule.default.initialize({ startOnLoad: true });
+        mermaidModule.default.run(); // Secara eksplisit jalankan render
+    });
+};
 </script>
 
 <?php

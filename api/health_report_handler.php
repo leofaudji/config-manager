@@ -57,24 +57,29 @@ $stmt_update_host->close();
 
 // --- Send Recovery Notification if it was previously down ---
 if ($was_down && (bool)get_setting('notification_host_down_enabled', true)) {
-    // Send notification only if enabled
-    if ((bool)get_setting('notification_host_down_enabled', true)) {
-        send_notification(
-            "Host Recovered: {$host_info['name']}",
-            "Host '{$host_info['name']}' is back online and reporting health status.",
-            'success',
-            ['host_id' => $host_id, 'host_name' => $host_info['name']]
-        );
-
-        // Resolve any open incident for this host
+    // Resolve any open incident for this host when it comes back online
         $stmt_resolve_incident = $conn->prepare("
             UPDATE incident_reports 
             SET status = 'Resolved', end_time = NOW(), duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW())
             WHERE target_id = ? AND incident_type = 'host' AND status IN ('Open', 'Investigating')
         ");
         $stmt_resolve_incident->bind_param("s", $host_id);
-        $stmt_resolve_incident->execute();
-    }
+        if ($stmt_resolve_incident->execute() && $stmt_resolve_incident->affected_rows > 0) { // NOSONAR
+            // Only send notification if an incident was actually resolved.
+            // --- FIX: Fetch incident details to include in the notification ---
+            $stmt_get_incident = $conn->prepare("SELECT duration_seconds FROM incident_reports WHERE target_id = ? AND incident_type = 'host' ORDER BY id DESC LIMIT 1");
+            $stmt_get_incident->bind_param("s", $host_id);
+            $stmt_get_incident->execute();
+            $incident_details = $stmt_get_incident->get_result()->fetch_assoc();
+            $stmt_get_incident->close();
+
+            send_notification(
+                "Host Recovered: " . ($host_info['name'] ?? 'Unknown Host'),
+                "Host '" . ($host_info['name'] ?? 'Unknown Host') . "' is back online and reporting health status.",
+                'success', // Level
+                ['host_name' => $host_info['name'] ?? 'Unknown Host', 'duration_seconds' => $incident_details['duration_seconds'] ?? 0]
+            );
+        }
 }
 
 try {
@@ -181,7 +186,28 @@ try {
                 WHERE target_id = ? AND status IN ('Open', 'Investigating')
             ");
             $stmt_resolve_incident->bind_param("s", $report['container_id']);
-            $stmt_resolve_incident->execute();
+            if ($stmt_resolve_incident->execute() && $stmt_resolve_incident->affected_rows > 0) { // NOSONAR
+                // --- NEW: Send recovery notification for the container ---
+                if ((bool)get_setting('notification_host_down_enabled', true)) {
+                    // --- FIX: Fetch incident details to include in the notification ---
+                    $stmt_get_incident = $conn->prepare("SELECT start_time, duration_seconds FROM incident_reports WHERE target_id = ? AND incident_type = 'container' ORDER BY id DESC LIMIT 1");
+                    $stmt_get_incident->bind_param("s", $report['container_id']);
+                    $stmt_get_incident->execute();
+                    $incident_details = $stmt_get_incident->get_result()->fetch_assoc();
+                    $stmt_get_incident->close();
+
+                    send_notification(
+                        "Container Recovered: " . $report['container_name'],
+                        "Container '{$report['container_name']}' on host '{$host_info['name']}' is now healthy.",
+                        'success',
+                        [
+                            'host_name' => $host_info['name'], 
+                            'container_name' => $report['container_name'],
+                            'duration_seconds' => $incident_details['duration_seconds'] ?? 0
+                        ]
+                    );
+                }
+            }
         } elseif ($new_status === 'unhealthy' && $current_status['status'] !== 'unhealthy') {
             // --- CORRECT PLACEMENT for Incident Creation Logic ---
             // Status just changed to unhealthy, create a new incident if no open one exists
@@ -194,8 +220,13 @@ try {
                 send_notification(
                     "New Incident: " . $report['container_name'],
                     "A new incident has been opened for container '{$report['container_name']}' on host '{$host_info['name']}'. Status: UNHEALTHY.",
-                    'error',
-                    ['incident_type' => 'container', 'target_name' => $report['container_name'], 'host_id' => $host_id]
+                    'error', // Level
+                    [ // Context
+                        'incident_type' => 'container',
+                        'host_name' => $host_info['name'],
+                        'container_name' => $report['container_name'],
+                        'monitoring_snapshot' => $snapshot
+                    ]
                 );
             }
         } 

@@ -176,6 +176,7 @@ $router->get('/api/system/backup-status', 'api/system_handler.php', ['auth', 'ad
 $router->get('/api/system/backup/download', 'api/system_handler.php', ['auth', 'admin']);
 $router->post('/api/history/cleanup', 'api/cleanup_handler.php', ['auth', 'admin']);
 $router->post('/api/notifications/agent-relay', 'api/notification_relay_handler.php'); // New endpoint for agent notifications
+$router->post('/api/notifications/test', 'api/notification_test_handler.php', ['auth', 'admin']); // New endpoint for testing notifications
 $router->post('/api/routers/bulk-move', 'api/router_bulk_handler.php', ['auth', 'admin']);
 $router->post('/api/routers/bulk-delete', 'api/router_bulk_handler.php', ['auth', 'admin']);
 $router->get('/api/agent/version', 'api/agent/version.php'); // Public endpoint for agent self-update

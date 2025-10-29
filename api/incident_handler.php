@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         // --- FIX: Logic to set end_time on resolution/closure ---
-        // 1. Get the current status and start time from the database before updating
+        // 1. Get the current status, start time, and target name from the database before updating
         $stmt_get_old = $conn->prepare("SELECT status, start_time FROM incident_reports WHERE id = ?");
         $stmt_get_old->bind_param("i", $incident_id);
         $stmt_get_old->execute();
@@ -200,6 +200,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($stmt->execute()) {
             log_activity($_SESSION['username'], 'Incident Updated', "Updated incident report #{$incident_id}. Set status to {$new_status}.");
+
+            // --- NEW: Send notification on resolution/closure ---
+            if (in_array($new_status, ['Resolved', 'Closed'])) {
+                // --- FIX: Fetch incident details for notification context ---
+                $stmt_get_details = $conn->prepare("SELECT target_name, incident_type, host_id FROM incident_reports WHERE id = ?");
+                $stmt_get_details->bind_param("i", $incident_id);
+                $stmt_get_details->execute();
+                $incident_details = $stmt_get_details->get_result()->fetch_assoc();
+                $stmt_get_details->close();
+
+                send_notification(
+                    "Incident {$new_status}: " . ($incident_details['target_name'] ?? 'N/A'),
+                    "Incident #{$incident_id} for target '{$incident_details['target_name']}' has been marked as {$new_status} by " . ($_SESSION['username'] ?? 'system') . ".",
+                    'success',
+                    ['incident_id' => $incident_id, 'container_name' => $incident_details['target_name'], 'host_id' => $incident_details['host_id']]
+                );
+            }
+
             echo json_encode([
                 'status' => 'success', 
                 'message' => 'Incident report updated successfully.',

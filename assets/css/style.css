@@ -108,30 +108,6 @@ body.theme-forest .sidebar .nav-link {
 }
 /* --- Akhir IDE --- */
 
-/* --- IDE: Tema Sidebar "Sunrise" --- */
-body.theme-sunrise {
-    --sidebar-bg: linear-gradient(to top, #F7B733, #FC4A1A); /* Gradien oranye-kuning */
-    --sidebar-link-color: #4A1D04; /* Teks coklat tua */
-    --sidebar-link-hover-bg: rgba(255, 255, 255, 0.2);
-    --sidebar-link-hover-color: #000000;
-    --sidebar-link-active-bg: #ffffff; /* Latar belakang putih untuk item aktif */
-    --sidebar-link-active-color: #FC4A1A; /* Teks oranye untuk item aktif */
-    --cf-border-color: #F7B733; /* Warna border yang cocok dengan gradien */
-    --sidebar-search-bg: rgba(0, 0, 0, 0.07);
-    --sidebar-search-color: var(--sidebar-link-color);
-    --bs-card-border-color: rgba(74, 29, 4, 0.1); /* Border kartu yang lebih halus */
-}
-
-body.theme-sunrise .sidebar {
-    background: var(--sidebar-bg);
-}
-
-body.theme-sunrise .sidebar .navbar-brand,
-body.theme-sunrise .sidebar .nav-link {
-    color: var(--sidebar-link-color);
-}
-/* --- Akhir IDE --- */
-
 /* --- IDE: Tema Sidebar "Midnight" --- */
 body.theme-midnight {
     --sidebar-bg: linear-gradient(to top, #141E30, #243B55); /* Gradien biru malam */
@@ -153,6 +129,106 @@ body.theme-midnight .sidebar {
 body.theme-midnight .sidebar .navbar-brand,
 body.theme-midnight .sidebar .nav-link {
     color: var(--sidebar-link-color);
+}
+
+/* --- FIX: Tambahkan aturan untuk link aktif pada tema Midnight --- */
+body.theme-midnight .sidebar-nav .nav-link.active {
+    background-color: var(--sidebar-link-active-bg);
+    color: var(--sidebar-link-active-color);
+    border-left-color: transparent; /* Hapus border kiri agar tidak bentrok */
+}
+/* --- Akhir IDE --- */
+
+/* --- IDE: Tema Sidebar "Dusk" --- */
+body.theme-dusk {
+    --sidebar-bg: linear-gradient(to top, #3B326C, #A4508B); /* Gradien ungu-pink senja */
+    --sidebar-link-color: #FAD7A0; /* Teks kuning pucat */
+    --sidebar-link-hover-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-link-hover-color: #ffffff;
+    --sidebar-link-active-bg: #ffffff; /* Latar belakang putih untuk item aktif */
+    --sidebar-link-active-color: #3B326C; /* Teks ungu tua untuk item aktif */
+    --cf-border-color: #A4508B; /* Warna border yang cocok dengan gradien */
+    --sidebar-search-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-search-color: var(--sidebar-link-color);
+    --bs-card-border-color: rgba(255, 255, 255, 0.08); /* Border kartu yang lebih halus */
+}
+
+body.theme-dusk .sidebar {
+    background: var(--sidebar-bg);
+}
+
+body.theme-dusk .sidebar .navbar-brand,
+body.theme-dusk .sidebar .nav-link {
+    color: var(--sidebar-link-color);
+}
+
+/* --- FIX: Perbaiki selector untuk link aktif pada tema Dusk --- */
+body.theme-dusk .sidebar-nav .nav-link.active {
+    background-color: var(--sidebar-link-active-bg);
+    color: var(--sidebar-link-active-color);
+    border-left-color: transparent; /* Hapus border kiri agar tidak bentrok */
+}
+/* --- Akhir IDE --- */
+
+/* --- IDE: Tema Sidebar "Slate" --- */
+body.theme-slate {
+    --sidebar-bg: linear-gradient(to top, #2c3e50, #4c566a); /* Gradien abu-abu gelap */
+    --sidebar-link-color: #d8dee9; /* Teks abu-abu terang */
+    --sidebar-link-hover-bg: rgba(255, 255, 255, 0.07);
+    --sidebar-link-hover-color: #ffffff;
+    --sidebar-link-active-bg: #ffffff; /* Latar belakang putih untuk item aktif */
+    --sidebar-link-active-color: #2c3e50; /* Teks abu-abu tua untuk item aktif */
+    --cf-border-color: #4c566a; /* Warna border yang cocok dengan gradien */
+    --sidebar-search-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-search-color: var(--sidebar-link-color);
+    --bs-card-border-color: rgba(255, 255, 255, 0.08); /* Border kartu yang lebih halus */
+}
+
+body.theme-slate .sidebar {
+    background: var(--sidebar-bg);
+}
+
+body.theme-slate .sidebar .navbar-brand,
+body.theme-slate .sidebar .nav-link {
+    color: var(--sidebar-link-color);
+}
+
+/* --- FIX: Perbaiki selector untuk link aktif pada tema Slate --- */
+body.theme-slate .sidebar-nav .nav-link.active {
+    background-color: var(--sidebar-link-active-bg);
+    color: var(--sidebar-link-active-color);
+    border-left-color: transparent; /* Hapus border kiri agar tidak bentrok */
+}
+/* --- Akhir IDE --- */
+
+/* --- IDE: Tema Sidebar "Crimson" --- */
+body.theme-crimson {
+    --sidebar-bg: linear-gradient(to top, #641E16, #922B21); /* Gradien merah gelap */
+    --sidebar-link-color: #F5B7B1; /* Teks merah muda pucat */
+    --sidebar-link-hover-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-link-hover-color: #ffffff;
+    --sidebar-link-active-bg: #ffffff; /* Latar belakang putih untuk item aktif */
+    --sidebar-link-active-color: #641E16; /* Teks merah tua untuk item aktif */
+    --cf-border-color: #922B21; /* Warna border yang cocok dengan gradien */
+    --sidebar-search-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-search-color: var(--sidebar-link-color);
+    --bs-card-border-color: rgba(255, 255, 255, 0.08); /* Border kartu yang lebih halus */
+}
+
+body.theme-crimson .sidebar {
+    background: var(--sidebar-bg);
+}
+
+body.theme-crimson .sidebar .navbar-brand,
+body.theme-crimson .sidebar .nav-link {
+    color: var(--sidebar-link-color);
+}
+
+/* --- FIX: Perbaiki selector untuk link aktif pada tema Crimson --- */
+body.theme-crimson .sidebar-nav .nav-link.active {
+    background-color: var(--sidebar-link-active-bg);
+    color: var(--sidebar-link-active-color);
+    border-left-color: transparent; /* Hapus border kiri agar tidak bentrok */
 }
 /* --- Akhir IDE --- */
 
@@ -228,8 +304,10 @@ body {
 /* Pastikan warna versi mengikuti warna brand di tema-tema khusus */
 .theme-ocean .brand-version,
 .theme-forest .brand-version,
-.theme-sunrise .brand-version,
-.theme-midnight .brand-version {
+.theme-dusk .brand-version,
+.theme-slate .brand-version,
+.theme-crimson .brand-version,
+.theme-midnight .brand-version  {
     color: var(--sidebar-link-color);
 }
 body.dark-mode .sidebar .navbar-brand {
@@ -302,6 +380,13 @@ body.dark-mode .sidebar .navbar-brand {
     /* --- Akhir Ide 2 --- */
 }
 
+/* --- IDE: Terapkan warna tema kustom untuk link aktif --- */
+body.theme-ocean .sidebar-nav .nav-link.active,
+body.theme-forest .sidebar-nav .nav-link.active {
+    background-color: var(--sidebar-link-active-bg);
+    color: var(--sidebar-link-active-color);
+    border-left-color: transparent; /* Hapus border kiri agar tidak bentrok */
+}
 .sidebar-nav .nav-link .bi {
     /* margin is now handled by icon-wrapper */
     font-size: 1.1rem;

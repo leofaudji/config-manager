@@ -229,10 +229,10 @@ require_once 'includes/header.php';
                         </div>
                     </li>
                 </ul>
+            </div> 
+            <div class="card-footer text-center bg-light">
+                <a href="<?= base_url('/health-check') ?>" class="text-decoration-none small">View Full Health Check &rarr;</a>
             </div>
-        </div>
-        <div class="card-footer text-muted small">
-            <a href="<?= base_url('/health-check') ?>" class="text-decoration-none">View Full Health Check &rarr;</a>
         </div>
     </div>
 </div>

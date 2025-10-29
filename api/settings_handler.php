@@ -54,6 +54,8 @@ try {
     $settings_to_update['auto_deploy_enabled'] = isset($_POST['auto_deploy_enabled']) ? 1 : 0;
     $settings_to_update['notification_enabled'] = isset($_POST['notification_enabled']) ? 1 : 0;
     $settings_to_update['notification_host_down_enabled'] = isset($_POST['notification_host_down_enabled']) ? 1 : 0;
+    $settings_to_update['notification_email_to'] = trim($_POST['notification_email_to'] ?? '');
+    $settings_to_update['notification_customer_id'] = trim($_POST['notification_customer_id'] ?? '');
     $settings_to_update['notification_server_url'] = trim($_POST['notification_server_url'] ?? '');
     $settings_to_update['host_down_threshold_minutes'] = (int)($_POST['host_down_threshold_minutes'] ?? 5);
     $settings_to_update['notification_incident_created_enabled'] = isset($_POST['notification_incident_created_enabled']) ? 1 : 0;

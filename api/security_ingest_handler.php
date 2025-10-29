@@ -57,17 +57,6 @@ try {
     $stmt->execute();
     $stmt->close();
 
-    // --- Send Notification for High Priority Events ---
-    $high_priority_levels = ['Emergency', 'Alert', 'Critical', 'Error'];
-    if (in_array($priority, $high_priority_levels)) {
-        send_notification(
-            "Falco Alert ({$priority}): {$rule}",
-            $output,
-            'error', // Use 'error' level for high priority security alerts
-            ['falco_rule' => $rule, 'host_id' => $host_id, 'container_name' => $container_name]
-        );
-    }
-
     echo json_encode(['status' => 'success', 'message' => 'Falco event ingested.']);
 
 } catch (Exception $e) {

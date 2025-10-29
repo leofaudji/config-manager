@@ -310,6 +310,17 @@ require_once __DIR__ . '/../includes/header.php';
                             <small class="form-text text-muted">The URL of your ntfy.sh server and topic.</small>
                         </div>
                         <div class="mb-3">
+                            <label for="notification_email_to" class="form-label">Recipient Email</label>
+                            <textarea class="form-control" id="notification_email_to" name="notification_email_to" rows="3" placeholder="e.g., admin@example.com, support@example.com"><?= htmlspecialchars(get_setting('notification_email_to', '')) ?></textarea>
+                            <small class="form-text text-muted">Alamat email tujuan notifikasi akan dikirim. Pisahkan beberapa email dengan koma (,).</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="notification_customer_id" class="form-label">Customer ID</label>
+                            <input type="text" class="form-control" id="notification_customer_id" name="notification_customer_id" value="<?= htmlspecialchars(get_setting('notification_customer_id', '')) ?>" placeholder="e.g., CUST-00123">
+                            <small class="form-text text-muted">The customer ID required by the email API.</small>
+                        </div>                        
+                        <button type="button" class="btn btn-sm btn-outline-info mb-3" id="test-notification-email-btn"><i class="bi bi-envelope-fill me-2"></i>Test Send Email</button>
+                        <div class="mb-3">
                             <label for="notification_secret_token" class="form-label">Authentication Token (Optional)</label>
                             <input type="password" class="form-control" id="notification_secret_token" name="notification_secret_token" value="<?= htmlspecialchars($settings['notification_secret_token'] ?? '') ?>">
                             <small class="form-text text-muted">If your ntfy topic requires authentication, enter the token here.</small>
@@ -608,6 +619,37 @@ window.pageInit = function() {
             .then(response => response.json().then(data => ({ok: response.ok, data})))
             .then(({ok, data}) => {
                 showToast(data.message, ok);
+            })
+            .finally(() => {
+                this.disabled = false;
+                this.innerHTML = originalBtnText;
+            });
+        });
+    }
+
+    // --- Test Notification Email Logic ---
+    const testEmailBtn = document.getElementById('test-notification-email-btn');
+    if (testEmailBtn) {
+        testEmailBtn.addEventListener('click', function() {
+            const originalBtnText = this.innerHTML;
+            this.disabled = true;
+            this.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...`;
+
+            const formData = new FormData();
+            formData.append('recipient_email', document.getElementById('notification_email_to').value);
+            formData.append('customer_id', document.getElementById('notification_customer_id').value);
+            formData.append('server_url', document.getElementById('notification_server_url').value);
+
+            fetch('<?= base_url('/api/notifications/test') ?>', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json().then(data => ({ok: response.ok, data})))
+            .then(({ok, data}) => {
+                showToast(data.message, ok);
+            })
+            .catch(error => {
+                showToast('An unknown error occurred: ' + error.message, false);
             })
             .finally(() => {
                 this.disabled = false;

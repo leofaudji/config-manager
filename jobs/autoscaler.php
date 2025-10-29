@@ -236,16 +236,6 @@ try {
             echo "  -> Host '{$host['name']}' (ID: {$host['id']}) dianggap down. Memproses kontainer...\n";
             log_activity('SYSTEM', 'Host Down Detected', "Host '{$host['name']}' is considered down. Creating synthetic downtime for SLA.", $host['id']);
 
-            // Send notification only if enabled
-            if ((bool)get_setting('notification_host_down_enabled', true)) {
-                send_notification(
-                    "Host Down: {$host['name']}",
-                    "Host '{$host['name']}' is not reporting and is considered down. Synthetic downtime records are being created for SLA accuracy.",
-                    'error',
-                    ['host_id' => $host['id'], 'host_name' => $host['name']]
-                );
-            }
-
             // Create a new incident for the host going down
             $snapshot = json_encode(['message' => "Host failed to report in within the {$host_down_threshold_minutes} minute threshold."]);
             $target_id_str = (string)$host['id'];
@@ -257,8 +247,12 @@ try {
                 send_notification(
                     "New Incident (Host Down): {$host['name']}",
                     "A new incident has been opened for host '{$host['name']}' which is considered down.",
-                    'error',
-                    ['incident_type' => 'host', 'target_name' => $host['name'], 'host_id' => $host['id']]
+                    'error', // Level
+                    [ // Context
+                        'incident_type' => 'host',
+                        'host_name' => $host['name'],
+                        'monitoring_snapshot' => $snapshot
+                    ]
                 );
             }
 

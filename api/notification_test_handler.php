@@ -3,32 +3,36 @@ require_once __DIR__ . '/../includes/bootstrap.php';
 
 header('Content-Type: application/json');
 
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
+    http_response_code(403);
+    echo json_encode(['status' => 'error', 'message' => 'Forbidden']);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['status' => 'error', 'message' => 'Invalid request method.']);
+    exit;
+}
+
 try {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        throw new Exception('Invalid request method.');
-    }
+    $recipient_email = $_POST['recipient_email'] ?? '';
+    $customer_id = $_POST['customer_id'] ?? '';
+    $server_url = $_POST['server_url'] ?? '';
 
-    $is_enabled = (int)get_setting('notification_enabled', 0);
-    $url = get_setting('notification_server_url');
-
-    if (!$is_enabled) {
-        throw new Exception('Notifications are not enabled in the settings.');
-    }
-
-    if (empty($url)) {
-        throw new Exception('Notification Server URL is not configured.');
+    if (empty($recipient_email) || empty($customer_id) || empty($server_url)) {
+        throw new Exception("Recipient Email, Customer ID, and Notification Server URL are required for a test.");
     }
 
     send_notification(
-        'Test Notification from Config Manager',
-        'This is a test message to verify your notification server integration is working correctly.',
+        "Test Notification",
+        "This is a test notification from Config Manager. If you received this, your email notification settings are working!",
         'info',
-        ['test_event' => true, 'source' => 'manual_test']
+        ['source' => 'test_button', 'override_recipient_emails' => $recipient_email, 'override_customer_id' => $customer_id, 'override_url' => $server_url]
     );
 
-    echo json_encode(['status' => 'success', 'message' => 'Test notification sent. Please check your notification server to confirm receipt.']);
-
+    echo json_encode(['status' => 'success', 'message' => 'Test email sent successfully. Check your inbox.']);
 } catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'Failed to send test email: ' . $e->getMessage()]);
 }
