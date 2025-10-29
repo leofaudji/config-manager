@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/bootstrap.php';
+require_once __DIR__ . '/../includes/ChangelogParser.php';
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -9,7 +10,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        System Status
+        <span id="overall-status-text">System Status</span>
         <button id="rerun-checks-btn" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-clockwise"></i> Rerun Checks</button>
     </div>
     <div class="card-body">

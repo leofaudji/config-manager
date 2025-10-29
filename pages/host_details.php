@@ -50,6 +50,7 @@ require_once __DIR__ . '/../includes/host_nav.php';
                             <td>
                                 <strong>Health Agent</strong>
                                 <p class="small text-muted mb-0">Monitors container health and performs auto-healing.</p>
+                                <small id="agent-version-display" class="text-muted" style="display: none;"></small>
                             </td>
                             <td><span id="agent-status-badge" class="badge text-bg-secondary">Checking...</span></td>
                             <td><span id="agent-last-report" class="text-muted small" data-timestamp="">Never</span></td>
@@ -407,6 +408,14 @@ window.pageInit = function() {
                 }
 
                 updateHelperStatusUI(result.agent_status, type);
+
+                // --- NEW: Display agent version ---
+                const versionDisplay = document.getElementById('agent-version-display');
+                if (type === 'agent' && versionDisplay) {
+                    versionDisplay.textContent = result.agent_version ? `Version: ${result.agent_version}` : '';
+                    versionDisplay.style.display = result.agent_version ? 'block' : 'none';
+                }
+                // --- End NEW ---
 
                 // --- FIX: Only update the last report time if the type is 'agent' ---
                 // This prevents other helper status checks (like falco) from overwriting the health agent's time.

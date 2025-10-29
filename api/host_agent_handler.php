@@ -107,10 +107,11 @@ try {
         }
 
         // --- FIX: Always include last_report_at for the health agent ---
-        $response_data = ['status' => 'success', 'agent_status' => $status, 'last_report_at' => null];
+        $response_data = ['status' => 'success', 'agent_status' => $status, 'last_report_at' => null, 'agent_version' => null];
         if ($agent_type === 'agent') {
             // The $host variable already contains the latest data from the DB, including last_report_at.
             // This ensures we send the correct value back to the UI.
+            $response_data['agent_version'] = $host['agent_version'];
             $response_data['last_report_at'] = $host['last_report_at'];
         }
 

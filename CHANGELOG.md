@@ -4,8 +4,44 @@ Semua perubahan penting pada proyek ini akan didokumentasikan di file ini.
 
 Format file ini didasarkan pada [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), dan proyek ini mengikuti [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.1.0] - 2023-10-29
+## [3.2.0] - 2025-10-29
 
+### Added
+- **Manajemen Helper Agent**:
+  - Halaman "Host Details" kini memiliki antarmuka khusus untuk mengelola **Helper Agents** (Health Agent, Falco, Falcosidekick).
+  - Pengguna dapat men-deploy, me-redeploy, me-restart, dan menghapus setiap agen langsung dari UI.
+  - Status agen (misalnya, `Running`, `Stopped`, `Not Deployed`) dan waktu laporan terakhir dari Health Agent ditampilkan secara real-time.
+  - Log deployment untuk agen kini ditampilkan secara *streaming* di dalam modal untuk pemantauan yang lebih baik.
+- **Autoscaler Layanan Aplikasi**:
+  - Cron job baru (`autoscaler.php`) untuk melakukan penskalaan otomatis pada *Application Stacks*.
+  - **Penskalaan Vertikal**: Untuk host Standalone, autoscaler akan menyesuaikan **batas CPU** kontainer naik atau turun berdasarkan utilisasi CPU host.
+  - **Penskalaan Horizontal**: Untuk host Swarm, autoscaler akan menambah atau mengurangi **jumlah replika** layanan.
+  - Ambang batas CPU untuk scale-up dan scale-down dapat dikonfigurasi per-stack.
+- **Peningkatan Webhook & Deployment Otomatis**:
+  - Webhook kini mendukung event `ping` dari GitHub/Gitea untuk memvalidasi koneksi saat penyiapan awal.
+  - Proses deployment yang dipicu oleh webhook kini berjalan sepenuhnya di latar belakang, memberikan respons cepat ke Git provider dan mencegah *timeout*.
+  - Menambahkan kebijakan update via webhook (`realtime` atau `scheduled`), memungkinkan beberapa pembaruan stack dijadwalkan untuk di-deploy nanti.
+- **Halaman Bantuan & Dokumentasi Internal**:
+  - Menambahkan halaman **Pertanyaan Umum (FAQ)** dengan fitur pencarian untuk membantu pengguna memahami fungsionalitas aplikasi.
+  - Menambahkan beberapa halaman **diagram alur kerja** (menggunakan Mermaid.js) untuk memvisualisasikan proses seperti Manajemen Traefik, Deployment Health Agent, dan Keamanan Falco.
+  - Menambahkan parser Markdown untuk menampilkan `CHANGELOG.md` ini secara dinamis di dalam aplikasi.
+
+### Changed
+- **Logika Health Check**: Logika di balik `Health Agent` kini didokumentasikan dengan jelas di dalam modal pada halaman "Host Details", menjelaskan pendekatan berlapis (Docker Healthcheck -> Konektivitas Port -> Ping).
+- **Penanganan Status Host**: Logika untuk mendeteksi host yang *down* (tidak melapor) telah dipindahkan ke dalam cron job `autoscaler.php` untuk memastikan deteksi yang andal dan terpusat.
+- **Formulir Router & Service**: Formulir kini mendukung input CIDR (misalnya, `192.168.1.0/24`) untuk menambahkan rentang server secara massal ke sebuah service, yang akan diekspansi secara otomatis menjadi daftar IP individual.
+
+### Fixed
+- **Penghapusan Service**: Memperbaiki logika di mana service tidak dapat dihapus jika masih terhubung ke sebuah router. Kini, sistem akan memberikan pesan error yang jelas kepada pengguna.
+- **Pemicu Deployment**: Logika pemicu deployment (baik otomatis maupun manual) telah disempurnakan untuk menargetkan grup konfigurasi yang benar, bukan memicu deployment global setiap saat.
+- **Stabilitas Webhook**: Proses webhook kini lebih tangguh, dengan kemampuan untuk menangani berbagai format URL repositori (SSH, HTTPS, dan URL kloning) dari payload Git.
+- **Validasi Input**: Memperkuat validasi di berbagai endpoint API (Router, Service, User) untuk mencegah data yang tidak valid dan memberikan pesan error yang lebih spesifik.
+
+### Security
+- **Validasi Token Webhook**: Memperkuat keamanan endpoint webhook dengan validasi token yang ketat menggunakan `hash_equals` untuk mencegah serangan *timing attack*.
+- **Pencegahan Hapus Diri Sendiri**: Pengguna tidak dapat lagi menghapus akun mereka sendiri atau menghapus akun admin terakhir, mencegah kondisi *lock-out*.
+
+## [3.1.0] - 2025-10-20
 ### Added
 - **Laporan Insiden & Analisis (RCA)**:
   - Fitur utama baru untuk melacak insiden secara otomatis saat host *down* atau kontainer *unhealthy*.
@@ -38,7 +74,7 @@ Format file ini didasarkan pada [Keep a Changelog](https://keepachangelog.com/en
 - **Status Kesehatan**: Memperbaiki bug di mana status kontainer bisa terjebak dalam keadaan "Unknown" secara permanen.
 - **Navigasi & Alur Kerja**: Memperbaiki berbagai bug kecil terkait alur kerja, seperti tombol "View Incident" yang tidak berfungsi, proses penyimpanan detail insiden, dan validasi endpoint API.
 
-## [3.0.0] - 2023-10-29
+## [3.0.0] - 2025-10-15
 
 ### Added
 
@@ -57,500 +93,98 @@ Format file ini didasarkan pada [Keep a Changelog](https://keepachangelog.com/en
     - **Sync Stacks to Git**: Fitur baru untuk mem-backup semua file `docker-compose.yml` dari stack yang dikelola ke repositori Git terpusat.
     - **Connection Test**: Menambahkan tombol "Test Connection" di halaman "Settings" untuk memvalidasi URL repositori Git (HTTPS dan SSH) sebelum disimpan.
 - **Validasi Real-time**:
-    - App Launcher kini memvalidasi duplikasi nama stack secara *real-time* saat pengguna mengetik.
-    - Menambahkan validasi di sisi server untuk mencegah error deployment akibat duplikasi nama kontainer.
+  - App Launcher kini memvalidasi duplikasi nama stack secara *real-time* saat pengguna mengetik.
+  - Menambahkan validasi di sisi server untuk mencegah error deployment akibat duplikasi nama kontainer.
+- **Laporan Insiden & Analisis (RCA)**:
+  - Fitur utama baru untuk melacak insiden secara otomatis saat host *down* atau kontainer *unhealthy*.
+  - Halaman detail insiden kini mencakup template **Post-Mortem / Root Cause Analysis (RCA)** yang komprehensif.
+  - Menambahkan **Tingkat Keparahan (Severity)** dan **Pemilik (Assignee)** untuk setiap insiden.
+  - Kemampuan untuk mencetak laporan insiden ke dalam format **PDF**.
+- **Integrasi SLA & Insiden**:
+  - Setiap peristiwa downtime di Laporan SLA kini secara otomatis ditautkan ke laporan insiden yang relevan.
+  - Menambahkan **Periode Pengecualian (Maintenance Window)** yang dapat dikonfigurasi di "Settings".
+- **Backup & Restore**:
+  - Halaman baru "Backup & Restore" untuk membuat backup penuh konfigurasi aplikasi dalam format JSON dan me-restore-nya.
+  - Menambahkan fitur **Backup Otomatis** yang dapat dijadwalkan melalui halaman "Cron Job Management".
+- **Peningkatan Sistem & UI**:
+  - Menambahkan **System Logs Viewer** sebagai tab baru di "Log Viewer".
+  - Menambahkan fitur **auto-refresh** pada halaman "Log Viewer".
+  - Menambahkan **penyimpanan filter dan paginasi ke `localStorage`** di halaman "Incident Reports" untuk menjaga state saat navigasi.
 
 ### Changed
-
 - **UI Refinements**: Tombol "Preview Config" dipindahkan dari header utama ke halaman "Routers" untuk alur kerja yang lebih kontekstual.
 - **App Updater**: Halaman "Update Application" telah didesain ulang sepenuhnya agar konsisten dengan fungsionalitas dan UI App Launcher yang baru.
 - **Resource Limits**: Batasan CPU dan Memori yang diisi di form App Launcher kini akan selalu menimpa (replace) nilai yang ada di file `docker-compose.yml` asli.
+- **Optimisasi Performa**: Panggilan API untuk statistik dashboard dan status Git kini hanya dieksekusi saat berada di halaman Dashboard.
+- **Standardisasi Zona Waktu**: Mengatur zona waktu default aplikasi (PHP & MySQL) ke **GMT+7 (Asia/Jakarta)**.
+
+### Fixed
+- **Perhitungan SLA**: Memperbaiki bug dalam logika perhitungan SLA yang menyebabkan persentase tidak akurat.
+- **Status Kesehatan**: Memperbaiki bug di mana status kontainer bisa terjebak dalam keadaan "Unknown" secara permanen.
 
 ### Removed
-
 - **Import YAML**: Fitur "Import YAML" dihapus dari header utama untuk menyederhanakan antarmuka.
 
-## [2.9.2] - 2023-10-28
-
-### Changed
-
-- **Database Seeding**: Menyinkronkan data awal pada `setup_db.php` agar sesuai dengan contoh `dynamic.yml`, menggantikan data dummy yang lama.
-
-## [2.9.1] - 2023-10-28
-
-### Changed
-
-- **Deploy from Preview Workflow**: Tombol "Deploy" di modal pratinjau kini menggunakan AJAX, memberikan umpan balik (progress button, notifikasi toast) tanpa memuat ulang halaman, dan menutup modal secara otomatis setelah berhasil.
-
-## [2.9.0] - 2023-10-28
+## [2.0.0] - 2025-10-10
 
 ### Added
-
-- **Deploy from Preview**: Menambahkan tombol "Deploy" di dalam modal pratinjau konfigurasi, memungkinkan admin untuk langsung men-deploy konfigurasi yang sedang dilihat setelah konfirmasi.
-
-## [2.8.9] - 2023-10-28
-
-### Changed
-
-- **Preview Workflow**: Fitur "Preview Configuration" kini ditampilkan dalam modal dialog, bukan di halaman terpisah, untuk alur kerja yang lebih cepat dan terintegrasi.
-
-## [2.8.8] - 2023-10-28
-
-### Added
-
-- **Preview Configuration**: Menambahkan fitur untuk melihat pratinjau file YAML yang akan dihasilkan dari data saat ini di database. Aksi ini bersifat non-destruktif (tidak menimpa file `dynamic.yml` atau membuat entri riwayat baru).
-
-## [2.8.6] - 2023-10-28
-
-### Changed
-
-- **UI Tweak**: Menyesuaikan padding bawah pada body untuk memberikan lebih banyak ruang bagi footer.
-
-## [2.8.5] - 2023-10-28
-
-### Fixed
-
-- **PHP Compatibility**: Memperbaiki `Warning: Undefined property: mysqli::$in_transaction` pada PHP versi di bawah 8.0 dengan menghapus pengecekan yang tidak kompatibel saat melakukan rollback transaksi database.
-
-## [2.8.4] - 2023-10-28
-
-### Fixed
-
-- **Fatal Error on Edit Router**: Memperbaiki error fatal `mysqli_stmt object is already closed` pada saat mengedit router dengan merestrukturisasi alur logika di backend.
-- **Logic Bug on Add Router**: Memperbaiki bug di mana form "Tambah Router" tidak dapat membuat service baru. Kini, alur tambah dan edit router memiliki fungsionalitas yang konsisten.
-
-## [2.8.3] - 2023-10-28
-
-### Changed
-
-- **Edit Router Workflow**: Halaman "Edit Router" kini lebih fleksibel, memungkinkan pengguna untuk menghubungkan router ke service yang sudah ada atau membuat service baru secara langsung, sama seperti pada form kloning.
-
-## [2.8.1] - 2023-10-28
-
-### Fixed
-
-- **Missing Clone Button**: Memperbaiki bug di mana tombol "Clone" untuk Service tidak muncul di dashboard.
-
-## [2.8.0] - 2023-10-28
-
-### Added
-
-- **Clone Functionality**: Menambahkan tombol "Clone" untuk Router dan Service, memungkinkan duplikasi konfigurasi yang ada dengan cepat.
-- **Group Management Page**: Menambahkan halaman khusus untuk operasi CRUD (Create, Read, Update, Delete) pada Grup.
-- **Load Balancer Method**: Menambahkan opsi untuk memilih metode load balancer (seperti `leastConn`, `ipHash`, dll.) saat membuat atau mengedit Service. Keterangan metode akan muncul di dashboard jika bukan default.
-- **History Cleanup**: Menambahkan fitur untuk membersihkan riwayat deployment yang sudah diarsipkan dan lebih lama dari 30 hari.
-- **Bulk Actions**: Menambahkan kemampuan untuk memilih beberapa router dan memindahkannya ke grup lain secara massal.
-
-### Changed
-
-- **Clone Router Workflow**: Halaman "Clone Router" kini lebih fleksibel, memungkinkan pengguna untuk menghubungkan router ke service yang sudah ada atau membuat service baru secara langsung, sama seperti form tambah konfigurasi gabungan.
-
-### Security
-
-- Memperkuat keamanan server dengan menambahkan aturan pada `.htaccess` untuk memblokir akses langsung ke file tersembunyi (seperti `.env`).
-
-## [2.7.7] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fatal error `ArgumentCountError` pada form tambah konfigurasi gabungan yang disebabkan oleh jumlah parameter yang salah saat binding ke database.
-
-## [2.7.6] - 2023-10-28
-
-### Changed
-
-- Mengubah alur kerja "Generate Config File". Tombol ini kini menjadi "Generate & Deploy", yang akan langsung menimpa file `dynamic.yml` di server dan mencatatnya sebagai versi `active` baru di riwayat.
-- Mengubah alur kerja "Generate Config File". Tombol ini kini menjadi "Generate & Deploy", yang akan langsung menimpa file `dynamic.yml` di server dan mencatatnya sebagai versi `active` baru di riwayat deployment.
-
-## [2.7.5] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fitur "Service Health Status" yang selalu menampilkan "Unknown". Logika pencocokan kini lebih fleksibel dan tidak lagi bergantung pada provider Traefik yang di-hardcode.
-
-## [2.7.1] - 2023-10-28
-
-### Changed
-
-- Meningkatkan alur kerja "User Management". Form edit pengguna kini ditampilkan dalam modal dialog, sehingga admin tidak perlu meninggalkan halaman daftar pengguna.
-
-## [2.7.0] - 2023-10-28
-
-### Added
-
-- Mengimplementasikan fitur "Log Aktivitas Pengguna" (Audit Trail) untuk mencatat semua aksi penting yang dilakukan pengguna, seperti login, deploy, dan manajemen pengguna.
-
-## [2.6.4] - 2023-10-28
-
-### Changed
-
-- Mengubah alur kerja "Import YAML" menjadi non-destruktif. Proses import kini akan menambah atau memperbarui (upsert) konfigurasi yang ada di database, bukan menghapus semuanya.
-
-## [2.6.3] - 2023-10-28
-
-### Fixed
-
-- Mengganti library `Spyc.php` dengan versi yang sudah diperbaiki untuk mengatasi bug kritis pada pembuatan file YAML, memastikan `servers` dan `entryPoints` diformat dengan benar sebagai list.
-
-## [2.6.2] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug kritis pada fitur "Deploy" dan "Import" yang menyebabkan proses gagal secara diam-diam. Logika validasi kini lebih kuat dan dapat menangani berbagai format YAML dengan benar.
-
-## [2.6.1] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug kritis pada fitur "Deploy" dan "Import" yang menyebabkan proses gagal secara diam-diam. Logika validasi kini lebih kuat dan dapat menangani berbagai format YAML dengan benar.
-
-## [2.6.0] - 2023-10-28
-
-### Changed
-
-- Meningkatkan fitur "Deploy". Proses deploy kini juga akan menyinkronkan database dengan konten dari versi riwayat yang dipilih, memastikan konsistensi data antara database dan file konfigurasi yang aktif.
-- Meningkatkan fitur "Deploy". Proses deploy kini juga akan menyinkronkan database dengan konten dari versi riwayat deployment yang dipilih, memastikan konsistensi data antara database dan file konfigurasi yang aktif.
-
-## [2.5.7] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fitur "Import YAML" secara tuntas dengan membuat logika validasi lebih defensif. Skrip kini dapat menangani file YAML yang tidak memiliki semua bagian (seperti `http`, `services`, `serversTransports`) tanpa menyebabkan error.
-
-## [2.5.6] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fitur "Import YAML" agar lebih toleran terhadap file yang tidak memiliki semua kunci (seperti `http`, `services`, dll.), mencegah fatal error.
-- Pesan error saat import kini ditampilkan dengan benar di dalam modal.
-- Memperbarui teks peringatan pada modal import untuk lebih akurat menjelaskan alur kerja "Import as Draft".
-
-## [2.5.4] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fitur "Compare Configurations" yang tidak menampilkan apa pun jika tidak ada perbedaan. Kini, sebuah pesan akan ditampilkan jika kedua versi identik.
-
-## [2.5.3] - 2023-10-28
-
-### Changed
-
-- Mengubah alur kerja "Import YAML". Proses import kini akan membuat "draft" baru di riwayat dan memperbarui database, tetapi tidak akan langsung men-deploy atau mengubah konfigurasi yang sedang aktif.
-- Mengubah alur kerja "Import YAML". Proses import kini akan membuat "draft" baru di riwayat deployment dan memperbarui database, tetapi tidak akan langsung men-deploy atau mengubah konfigurasi yang sedang aktif.
-
-## [2.5.2] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fitur "Import YAML". Proses import kini juga akan menyimpan konfigurasi ke riwayat sebagai versi `active` yang baru dan langsung men-deploy-nya ke file `dynamic.yml`.
-
-## [2.5.1] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug kritis pada pembuatan file YAML di mana `servers` tidak diformat sebagai list, dan karakter `|` yang tidak perlu ditambahkan ke `rule`.
-
-## [2.4.4] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug kritis pada pembuatan file YAML di mana `entryPoints` dan `servers` tidak diformat sebagai list, dan karakter `|` yang tidak perlu ditambahkan ke `rule`.
-
-## [2.5.0] - 2023-10-28
-
-### Added
-
-- Mengimplementasikan sistem "Draft & Deploy" untuk konfigurasi. Konfigurasi yang digenerate kini menjadi draft dan harus di-deploy secara manual untuk menjadi aktif.
-
-## [2.3.9] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug di mana fitur auto-refresh setelah menghapus item di halaman utama tidak berfungsi. Logika JavaScript kini lebih andal dalam membedakan antara aksi refresh dan redirect.
-
-## [2.3.8] - 2023-10-28
-
-### Changed
-
-- Meningkatkan pengalaman pengguna dengan mengimplementasikan auto-refresh pada tabel di halaman utama. Operasi hapus kini akan memperbarui data secara dinamis tanpa memuat ulang seluruh halaman.
-
-## [2.3.7] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug pada pembuatan file YAML di mana karakter `|` yang tidak perlu ditambahkan ke `rule` router.
-
-## [2.3.6] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug kritis di mana data pada halaman riwayat konfigurasi tidak muncul saat halaman dibuka dengan membuat logika persiapan parameter query lebih andal.
-
-## [2.3.5] - 2023-10-28
-
-### Added
-
-- Menambahkan fitur untuk mengarsipkan (archive) dan membatalkan pengarsipan (unarchive) entri riwayat konfigurasi.
-
-## [2.3.4] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug pada pembuatan file YAML di mana string placeholder `___YAML_Literal_Block___` tidak dihapus dari hasil akhir.
-
-## [2.3.3] - 2023-10-28
-
-### Added
-
-- Menambahkan tombol "Copy to Clipboard" untuk setiap `rule` pada tabel Router untuk kemudahan penggunaan.
-
-## [2.3.1] - 2023-10-28
-
-### Added
-
-- Menambahkan dukungan untuk konfigurasi TLS (`certResolver`) pada router.
-
-## [2.3.0] - 2023-10-28
-
-### Added
-
-- Menambahkan fitur pencarian pada halaman riwayat deployment untuk memfilter berdasarkan nama pengguna.
-
-## [2.2.9] - 2023-10-28
-
-### Added
-
-- Menambahkan fitur untuk membandingkan (diff) dua versi deployment dari halaman riwayat.
-
-## [2.2.8] - 2023-10-28
-
-### Added
-
-- Menambahkan tombol "Download" pada setiap baris di halaman riwayat deployment, memungkinkan admin untuk mengunduh versi konfigurasi YAML tertentu.
-
-## [2.2.6] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug di mana data pada halaman riwayat deployment tidak langsung muncul saat halaman dibuka.
-
-## [2.2.5] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fitur "View YAML" pada halaman riwayat yang tidak menampilkan konten.
-- Menambahkan syntax highlighting (pewarnaan sintaks) pada tampilan YAML untuk meningkatkan keterbacaan.
-
-## [2.2.4] - 2023-10-28
-
-### Added
-
-- Menambahkan tombol "Restore" pada halaman riwayat deployment, memungkinkan admin untuk mengembalikan seluruh pengaturan ke versi yang dipilih.
-
-## [1.9.11] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki error `Unexpected token '<'` pada fitur import YAML secara tuntas dengan menambahkan *shutdown function* yang memastikan semua jenis error PHP (termasuk fatal error) dikembalikan sebagai JSON yang valid.
-
-## [1.9.10] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fitur "Import YAML" dengan menambahkan validasi yang lebih kuat pada struktur file yang diunggah. Ini mencegah error saat memproses file YAML dengan format yang tidak terduga dan memberikan pesan kesalahan yang lebih jelas kepada pengguna.
-- Mengoptimalkan proses import dengan mempersiapkan *statement* database di luar perulangan.
-
-## [1.9.9] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki semua tombol hapus yang tidak berfungsi dengan menambahkan kembali logika event handler AJAX yang hilang.
-
-## [1.9.8] - 2023-10-28
-
-### Added
-
-- Menambahkan fitur "Import YAML". Pengguna kini dapat mengunggah file konfigurasi `.yml` untuk menimpa seluruh data yang ada di database.
-
-## [1.9.6] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug kritis pada pembuatan file YAML di mana `entryPoints` dengan satu item tidak diformat sebagai list. Masalah ini diselesaikan dengan mengganti file library `Spyc.php` yang buggy dengan versi resmi yang stabil.
-- Menambahkan `trim` pada pemrosesan `entryPoints` untuk menangani spasi ekstra.
-
-## [1.9.5] - 2023-10-28
-
-### Changed
-
-- Menyempurnakan logika pembuatan YAML: Melakukan refactoring pada metode `getServices` untuk memastikan pengelompokan server lebih eksplisit dan jelas, sesuai dengan format daftar yang berkelanjutan.
-
-## [1.9.1] - 2023-10-28
-
-### Removed
-
-- Menghapus label "Pass Host Header" dari tampilan daftar Service untuk antarmuka yang lebih bersih.
-
-## [1.8.9] - 2023-10-28
-
-### Changed
-
-- Menyesuaikan lebar header agar konsisten dengan lebar body untuk tampilan yang lebih serasi.
-
-## [1.8.7] - 2023-10-28
-
-### Changed
-
-- Menyesuaikan lebar kolom pada halaman utama untuk memberikan lebih banyak ruang pada tabel Router (rasio ~2:1).
-- Mengubah layout utama dari `container` menjadi `container-fluid` untuk memaksimalkan penggunaan ruang layar.
-
-## [1.8.6] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki bug pada fitur pencarian otomatis yang mencegahnya berfungsi.
-- Merapikan dan menggabungkan beberapa *event listener* pada JavaScript untuk meningkatkan keandalan dan keterbacaan kode.
-
-## [1.8.5] - 2023-10-28
-
-### Added
-
-- Menambahkan tombol "Reset" pada form pencarian untuk menghapus filter dengan mudah.
-- Pencarian kini berjalan secara otomatis saat pengguna mengetik (dengan *debounce*), tidak perlu lagi menekan tombol cari.
-
-## [1.8.0] - 2023-10-28
-
-### Changed
-
-- Menyeragamkan semua alur kerja AJAX. Kini, semua operasi (tambah, edit, hapus) akan selalu mengarahkan pengguna kembali ke halaman utama dengan pesan status yang jelas.
-
-### Fixed
-
-- Memperbaiki semua tombol hapus yang tidak berfungsi dengan menyederhanakan dan memperbaiki logika JavaScript.
-
-## [1.7.3] - 2023-10-28
-
-### Changed
-
-- Menyeragamkan alur kerja AJAX untuk operasi hapus. Kini, setelah menghapus item, pengguna akan diarahkan kembali ke halaman utama dengan pesan status, sama seperti operasi simpan.
-
-### Removed
-
-- Menghapus file JavaScript yang tidak terpakai (`main.js`) untuk menjaga kebersihan proyek.
-
-## [1.7.2] - 2023-10-28
-
-### Changed
-
-- Mengubah alur kerja form simpan data. Setelah submit, baik berhasil maupun gagal, pengguna akan selalu diarahkan kembali ke halaman utama (`index.php`) dengan pesan status yang sesuai.
-
-## [1.7.1] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki logika penanganan error pada AJAX untuk semua operasi (tambah, edit, hapus). Error dari server kini ditangani dengan benar dan pesannya ditampilkan kepada pengguna melalui notifikasi toast.
-- Memperbaiki `actions/router_delete.php` untuk mengirim status HTTP error yang benar saat penghapusan gagal.
-
-## [1.7.0] - 2023-10-28
-
-### Changed
-
-- Pengalaman pengguna pada form tambah/edit ditingkatkan. Setelah menyimpan data, pengguna akan tetap berada di halaman form dan menerima notifikasi toast. Form tambah akan di-reset secara otomatis setelah berhasil disimpan, siap untuk entri berikutnya.
-
-## [1.6.1] - 2023-10-28
-
-### Changed
-
-- Proses tambah (create) dan edit (update) untuk semua entitas kini juga menggunakan AJAX. Form akan memberikan umpan balik instan melalui notifikasi toast jika terjadi error, dan akan mengarahkan kembali ke halaman utama setelah berhasil, tanpa memuat ulang halaman saat validasi gagal.
-
-## [1.6.0] - 2023-10-28
-
-### Changed
-
-- Proses hapus (delete) untuk semua entitas (router, service, server) kini menggunakan AJAX, sehingga tidak memerlukan muat ulang halaman dan memberikan pengalaman pengguna yang lebih mulus.
-
-## [1.5.5] - 2023-10-28
-
-### Added
-
-- Menambahkan fitur "Safe Delete" untuk Server URL. Server terakhir dari sebuah service tidak dapat dihapus untuk menjaga validitas konfigurasi.
-
-## [1.5.4] - 2023-10-28
-
-### Fixed
-
-- Memperbaiki fitur hapus router yang tidak berfungsi karena lokasi file yang salah. Logika penghapusan telah dipindahkan ke `actions/router_delete.php`.
-
-## [1.5.3] - 2023-10-28
-
-### Added
-
-- Menambahkan fitur "Safe Delete" untuk Services. Sebuah service tidak dapat dihapus jika masih ada router yang terhubung dengannya, untuk mencegah konfigurasi yang rusak.
-
-## [1.5.2] - 2023-10-28
-
-### Changed
-
-- Meningkatkan integritas data: Saat nama sebuah service diubah, semua router yang terhubung ke service tersebut akan otomatis diperbarui untuk mencerminkan nama baru. Proses ini menggunakan transaksi database untuk memastikan konsistensi.
-
-## [1.5.1] - 2023-10-28
-
-### Added
-
-- Mengimplementasikan kembali fungsionalitas "Edit" untuk Routers, Services, dan Servers dengan form dan logika backend yang terdedikasi.
-
-### Changed
-
-- Mengaktifkan kembali tombol "Edit" di halaman utama untuk mengakses form edit.
-
-## [1.4.1] - 2023-10-28
-
-### Added
-
-- Menambahkan file library `Spyc.php` yang hilang, yang merupakan dependensi penting untuk membuat file YAML.
-
-## [1.4.0] - 2023-10-28
-
-### Added
-
-- Fitur riwayat deployment: Setiap file YAML yang digenerate akan disimpan ke dalam tabel `config_history` di database.
-
-### Fixed
-
-- Memperbaiki bug pada `YamlGenerator` yang dapat menyebabkan error saat tidak ada data service. Logika pengambilan data server kini lebih aman dan andal.
-
-## [1.3.1] - 2023-10-28
-
-### Changed
-
-- Mengganti nama aplikasi dari "Traefik Manager" menjadi "Config Manager" di seluruh antarmuka dan dokumentasi.
-
-## [1.3.0] - 2023-10-28
-
-### Added
-
-- Form interaktif gabungan (`combined_form.php`) untuk membuat Router dan Service (baru atau yang sudah ada) dalam satu alur kerja.
-- Logika backend (`actions/combined_add.php`) menggunakan transaksi database untuk memastikan integritas data saat menyimpan konfigurasi baru.
-
-## [1.2.0] - 2023-10-28
-
-### Changed
-
-- Logika pembuatan file YAML direfaktor ke dalam class `YamlGenerator` untuk meningkatkan struktur kode, keterbacaan, dan performa (menghindari N+1 query).
-
-### Added
-
-- Class `YamlGenerator` baru untuk menangani semua logika terkait pembuatan file konfigurasi.
-
-## [1.1.0] - 2023-10-28
-
-### Added
-
 - Fungsionalitas CRUD penuh untuk **Services** dan **Servers**.
 - Validasi di sisi server untuk mencegah duplikasi nama pada **Routers** dan **Services**.
 - Tampilan UI yang lebih baik untuk blok Service di halaman utama.
+- **Manajemen Konfigurasi & Grup**:
+  - Halaman khusus untuk operasi CRUD (Create, Read, Update, Delete) pada Grup.
+  - Form interaktif gabungan untuk membuat Router dan Service (baru atau yang sudah ada) dalam satu alur kerja.
+  - Menambahkan tombol "Clone" untuk Router dan Service, memungkinkan duplikasi konfigurasi yang ada dengan cepat.
+  - Menambahkan kemampuan untuk memilih beberapa router dan memindahkannya ke grup lain secara massal.
+  - Menambahkan opsi untuk memilih metode load balancer (seperti `leastConn`, `ipHash`, dll.) saat membuat atau mengedit Service.
+  - Menambahkan dukungan untuk konfigurasi TLS (`certResolver`) pada router.
+- **Riwayat & Deployment**:
+  - Mengimplementasikan sistem "Draft & Deploy". Konfigurasi yang digenerate kini menjadi draft dan harus di-deploy secara manual untuk menjadi aktif.
+  - Fitur riwayat deployment: Setiap file YAML yang digenerate akan disimpan ke dalam tabel `config_history`.
+  - Menambahkan halaman riwayat dengan fitur:
+    - **Restore**: Mengembalikan seluruh pengaturan ke versi yang dipilih.
+    - **Download**: Mengunduh versi konfigurasi YAML tertentu.
+    - **Compare (Diff)**: Membandingkan dua versi deployment untuk melihat perubahan.
+    - **Archive/Unarchive**: Mengarsipkan entri riwayat.
+    - **Cleanup**: Membersihkan riwayat deployment yang lebih lama dari 30 hari.
+- **Manajemen Pengguna & UI**:
+  - Mengimplementasikan fitur "Log Aktivitas Pengguna" (Audit Trail) untuk mencatat semua aksi penting.
+  - Form edit pengguna kini ditampilkan dalam modal dialog untuk alur kerja yang lebih baik.
+  - Menambahkan tombol "Copy to Clipboard" untuk `rule` router.
+  - Menambahkan fitur pencarian otomatis saat mengetik (dengan *debounce*) dan tombol reset.
+- **Import YAML**: Menambahkan fitur "Import YAML" untuk mengunggah file konfigurasi `.yml` dan memperbarui data di database.
 
-## [1.0.0] - 2023-10-27
+### Changed
+- **Alur Kerja Deployment**: Tombol "Generate Config File" diubah menjadi "Generate & Deploy", yang akan langsung menimpa file `dynamic.yml` dan mencatatnya sebagai versi `active` baru di riwayat.
+- **Alur Kerja Import**: Proses import kini menjadi non-destruktif (upsert) dan membuat "draft" baru, tidak langsung men-deploy konfigurasi aktif.
+- **Integritas Data**:
+  - Saat nama sebuah service diubah, semua router yang terhubung akan otomatis diperbarui.
+  - Mencegah penghapusan Service jika masih terhubung ke router.
+  - Mencegah penghapusan Server URL terakhir dari sebuah service.
+- **Pengalaman Pengguna (UX)**:
+  - Semua operasi CRUD (tambah, edit, hapus) kini menggunakan AJAX untuk pengalaman yang lebih mulus tanpa memuat ulang halaman.
+  - Setelah menyimpan data, pengguna akan tetap berada di halaman form dan menerima notifikasi toast.
+  - Menyesuaikan layout dan lebar kolom untuk memaksimalkan penggunaan ruang layar.
+- **Struktur Kode**: Logika pembuatan file YAML direfaktor ke dalam class `YamlGenerator` untuk meningkatkan struktur, keterbacaan, dan performa.
+
+### Fixed
+- **Pembuatan YAML**: Memperbaiki serangkaian bug kritis terkait pembuatan file YAML, termasuk:
+  - `entryPoints` dan `servers` yang tidak diformat sebagai list.
+  - Karakter `|` yang tidak perlu ditambahkan ke `rule`.
+  - String placeholder `___YAML_Literal_Block___` yang tidak dihapus.
+  - Mengganti library `Spyc.php` yang bermasalah dengan versi yang stabil.
+- **Fungsionalitas Halaman**:
+  - Memperbaiki fatal error `ArgumentCountError` pada form tambah konfigurasi gabungan.
+  - Memperbaiki fitur "Service Health Status" yang selalu menampilkan "Unknown".
+  - Memperbaiki bug di mana data pada halaman riwayat tidak muncul saat halaman dibuka.
+  - Memperbaiki semua tombol hapus yang tidak berfungsi.
+  - Memperbaiki fitur "View YAML" pada halaman riwayat yang tidak menampilkan konten dan menambahkan syntax highlighting.
+- **Penanganan Error**: Memperbaiki logika penanganan error pada AJAX dan memastikan semua jenis error PHP (termasuk fatal) dikembalikan sebagai JSON yang valid untuk fitur import.
+
+### Security
+- Memperkuat keamanan server dengan menambahkan aturan pada `.htaccess` untuk memblokir akses langsung ke file tersembunyi (seperti `.env`).
+
+## [1.0.0] - 2025-09-27
 
 ### Added
 

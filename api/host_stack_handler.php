@@ -493,12 +493,12 @@ try {
 
             // Log the deletion to the new stack_change_log table
             $stmt_log_change = $conn->prepare(
-                "INSERT INTO stack_change_log (host_id, stack_name, change_type, details, changed_by) VALUES (?, ?, 'deleted', ?, ?)"
+                "INSERT INTO stack_change_log (host_id, stack_name, change_type, details, changed_by, log_file_path) VALUES (?, ?, 'deleted', ?, ?, NULL)"
             );
             $changed_by = $_SESSION['username'] ?? 'system';
             $stack_type = $is_swarm_manager ? 'Swarm' : 'Standalone';
             $details = "Stack removed from host ({$stack_type}).";
-            $stmt_log_change->bind_param("isss", $host_id, $stack_name, $details, $changed_by);
+            $stmt_log_change->bind_param("isss", $host_id, $stack_name, $details, $changed_by); // The NULL for log_file_path is implicit
             $stmt_log_change->execute();
             $stmt_log_change->close();
 

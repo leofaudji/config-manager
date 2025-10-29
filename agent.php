@@ -2,7 +2,7 @@
 // File: health-agent/agent.php
 
 // --- Self-Update Configuration ---
-define('AGENT_VERSION', '2.0.0'); // Ganti versi ini setiap kali Anda mengubah skrip
+define('AGENT_VERSION', '2.0.1'); // Ganti versi ini setiap kali Anda mengubah skrip
 
 set_time_limit(0); // Run indefinitely
 
@@ -82,9 +82,9 @@ function run_self_update_check() {
 
             // 5. Trigger a container restart to apply the new script
             // This requires the agent to have access to the Docker socket.
-            $agent_container_id = getenv('HOSTNAME');
+            $agent_container_name = 'cm-health-agent';
             $dockerClient = new DockerClient();
-            $dockerClient->restartContainer($agent_container_id);
+            $dockerClient->restartContainer($agent_container_name);
             exit(); // Stop the old script immediately
         } else {
             echo $download_url ;
@@ -778,6 +778,7 @@ function run_check_cycle() {
 
     $report_payload = [
         'host_id' => (int)$hostId,
+        'agent_version' => AGENT_VERSION,
         'host_uptime_seconds' => $host_uptime_seconds,
         'host_cpu_usage_percent' => $host_cpu_usage, // NEW: Add host CPU to payload
         'reports' => $health_reports,

@@ -195,9 +195,17 @@ function formatBytes(int $bytes, int $precision = 2): string
  * and needs to be deployed.
  */
 function set_config_dirty() {
+    // This function is now deprecated in favor of set_group_dirty($group_id).
+    // Kept for backward compatibility, marks the default group as dirty.
+    set_group_dirty(getDefaultGroupId());
+}
+
+function set_group_dirty(int $group_id) {
     $conn = Database::getInstance()->getConnection();
-    // Use ON DUPLICATE KEY UPDATE to handle both insert and update scenarios safely.
-    $conn->query("INSERT INTO settings (setting_key, setting_value) VALUES ('traefik_config_dirty', '1') ON DUPLICATE KEY UPDATE setting_value = '1'");
+    $stmt = $conn->prepare("UPDATE `groups` SET has_pending_changes = 1 WHERE id = ?");
+    $stmt->bind_param("i", $group_id);
+    $stmt->execute();
+    $stmt->close();
 }
 
 /**

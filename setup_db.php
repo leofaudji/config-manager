@@ -58,6 +58,8 @@ CREATE TABLE `stack_change_log` (
   `duration_seconds` int(11) DEFAULT NULL,
   `changed_by` varchar(50) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `log_file_path` varchar(255) DEFAULT NULL,
+  `pid` int(11) DEFAULT NULL COMMENT 'Process ID of the background deployment worker',
   PRIMARY KEY (`id`),
   KEY `host_id_created_at` (`host_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -84,6 +86,7 @@ CREATE TABLE `groups` (
   `name` varchar(100) NOT NULL,
   `description` text DEFAULT NULL,
   `traefik_host_id` int(11) DEFAULT NULL COMMENT 'The Traefik host this group belongs to, if any.',
+  `has_pending_changes` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`),
@@ -108,6 +111,7 @@ CREATE TABLE `docker_hosts` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `last_cpu_report_at` timestamp NULL DEFAULT NULL,
   `last_report_at` timestamp NULL DEFAULT NULL,
+  `agent_version` varchar(20) DEFAULT NULL,
   `agent_status` varchar(20) DEFAULT 'Unknown',
   `falco_status` varchar(20) DEFAULT 'Unknown',
   `falcosidekick_status` varchar(20) DEFAULT 'Unknown',

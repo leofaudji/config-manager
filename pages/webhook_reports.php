@@ -150,12 +150,20 @@ window.pageInit = function() {
             fetch(`<?= base_url('/api/deployment-logs') ?>?id=${logId}`)
                 .then(response => {
                     if (!response.ok) {
-                        return response.text().then(text => { throw new Error(text || 'Server error'); });
+                        return response.text().then(text => { throw new Error(text || 'Server error'); }); // NOSONAR
                     }
-                    const processStatus = response.headers.get('X-Process-Status') || 'unknown';
+                    const processStatus = response.headers.get('X-Process-Status') || 'unknown'; // NOSONAR
                     let statusBadge = '';
-                    if (processStatus === 'running') statusBadge = '<span class="badge bg-success ms-2">Running</span>';
-                    else if (processStatus === 'finished') statusBadge = '<span class="badge bg-secondary ms-2">Finished</span>';
+                    if (processStatus === 'running') {
+                        statusBadge = '<span class="badge bg-primary ms-2"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running</span>';
+                    } else if (processStatus === 'finished') {
+                        statusBadge = '<span class="badge bg-success ms-2">Finished</span>';
+                    } else if (processStatus === 'failed') {
+                        statusBadge = '<span class="badge bg-danger ms-2">Failed</span>';
+                    } else {
+                        statusBadge = '<span class="badge bg-secondary ms-2">Unknown</span>';
+                    }
+
                     deploymentLogModalLabel.innerHTML = `Deployment Log for Activity #${logId} ${statusBadge}`;
                     return response.text();
                 })

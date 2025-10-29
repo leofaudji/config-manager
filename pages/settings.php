@@ -364,6 +364,11 @@ require_once __DIR__ . '/../includes/header.php';
                             <input type="text" class="form-control" id="deployment_log_path" name="deployment_log_path" value="<?= htmlspecialchars($settings['deployment_log_path'] ?? LOGS_PATH . '/deployments') ?>">
                             <small class="form-text text-muted">Directory where background deployment logs will be stored.</small>
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="latest_agent_script_path" class="form-label">Latest Agent Script Path</label>
+                            <input type="text" class="form-control" id="latest_agent_script_path" name="latest_agent_script_path" value="<?= htmlspecialchars($settings['latest_agent_script_path'] ?? PROJECT_ROOT . '/storage/latest_agent/agent.php') ?>">
+                            <small class="form-text text-muted">The absolute path to the `agent.php` file that will be served for self-updates.</small>
+                        </div>
                     </div>
                 </div>
             </div>

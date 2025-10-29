@@ -115,17 +115,24 @@ $checks[] = [
 ];
 
 // Check #7: Cron Scripts Executable
-$collect_stats_path = PROJECT_ROOT . '/collect_stats.php';
-$autoscaler_path = PROJECT_ROOT . '/autoscaler.php';
+$collect_stats_path = PROJECT_ROOT . '/jobs/collect_stats.php';
+$autoscaler_path = PROJECT_ROOT . '/jobs/autoscaler.php';
 $collect_stats_ok = is_executable($collect_stats_path);
 $autoscaler_ok = is_executable($autoscaler_path);
-$cron_scripts_ok = $collect_stats_ok && $autoscaler_ok;
+$health_monitor_ok = is_executable(PROJECT_ROOT . '/jobs/health_monitor.php');
+$system_backup_ok = is_executable(PROJECT_ROOT . '/jobs/system_backup.php');
+$scheduled_deploy_ok = is_executable(PROJECT_ROOT . '/jobs/scheduled_deployment_runner.php');
+
+$cron_scripts_ok = $collect_stats_ok && $autoscaler_ok && $health_monitor_ok && $system_backup_ok && $scheduled_deploy_ok;
 $cron_scripts_message = 'All cron scripts are executable.';
 if (!$cron_scripts_ok) {
     $failed_scripts = [];
     if (!$collect_stats_ok) $failed_scripts[] = '`collect_stats.php`';
     if (!$autoscaler_ok) $failed_scripts[] = '`autoscaler.php`';
-    $cron_scripts_message = 'The following script(s) are not executable by the web server: ' . implode(', ', $failed_scripts) . '. Please run `chmod +x` on these files via SSH.';
+    if (!$health_monitor_ok) $failed_scripts[] = '`health_monitor.php`';
+    if (!$system_backup_ok) $failed_scripts[] = '`system_backup.php`';
+    if (!$scheduled_deploy_ok) $failed_scripts[] = '`scheduled_deployment_runner.php`';
+    $cron_scripts_message = 'The following script(s) are not executable by the web server: ' . implode(', ', $failed_scripts) . '. Please run `chmod +x` on these files.';
 }
 $checks[] = [
     'check' => 'Cron Scripts Executable',

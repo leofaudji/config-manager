@@ -133,10 +133,10 @@ require_once 'includes/header.php';
     <div class="col-lg-3 col-md-6 mb-3" id="swarm-overview-section" style="display: none;" title="Click to view node details">
         <a href="<?= base_url('/swarm/details') ?>" class="text-decoration-none">
             <div class="card text-white bg-info h-100 shadow-sm">
-                <div class="card-body">
+                <div class="card-body" id="swarm-status-widget">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h5 class="card-title mb-1">Swarm Cluster</h5>
+                            <h5 class="card-title mb-1" id="swarm-status-title">Swarm Cluster</h5>
                             <p class="card-text mb-0">
                                 <span id="swarm-total-nodes-widget">...</span> Nodes (<span id="swarm-manager-worker-widget">...</span>)
                             </p>
@@ -231,12 +231,80 @@ require_once 'includes/header.php';
                 </ul>
             </div>
         </div>
+        <div class="card-footer text-muted small">
+            <a href="<?= base_url('/health-check') ?>" class="text-decoration-none">View Full Health Check &rarr;</a>
+        </div>
     </div>
 </div>
 
 <?php
 $conn->close();
 ?>
+<script>
+window.pageInit = function() {
+    // Function to update the System Status card
+    function updateSystemStatus(systemStatusData) {
+        const container = document.getElementById('system-status-container');
+        if (!container) return;
+
+        let html = '';
+        systemStatusData.forEach(item => {
+            const badgeClass = item.status === 'OK' ? 'success' : 'danger';
+            html += `
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>${item.check}</span>
+                    <span class="badge bg-${badgeClass}">${item.message}</span>
+                </li>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    // Function to fetch all dashboard stats
+    function fetchDashboardStats() {
+        fetch(`${basePath}/api/dashboard-stats`)
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success' && result.data) {
+                    // Update high-level overview widgets
+                    document.getElementById('total-routers-widget').textContent = result.data.total_routers;
+                    document.getElementById('total-services-widget').textContent = result.data.total_services;
+                    document.getElementById('total-hosts-widget').textContent = result.data.total_hosts;
+                    document.getElementById('unhealthy-items-widget').textContent = result.data.total_unhealthy;
+
+                    // Update aggregated container stats
+                    if (result.data.agg_stats) {
+                        document.getElementById('agg-total-containers-widget').textContent = result.data.agg_stats.total_containers;
+                        document.getElementById('agg-container-status-widget').innerHTML = `${result.data.agg_stats.running_containers} Running / ${result.data.agg_stats.stopped_containers} Stopped`;
+                    }
+
+                    // Update Swarm info
+                    const swarmOverviewSection = document.getElementById('swarm-overview-section');
+                    if (result.data.swarm_info) {
+                        swarmOverviewSection.style.display = 'block';
+                        document.getElementById('swarm-total-nodes-widget').textContent = result.data.swarm_info.total_nodes;
+                        document.getElementById('swarm-manager-worker-widget').textContent = `${result.data.swarm_info.managers} Managers, ${result.data.swarm_info.workers} Workers`;
+                    } else {
+                        swarmOverviewSection.style.display = 'none';
+                    }
+
+                    // Update recent activity (assuming this is handled elsewhere or needs to be added)
+                    // ...
+
+                    // Call the new function for system status
+                    updateSystemStatus(result.data.system_status);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching dashboard stats:', error);
+                document.getElementById('system-status-container').innerHTML = `<li class="list-group-item text-danger">Error loading system status.</li>`;
+            });
+    }
+
+    // Initial call to fetch data when the page initializes
+    fetchDashboardStats();
+};
+</script>
 <?php
 require_once 'includes/footer.php';
 ?>

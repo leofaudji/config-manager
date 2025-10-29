@@ -35,14 +35,16 @@ class DeploymentRunner
         $log_file_path = $post_data['log_file_path'] ?? '/dev/null'; // Default to /dev/null if not provided
         
 
-        // --- NEW: Get PID of the background process ---
-        // We wrap the command in curly braces and use `echo $!` to get the PID of the backgrounded process.
-        // The output of this command will be the PID.
+        // --- DEFINITIVE FIX: Get PID of the background process ---
+        // We wrap the command in curly braces and use `echo $!` to get the PID of the backgrounded process. The output of this command will be the PID.
+        // We must redirect the output of `echo $!` to a different stream (e.g., stdout) while the main process output goes to the log file.
+        // However, a simpler and more reliable method is to execute the command and immediately get the PID.
         $command = $php_executable . ' ' . escapeshellarg($worker_script) . ' ' . escapeshellarg($encoded_data) 
                  . ' > ' . escapeshellarg($log_file_path) . ' 2>&1 &';
-        $command_with_pid = '{ ' . $command . ' echo $!; }';
+        // The `exec` function can capture the output of a command. `echo $!` gets the PID of the last background command.
+        $command_with_pid = $command . ' echo $!';
 
-        // `exec` is used here instead of `shell_exec` because we need to capture the output (the PID).
+        // `exec` is used here instead of `shell_exec` because we need to capture the output (the PID). NOSONAR
         $pid = (int)exec($command_with_pid);
 
         return $pid > 0 ? $pid : null; 

@@ -73,6 +73,15 @@ class YamlGenerator
             }
         }
 
+        // --- IDE: Clear the pending changes flag for the deployed group ---
+        if ($group_id_filter > 0) {
+            $stmt_clear_dirty = $this->conn->prepare("UPDATE `groups` SET has_pending_changes = 0 WHERE id = ?");
+            if ($stmt_clear_dirty) {
+                $stmt_clear_dirty->bind_param("i", $group_id_filter);
+                $stmt_clear_dirty->execute();
+                $stmt_clear_dirty->close();
+            }
+        }
         return Spyc::YAMLDump($config, 2, 0);
     }
 
@@ -118,8 +127,16 @@ class YamlGenerator
         $result = $stmt->get_result();
 
         while ($router = $result->fetch_assoc()) {
+            // --- IDE: Ensure the rule is always quoted in the YAML output ---
+            $rule = trim($router['rule']);
+            if (!empty($rule) && substr($rule, 0, 1) !== '"' && substr($rule, -1) !== '"') {
+                // The Spyc dumper will add its own quotes, so we just need to ensure the value is a string that looks like it needs quoting.
+                // A simple way is to add a space if it doesn't have one, which forces Spyc to quote it.
+                // A more direct approach is to manually add the quotes here. Let's do that for clarity.
+                $rule = '"' . str_replace('"', '\"', $rule) . '"';
+            }
             $routerData = [
-                'rule' => $router['rule'],
+                'rule' => $rule,
                 'entryPoints' => explode(',', $router['entry_points']),
                 'service' => $router['service_name']
             ];

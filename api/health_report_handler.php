@@ -41,10 +41,11 @@ $was_down = $host_info && $host_info['is_down_notified'];
 // This is the primary indicator that the host is online.
 // We also reset the 'is_down_notified' flag here.
 $host_uptime_seconds = $data['host_uptime_seconds'] ?? null;
+$agent_version = $data['agent_version'] ?? null;
 $stmt_update_host = $conn->prepare(
-    "UPDATE docker_hosts SET last_report_at = NOW(), agent_status = 'Running', is_down_notified = 0, host_uptime_seconds = ? WHERE id = ?"
+    "UPDATE docker_hosts SET last_report_at = NOW(), agent_status = 'Running', is_down_notified = 0, host_uptime_seconds = ?, agent_version = ? WHERE id = ?"
 );
-$stmt_update_host->bind_param("ii", $host_uptime_seconds, $host_id);
+$stmt_update_host->bind_param("isi", $host_uptime_seconds, $agent_version, $host_id);
 $stmt_update_host->execute();
 
 if ($stmt_update_host->affected_rows === 0) {

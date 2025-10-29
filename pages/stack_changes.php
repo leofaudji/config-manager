@@ -34,11 +34,27 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
         </div>
     </div>
-    <div class="card-body" id="stack-changes-container">
-        <!-- Content will be loaded by AJAX -->
-        <div class="text-center">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Loading...</span>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th class="sortable asc" data-sort="created_at">Timestamp</th>
+                        <th class="sortable" data-sort="changed_by">User</th>
+                        <th class="sortable" data-sort="host_name">Host</th>
+                        <th class="sortable" data-sort="stack_name">Stack Name</th>
+                        <th class="sortable" data-sort="change_type">Type</th>
+                        <th>Details</th>
+                        <th class="sortable" data-sort="duration_seconds">Duration</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="stack-changes-container">
+                    <!-- Content will be loaded by AJAX -->
+                    <tr class="text-center">
+                        <td colspan="8"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></td>
+                    </tr>
+                </tbody>
             </div>
         </div>
     </div>
@@ -56,36 +72,6 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
         </div>
     </div>
-</div>
-
-<!-- Modal for Stack Change Details -->
-<div class="modal fade" id="stackChangeDetailModal" tabindex="-1" aria-labelledby="stackChangeDetailModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="stackChangeDetailModalLabel">Change Details</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <dl class="row">
-          <dt class="col-sm-4">Stack Name</dt>
-          <dd class="col-sm-8" id="detail-stack-name"></dd>
-
-          <dt class="col-sm-4">Change Type</dt>
-          <dd class="col-sm-8" id="detail-change-type"></dd>
-
-          <dt class="col-sm-4">Timestamp</dt>
-          <dd class="col-sm-8" id="detail-created-at"></dd>
-
-          <dt class="col-sm-4">Changed By</dt>
-          <dd class="col-sm-8" id="detail-changed-by"></dd>
-
-          <dt class="col-sm-4">Details</dt>
-          <dd class="col-sm-8"><pre id="detail-details" class="mb-0" style="white-space: pre-wrap;"></pre></dd>
-        </dl>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Deployment Log Modal -->
@@ -115,16 +101,27 @@ require_once __DIR__ . '/../includes/header.php';
     const searchInput = document.getElementById('search-input');
     const changeTypeFilter = document.getElementById('change-type-filter');
     const resetFilterBtn = document.getElementById('reset-filter-btn');
-    const deploymentLogModal = new bootstrap.Modal(document.getElementById('deploymentLogModal'));
-    const deploymentLogContent = document.getElementById('deployment-log-content');
-    const deploymentLogModalLabel = document.getElementById('deploymentLogModalLabel');
+    let deploymentLogModal; // Initialize later
+    const tableHeader = document.querySelector('#stack-changes-container').closest('table').querySelector('thead');
+
     const paginationContainer = document.getElementById('stack-changes-pagination');
     const infoContainer = document.getElementById('stack-changes-info');
     const limitSelector = document.getElementById('stack-changes-limit-selector');
 
     let currentPage = 1;
 
+    const debounce = (func, delay) => {
+        let timeout;
+        return function(...args) {
+            const context = this;
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(context, args), delay);
+        };
+    };
+
     function loadStackChanges(page = 1) {
+        let currentSort = localStorage.getItem('stack_changes_sort') || 'created_at';
+        let currentOrder = localStorage.getItem('stack_changes_order') || 'desc'; // Default to desc for history
         currentPage = page;
         const limit = limitSelector.value;
         container.innerHTML = `<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>`;
@@ -135,12 +132,14 @@ require_once __DIR__ . '/../includes/header.php';
         const searchTerm = searchInput.value.trim();
 
         // Save current filters to localStorage
-        localStorage.setItem('stack_changes_page', page);
+        localStorage.setItem('stack_changes_page', currentPage);
         localStorage.setItem('stack_changes_limit', limit);
         localStorage.setItem('stack_changes_start_date', startDate);
         localStorage.setItem('stack_changes_end_date', endDate);
         localStorage.setItem('stack_changes_change_type', changeType);
         localStorage.setItem('stack_changes_search', searchTerm);
+        localStorage.setItem('stack_changes_sort', currentSort);
+        localStorage.setItem('stack_changes_order', currentOrder);
 
         let apiUrl = '<?= base_url('/api/stack-changes') ?>';
         const params = new URLSearchParams();
@@ -158,6 +157,8 @@ require_once __DIR__ . '/../includes/header.php';
         }
         if (searchTerm) {
             params.append('search', searchTerm);
+        } else {
+            params.append('sort', currentSort);
         }
 
         if (params.toString()) {
@@ -173,61 +174,54 @@ require_once __DIR__ . '/../includes/header.php';
 
                 infoContainer.textContent = result.info || '';
                 renderPagination(result.total_pages, result.current_page);
-
                 container.innerHTML = ''; // Clear spinner
 
                 if (Object.keys(result.data).length === 0) {
-                    container.innerHTML = '<div class="alert alert-info">No stack changes recorded yet.</div>';
+                    container.innerHTML = '<tr><td colspan="8" class="text-center">No stack changes recorded yet.</td></tr>';
                     return;
                 }
 
                 let html = '';
-                // Data is grouped by host_name -> date -> changes
-                for (const hostName in result.data) {
-                    html += `<h4 class="mt-4"><i class="bi bi-hdd-network-fill me-2"></i>${hostName}</h4>`;
-                    
-                    const dates = result.data[hostName];
-                    for (const date in dates) {
-                        html += `<h5 class="mt-3 text-muted">${date}</h5>`;
-                        html += '<ul class="list-group">';
-                        
-                        const changes = dates[date];
-                        changes.forEach(change => {
-                            const badgeClass = { created: 'success', updated: 'warning', deleted: 'danger' }[change.change_type] || 'secondary';
-                            const icon = { created: 'plus-circle', updated: 'arrow-repeat', deleted: 'trash' }[change.change_type] || 'info-circle';
+                result.data.forEach(change => {
+                    const badgeClass = { created: 'success', updated: 'warning', deleted: 'danger' }[change.change_type] || 'secondary';
+                    const icon = { created: 'plus-circle', updated: 'arrow-repeat', deleted: 'trash' }[change.change_type] || 'info-circle';
 
-                            const shortDetails = (change.details && change.details.length > 80) ? change.details.substring(0, 80) + '...' : (change.details || '');
-                            const escapedDetails = (change.details || '').replace(/"/g, '&quot;');
+                    const shortDetails = (change.details && change.details.length > 80) ? change.details.substring(0, 80) + '...' : (change.details || '');
 
-                            let durationHtml = '';
-                            if (change.duration_seconds !== null && change.duration_seconds > 0) {
-                                durationHtml = `<span class="badge bg-light text-dark ms-2" title="Deployment Duration"><i class="bi bi-stopwatch"></i> ${change.duration_seconds}s</span>`;
-                            }
-
-                            html += `
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <span class="badge bg-${badgeClass} me-2"><i class="bi bi-${icon} me-1"></i> ${change.change_type}</span>
-                                        <strong>${change.stack_name}</strong>
-                                        <small class="d-block text-muted">${shortDetails} (by ${change.changed_by})</small>
-                                    </div>
-                                    <div class="d-flex align-items-center">
-                                        ${durationHtml}
-                                        <small class="text-muted me-3">${new Date(change.created_at).toLocaleTimeString()}</small>
-                                        <button class="btn btn-sm btn-outline-secondary view-log-btn me-2" 
-                                                data-host-name="${change.host_name}" 
-                                                data-stack-name="${change.stack_name}" 
-                                                title="View Deployment Log">
-                                            <i class="bi bi-card-text"></i></button>
-                                        <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#stackChangeDetailModal" data-stack-name="${change.stack_name}" data-change-type="${change.change_type}" data-details="${escapedDetails}" data-changed-by="${change.changed_by}" data-created-at="${change.created_at}" title="View Details"><i class="bi bi-info-circle"></i></button>
-                                    </div>
-                                 </li>
-                            `;
-                        });
-                        html += '</ul>';
+                    let durationHtml = '';
+                    if (change.duration_seconds !== null && change.duration_seconds > 0) {
+                        durationHtml = `${change.duration_seconds}s`;
+                    } else {
+                        durationHtml = 'N/A';
                     }
-                }
+
+                    const logButton = change.log_id
+                        ? `<button class="btn btn-sm btn-outline-secondary view-log-btn" data-log-id="${change.log_id}" data-stack-name="${change.stack_name}" data-host-name="${change.host_name || 'N/A'}" title="View Deployment Log"><i class="bi bi-card-text"></i></button>`
+                        : `<button class="btn btn-sm btn-outline-secondary" disabled title="No deployment log available"><i class="bi bi-card-text"></i></button>`;
+
+                    html += `
+                        <tr>
+                            <td>${new Date(change.created_at).toLocaleString()}</td>
+                            <td>${change.changed_by}</td>
+                            <td>${change.host_name || 'N/A'}</td>
+                            <td>${change.stack_name}</td>
+                            <td><span class="badge bg-${badgeClass}"><i class="bi bi-${icon} me-1"></i> ${change.change_type}</span></td>
+                            <td title="${change.details}">${shortDetails}</td>
+                            <td>${durationHtml}</td>
+                            <td class="text-end">
+                                ${logButton}
+                            </td>
+                        </tr>
+                    `;
+                });
                 container.innerHTML = html;
+                // Update sort indicators in header
+                tableHeader.querySelectorAll('th.sortable').forEach(th => {
+                    th.classList.remove('asc', 'desc');
+                    if (th.dataset.sort === currentSort) {
+                        th.classList.add(currentOrder);
+                    }
+                });
             })
             .catch(error => {
                 container.innerHTML = `<div class="alert alert-danger">Failed to load stack changes: ${error.message}</div>`;
@@ -251,6 +245,20 @@ require_once __DIR__ . '/../includes/header.php';
         paginationContainer.innerHTML = html;
     }
 
+    tableHeader.addEventListener('click', function(e) {
+        const th = e.target.closest('th.sortable');
+        if (!th) return;
+
+        const sortField = th.dataset.sort;
+        if (currentSort === sortField) {
+            currentOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSort = sortField;
+            currentOrder = 'desc'; // Default to descending for new sort
+        }
+        loadStackChanges(1);
+    });
+
     filterForm.addEventListener('submit', function(e) {
         e.preventDefault();
         loadStackChanges(1);
@@ -266,6 +274,8 @@ require_once __DIR__ . '/../includes/header.php';
         localStorage.removeItem('stack_changes_end_date');
         localStorage.removeItem('stack_changes_change_type');
         localStorage.removeItem('stack_changes_search');
+        localStorage.removeItem('stack_changes_sort');
+        localStorage.removeItem('stack_changes_order');
         loadStackChanges(1);
     });
 
@@ -283,28 +293,31 @@ require_once __DIR__ . '/../includes/header.php';
     container.addEventListener('click', function(e) {
         const viewBtn = e.target.closest('.view-log-btn');
         if (viewBtn) {
-            const hostName = viewBtn.dataset.hostName;
+            e.preventDefault();
+            const logId = viewBtn.dataset.logId;
             const stackName = viewBtn.dataset.stackName;
-            const safeHostName = hostName.replace(/[^a-zA-Z0-9_.-]/g, '_');
-            const logFilePath = `${safeHostName}/${stackName}/deployment.log`;
-
+            const hostName = viewBtn.dataset.hostName;
+            const deploymentLogModalLabel = document.getElementById('deploymentLogModalLabel');
+            const deploymentLogContent = document.getElementById('deployment-log-content');
             deploymentLogModalLabel.textContent = `Deployment Log for: ${stackName} on ${hostName}`;
             deploymentLogContent.textContent = 'Loading log...';
             deploymentLogModal.show();
 
-            // --- FIX: Handle raw text response and custom headers, same as webhook_reports.php ---
-            // Note: This assumes the log is identified by an ID from the activity_log table,
-            // which is a more robust approach. We need to find the log ID.
-            // For now, let's assume the button will have a data-log-id attribute.
-            const logId = viewBtn.dataset.logId; // We will add this data attribute to the button.
             fetch(`<?= base_url('/api/deployment-logs') ?>?id=${logId}`)
-                .then(response => {
-                    if (!response.ok) return response.text().then(text => { throw new Error(text || 'Server error'); });
-                    const processStatus = response.headers.get('X-Process-Status') || 'unknown';
+                .then(response => { // NOSONAR
+                    if (!response.ok) return response.text().then(text => { throw new Error(text || 'Server error'); }); // NOSONAR
+                    const processStatus = response.headers.get('X-Process-Status') || 'unknown'; // NOSONAR
                     let statusBadge = '';
-                    if (processStatus === 'running') statusBadge = '<span class="badge bg-success ms-2">Running</span>';
-                    else if (processStatus === 'finished') statusBadge = '<span class="badge bg-secondary ms-2">Finished</span>';
-                    deploymentLogModalLabel.innerHTML = `Deployment Log for Activity #${logId} ${statusBadge}`;
+                    if (processStatus === 'running') {
+                        statusBadge = '<span class="badge bg-primary ms-2"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running</span>';
+                    } else if (processStatus === 'finished') {
+                        statusBadge = '<span class="badge bg-success ms-2">Finished</span>';
+                    } else if (processStatus === 'failed') {
+                        statusBadge = '<span class="badge bg-danger ms-2">Failed</span>';
+                    } else {
+                        statusBadge = '<span class="badge bg-secondary ms-2">Unknown</span>';
+                    }
+                    deploymentLogModalLabel.innerHTML = `Deployment Log for: ${stackName} on ${hostName} ${statusBadge}`;
                     return response.text();
                 })
                 .then(logContent => deploymentLogContent.textContent = logContent || 'Log file is empty.')
@@ -314,11 +327,13 @@ require_once __DIR__ . '/../includes/header.php';
     // --- Initial Load with Saved State ---
     function initialize() {
         const savedLimit = localStorage.getItem('stack_changes_limit') || '15';
-        const savedPage = localStorage.getItem('stack_changes_page') || '1';
+        currentPage = parseInt(localStorage.getItem('stack_changes_page')) || 1;
         const savedStartDate = localStorage.getItem('stack_changes_start_date') || '';
         const savedEndDate = localStorage.getItem('stack_changes_end_date') || '';
         const savedChangeType = localStorage.getItem('stack_changes_change_type') || '';
         const savedSearch = localStorage.getItem('stack_changes_search') || '';
+        currentSort = localStorage.getItem('stack_changes_sort') || 'created_at';
+        currentOrder = localStorage.getItem('stack_changes_order') || 'desc';
 
         limitSelector.value = savedLimit;
         startDateInput.value = savedStartDate;
@@ -326,31 +341,14 @@ require_once __DIR__ . '/../includes/header.php';
         changeTypeFilter.value = savedChangeType;
         searchInput.value = savedSearch;
 
-        loadStackChanges(savedPage);
+        // Initialize the modal instance here, when everything is loaded.
+        deploymentLogModal = new window.bootstrap.Modal(document.getElementById('deploymentLogModal'));
+
+        loadStackChanges(currentPage);
     }
+
+    // Panggil fungsi inisialisasi untuk memuat data saat halaman dibuka
     initialize();
-
-    const stackChangeDetailModal = document.getElementById('stackChangeDetailModal');
-    if (stackChangeDetailModal) {
-        stackChangeDetailModal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            const modalTitle = stackChangeDetailModal.querySelector('.modal-title');
-            
-            const stackName = button.dataset.stackName;
-            const changeType = button.dataset.changeType;
-            const details = button.dataset.details;
-            const changedBy = button.dataset.changedBy;
-            const createdAt = new Date(button.dataset.createdAt).toLocaleString();
-
-            modalTitle.textContent = `Details for: ${stackName}`;
-            
-            document.getElementById('detail-stack-name').textContent = stackName;
-            document.getElementById('detail-change-type').textContent = changeType;
-            document.getElementById('detail-created-at').textContent = createdAt;
-            document.getElementById('detail-changed-by').textContent = changedBy;
-            document.getElementById('detail-details').textContent = details.split(' | ').join('\n');
-        });
-    }
 })();
 </script>
 

@@ -31,28 +31,118 @@ function format_uptime(int $seconds): string {
 function get_system_status($conn): array {
     $status = [];
 
-    // 1. Database Connection
-    $status['db_connection'] = ($conn && $conn->ping()) ? 'OK' : 'Error';
+    // 1. Database Connection (from health_check_handler.php)
+    $db_ok = ($conn && $conn->ping());
+    $status[] = [
+        'check' => 'Database Connection',
+        'status' => $db_ok ? 'OK' : 'Error',
+        'message' => $db_ok ? 'Connected.' : 'Failed to connect.'
+    ];
 
-    // 2. Config File Writable (Check the base path where configs are stored)
-    $yaml_path = get_setting('yaml_output_path', PROJECT_ROOT . '/traefik-configs');
-    $status['config_writable'] = (is_dir($yaml_path) && is_writable($yaml_path)) ? 'OK' : 'Error';
-
-    // 3. PHP Version
-    $status['php_version'] = phpversion();
-
-    // 4. Cron Job Status (a simplified check based on whether they are enabled in settings)
-    // This is a proxy for whether the user intends for them to be running.
-    $cron_jobs = ['collect_stats', 'autoscaler', 'health_monitor'];
-    $all_cron_enabled = true;
-    foreach ($cron_jobs as $job) {
-        // This assumes settings are stored in a format like 'collect_stats_enabled' => '1'
-        if (!get_setting($job . '_enabled', 0)) {
-            $all_cron_enabled = false;
-            break;
+    // 2. Required PHP Extensions (from health_check_handler.php)
+    $required_extensions = ['mysqli', 'curl', 'json', 'mbstring'];
+    $missing_extensions = [];
+    foreach ($required_extensions as $ext) {
+        if (!extension_loaded($ext)) {
+            $missing_extensions[] = $ext;
         }
     }
-    $status['cron_status'] = $all_cron_enabled ? 'Enabled' : 'Partial/Disabled';
+    $extensions_ok = empty($missing_extensions);
+    $status[] = [
+        'check' => 'PHP Extensions',
+        'status' => $extensions_ok ? 'OK' : 'Error',
+        'message' => $extensions_ok ? 'All loaded.' : 'Missing: ' . implode(', ', $missing_extensions) . '.'
+    ];
+
+    // 3. Traefik Dynamic Config Path Writable (from health_check_handler.php)
+    $yaml_path = get_setting('yaml_output_path', PROJECT_ROOT . '/traefik-configs');
+    $config_path_ok = is_dir($yaml_path) && is_writable($yaml_path);
+    $status[] = [
+        'check' => 'Traefik Config Path',
+        'status' => $config_path_ok ? 'OK' : 'Error',
+        'message' => $config_path_ok ? 'Writable.' : 'Not writable.'
+    ];
+
+    // 4. PHP Version (from health_check_handler.php)
+    $php_version_ok = version_compare(PHP_VERSION, '7.4.0', '>=');
+    $status[] = [
+        'check' => 'PHP Version',
+        'status' => $php_version_ok ? 'OK' : 'Error',
+        'message' => 'v' . PHP_VERSION . ($php_version_ok ? '' : ' (>=7.4 required)')
+    ];
+
+    // 5. Cron Job Log Path Writable (from health_check_handler.php)
+    $cron_log_path = get_setting('cron_log_path', '/var/log');
+    $cron_log_path_ok = is_dir($cron_log_path) && is_writable($cron_log_path);
+    $status[] = [
+        'check' => 'Cron Log Path',
+        'status' => $cron_log_path_ok ? 'OK' : 'Error',
+        'message' => $cron_log_path_ok ? 'Writable.' : 'Not writable.'
+    ];
+
+    // 6. Health Monitor Log File Writable (from health_check_handler.php)
+    $health_monitor_log_file = rtrim($cron_log_path, '/') . '/health_monitor.log';
+    $health_monitor_log_ok = false;
+    $health_monitor_log_message = '';
+    if (file_exists($health_monitor_log_file)) {
+        $health_monitor_log_ok = is_writable($health_monitor_log_file);
+        $health_monitor_log_message = $health_monitor_log_ok ? 'Writable.' : 'Not writable.';
+    } else {
+        $health_monitor_log_ok = $cron_log_path_ok; // If dir is writable, file can be created
+        $health_monitor_log_message = $health_monitor_log_ok ? 'Will be created.' : 'Dir not writable.';
+    }
+    $status[] = [
+        'check' => 'Health Monitor Log',
+        'status' => $health_monitor_log_ok ? 'OK' : 'Error',
+        'message' => $health_monitor_log_message
+    ];
+
+    // 7. Cron User Shell (from health_check_handler.php)
+    $web_user = exec('whoami');
+    $user_shell_ok = false;
+    $user_shell_message = "Unknown.";
+    if ($web_user && file_exists('/etc/passwd') && is_readable('/etc/passwd')) {
+        $passwd_content = file_get_contents('/etc/passwd');
+        if (preg_match('/^' . preg_quote($web_user, '/') . ':x:\d+:\d+:.*:.*:(.*)$/m', $passwd_content, $matches)) {
+            $shell = $matches[1];
+            if ($shell !== '/usr/sbin/nologin' && $shell !== '/bin/false' && $shell !== '/sbin/nologin') {
+                $user_shell_ok = true;
+                $user_shell_message = "User '{$web_user}' has valid shell.";
+            } else {
+                $user_shell_message = "User '{$web_user}' has invalid shell: {$shell}.";
+            }
+        } else {
+            $user_shell_message = "User '{$web_user}' not found.";
+        }
+    }
+    $status[] = [
+        'check' => 'Cron User Shell',
+        'status' => $user_shell_ok ? 'OK' : 'Error',
+        'message' => $user_shell_message
+    ];
+
+    // 8. Cron Scripts Executable (from health_check_handler.php)
+    $cron_scripts_to_check = [
+        'collect_stats.php',
+        'autoscaler.php',
+        'health_monitor.php',
+        'system_backup.php',
+        'scheduled_deployment_runner.php'
+    ];
+    $all_cron_scripts_executable = true;
+    $failed_scripts = [];
+    foreach ($cron_scripts_to_check as $script) {
+        $script_path = PROJECT_ROOT . '/' . $script;
+        if (!is_executable(PROJECT_ROOT . '/jobs/' . $script)) {
+            $all_cron_scripts_executable = false;
+            $failed_scripts[] = $script;
+        }
+    }
+    $status[] = [
+        'check' => 'Cron Scripts Executable',
+        'status' => $all_cron_scripts_executable ? 'OK' : 'Error',
+        'message' => $all_cron_scripts_executable ? 'All executable.' : 'Not executable: ' . implode(', ', $failed_scripts)
+    ];
 
     return $status;
 }

@@ -65,8 +65,9 @@ try {
 
     // Get paginated data
     $sql = "
-        SELECT scl.*, h.name as host_name
+        SELECT scl.*, h.name as host_name, al.id as log_id
         FROM stack_change_log scl
+        LEFT JOIN activity_log al ON scl.pid = al.pid AND scl.log_file_path IS NOT NULL
         LEFT JOIN docker_hosts h ON scl.host_id = h.id
         {$where_sql}
         ORDER BY scl.created_at DESC
@@ -83,25 +84,9 @@ try {
     $result = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
-    // --- NEW: Group data by host and then by date ---
-    $grouped_data = [];
-    foreach ($result as $row) {
-        $host_name = $row['host_name'] ?? 'Unknown Host';
-        $date = date('Y-m-d', strtotime($row['created_at']));
-
-        if (!isset($grouped_data[$host_name])) {
-            $grouped_data[$host_name] = [];
-        }
-        if (!isset($grouped_data[$host_name][$date])) {
-            $grouped_data[$host_name][$date] = [];
-        }
-        $grouped_data[$host_name][$date][] = $row;
-    }
-    // --- End of grouping logic ---
-
     echo json_encode([
         'status' => 'success',
-        'data' => $grouped_data,
+        'data' => $result, // Mengembalikan data datar untuk rendering tabel
         'total_pages' => $total_pages,
         'current_page' => $page,
         'info' => "Showing " . count($result) . " of " . $total_items . " records."

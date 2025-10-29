@@ -5,7 +5,15 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
     </main> <!-- end main-content -->
 
     <footer class="footer-fixed">
-        <p class="mb-0 text-center text-muted">&copy; <?= date('Y') ?> Config Manager v<?= APP_VERSION ?> | <a href="<?= base_url('/changelog') ?>">Changelog</a></p>
+        <div class="d-flex justify-content-between align-items-center">
+            <a href="<?= base_url('/changelog') ?>" class="text-muted small text-decoration-none" title="View Changelog">
+                v<?= APP_VERSION ?>
+            </a>
+            <span class="text-muted">&copy; <?= date('Y') ?> 
+                <a href="https://assistindo.id" target="_blank" rel="noopener noreferrer" class="text-muted">PT. Assist Software Indonesia Pratama</a>. All rights reserved.
+            </span>
+            <a href="<?= base_url('/faq') ?>" class="text-muted small">Help & FAQ</a>
+        </div>
     </footer>
 
 </div> <!-- end content-wrapper -->

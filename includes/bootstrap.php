@@ -21,6 +21,13 @@ if (!defined('PROJECT_ROOT')) {
     define('PROJECT_ROOT', dirname(__DIR__));
 }
 
+if (!defined('APP_VERSION')) {
+    // --- Versi Aplikasi (Dinamis dari Changelog) ---
+    require_once PROJECT_ROOT . '/includes/ChangelogParser.php';
+    define('APP_VERSION', ChangelogParser::getLatestVersion());
+}
+
+
 // --- NEW: Define storage path for logs, cache, etc. ---
 if (!defined('STORAGE_PATH')) {
     define('STORAGE_PATH', PROJECT_ROOT . '/storage');

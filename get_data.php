@@ -821,7 +821,12 @@ elseif ($type === 'hosts') {
             : '<span class="text-muted">Not Configured</span>';
         $html .= '<td>' . $registry_display . '</td>';
 
-        $html .= '<td><span class="badge bg-' . $agent_badge_class . '" data-bs-toggle="tooltip" title="' . $agent_badge_title . '">' . $agent_status . '</span></td>';
+        $agent_version_html = '';
+        if (!empty($host['agent_version'])) {
+            $agent_version_html = '<br><span class="d-block mt-1 fw-normal" style="font-size: 1em;">v' . htmlspecialchars($host['agent_version']) . '</span>';
+        }
+
+        $html .= '<td><span class="badge bg-' . $agent_badge_class . '" data-bs-toggle="tooltip" title="' . $agent_badge_title . '">' . $agent_status . $agent_version_html . '</span></td>';
         $html .= '<td>' . $host['updated_at'] . '</td>';
         $html .= '<td class="text-end">';
         if ($manager_status_text === 'Worker' || str_starts_with($manager_status_text, 'Worker for:')) {

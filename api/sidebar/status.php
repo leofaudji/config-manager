@@ -79,7 +79,11 @@ try {
 
         $response_data['config_dirty'] = ($current_hash !== $active_hash);
     } else {
-        $response_data['config_dirty'] = false;
+        // --- IDE: Check for any group with pending changes ---
+        $dirty_groups_result = $conn->query("SELECT COUNT(*) as count FROM `groups` WHERE has_pending_changes = 1");
+        $dirty_count = $dirty_groups_result->fetch_assoc()['count'] ?? 0;
+        $config_dirty = ($dirty_count > 0);
+        $response_data['config_dirty'] = $config_dirty; 
     }
 
     // 4. Get SLA Violations (items with SLA < target in the last 30 days)

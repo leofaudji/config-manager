@@ -63,6 +63,7 @@ try {
     $settings_to_update['notification_secret_token'] = trim($_POST['notification_secret_token'] ?? '');
     $settings_to_update['deployment_log_path'] = rtrim(trim($_POST['deployment_log_path'] ?? ''), '/');
     $settings_to_update['header_notification_interval'] = (int)($_POST['header_notification_interval'] ?? 30);
+    $settings_to_update['latest_agent_script_path'] = trim($_POST['latest_agent_script_path'] ?? '');
 
     // Use INSERT ... ON DUPLICATE KEY UPDATE for a safe upsert
     $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");

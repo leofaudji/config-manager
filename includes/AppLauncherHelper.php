@@ -902,10 +902,10 @@ class AppLauncherHelper
             // Log change
             $change_type = $is_update ? 'updated' : 'created';
             $log_details = "Source: {$source_type}";
-            $stmt_log_change = $conn->prepare("INSERT INTO stack_change_log (host_id, stack_name, change_type, details, duration_seconds, changed_by) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt_log_change = $conn->prepare("INSERT INTO stack_change_log (host_id, stack_name, change_type, details, duration_seconds, changed_by, log_file_path, pid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
             $changed_by = $_SESSION['username'] ?? 'system';
             // Bind the new duration parameter
-            $stmt_log_change->bind_param("isssis", $host_id, $stack_name, $change_type, $log_details, $duration, $changed_by);
+            $stmt_log_change->bind_param("isssissi", $host_id, $stack_name, $change_type, $log_details, $duration, $changed_by, self::$log_file_path, $pid);
             $stmt_log_change->execute();
             $stmt_log_change->close();
 

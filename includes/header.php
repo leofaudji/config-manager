@@ -15,6 +15,11 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/theme/monokai.min.css">
 
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html@3.4.47/bundles/css/diff2html.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <style>
@@ -31,7 +36,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             --bs-secondary-rgb: 142, 142, 147;
             --bs-body-bg: #f5f5f7;
             --bs-body-color: #1d1d1f;
-            --bs-border-color: #dcdcdc;
+            --bs-border-color: rgba(0, 0, 0, 0.1);
             --bs-border-color-translucent: rgba(0, 0, 0, 0.1);
             --bs-card-bg: #ffffff;
             --bs-card-border-color: var(--bs-border-color);
@@ -60,7 +65,7 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
             --bs-secondary-rgb: 141, 141, 146;
             --bs-body-bg: #1c1c1e;
             --bs-body-color: #f5f5f7;
-            --bs-border-color: #424245;
+            --bs-border-color: rgba(255, 255, 255, 0.15);
             --bs-border-color-translucent: rgba(255, 255, 255, 0.15);
             --bs-card-bg: #2c2c2e;
             --bs-card-border-color: var(--bs-border-color);
@@ -148,7 +153,10 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
 <div class="sidebar">
     <a class="navbar-brand" href="<?= base_url('/') ?>">
         <img src="<?= base_url('/assets/img/logo-assistindo.png') ?>" alt="Assistindo Logo" class="brand-logo">
-        <span class="brand-text">Config Manager</span>
+        <div>
+            <span class="brand-text">Config Manager</span>
+            <span class="d-block brand-version">v<?= APP_VERSION ?></span>
+        </div>
     </a>
     <div class="sidebar-search-wrapper">
         <i class="bi bi-search search-icon"></i>
@@ -289,6 +297,21 @@ if (!(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_RE
                             <span>Backup & Restore</span><span id="sidebar-backup-status-badge" class="badge rounded-pill p-1" style="display: none;"><i class="bi bi-circle-fill"></i></span>
                         </a></li>
                     </ul>
+                </div>
+            </li>
+
+            <?php
+            $help_active = str_starts_with($request_path, '/faq');
+            $help_expanded = $help_active || in_array('help-submenu', $open_menus_cookie);
+            ?>
+            <li class="nav-item">
+                <a class="nav-link <?= !$help_expanded ? 'collapsed' : '' ?>" href="#" data-bs-toggle="collapse" data-bs-target="#help-submenu" aria-expanded="<?= $help_expanded ? 'true' : 'false' ?>">
+                    <span class="icon-wrapper"><i class="bi bi-question-circle-fill"></i></span>
+                    <span class="nav-link-text">Help & Info</span>
+                    <i class="bi bi-chevron-right submenu-arrow"></i>
+                </a>
+                <div class="collapse <?= $help_expanded ? 'show' : '' ?>" id="help-submenu">
+                    <ul class="sidebar-submenu"><li class="nav-item"><a class="nav-link" href="<?= base_url('/faq') ?>">FAQ</a></li></ul>
                 </div>
             </li>
         <?php endif; ?>

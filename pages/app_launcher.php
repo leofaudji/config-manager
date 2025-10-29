@@ -1,6 +1,11 @@
 <?php
 require_once __DIR__ . '/../includes/bootstrap.php';
 
+// --- IDE: Fetch groups for Traefik dropdown ---
+$conn_groups = Database::getInstance()->getConnection();
+$groups_result = $conn_groups->query("SELECT id, name FROM `groups` ORDER BY name ASC");
+$groups = $groups_result->fetch_all(MYSQLI_ASSOC);
+
 // Get the global default from settings to use as a fallback
 $default_git_compose_path_from_settings = get_setting('default_git_compose_path');
 
@@ -239,6 +244,36 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="add-volume-btn"><i class="bi bi-plus-circle"></i> Add Volume Mapping</button>
                             <small class="form-text text-muted d-block mt-1">A persistent volume will be created on the host for each mapping. Container Path is required for each entry.</small>
+
+                            <hr>
+                            <h5 class="mt-4">Traefik Integration</h5>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" role="switch" id="create_traefik_route" name="create_traefik_route" value="1">
+                                <label class="form-check-label" for="create_traefik_route">Create Traefik Route</label>
+                                <small class="form-text text-muted d-block">Automatically create a corresponding Traefik router and service for this application.</small>
+                            </div>
+
+                            <div id="traefik-fields" style="display: none;">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="traefik_router_name" class="form-label">Traefik Router Name</label>
+                                        <input type="text" class="form-control" id="traefik_router_name" name="traefik_router_name" readonly>
+                                        <small class="form-text text-muted">Auto-generated from Stack Name.</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="traefik_router_rule" class="form-label">Traefik Router Rule</label>
+                                        <input type="text" class="form-control" id="traefik_router_rule" name="traefik_router_rule" placeholder="e.g., Host(`my-app.example.com`)">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="traefik_group_id" class="form-label">Traefik Group</label>
+                                    <select class="form-select" id="traefik_group_id" name="traefik_group_id">
+                                        <?php foreach ($groups as $group): ?>
+                                            <option value="<?= $group['id'] ?>"><?= htmlspecialchars($group['name']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            </div>
 
                             <hr>
                             <div class="form-check form-switch mb-3">
@@ -481,6 +516,10 @@ window.pageInit = function() {
     const cpuThresholdDownSlider = document.getElementById('autoscaling_cpu_down_slider');
     const cpuThresholdDownDisplay = document.getElementById('cpu-threshold-down-display');
     const cpuThresholdDownInput = document.getElementById('autoscaling_cpu_threshold_down');
+    const createTraefikSwitch = document.getElementById('create_traefik_route');
+    const traefikFields = document.getElementById('traefik-fields');
+    const traefikRouterNameInput = document.getElementById('traefik_router_name');
+    const traefikRouterRuleInput = document.getElementById('traefik_router_rule');
 
     deploymentModeSwarm.addEventListener('change', loadHostsForMode);
     deploymentModeStandalone.addEventListener('change', loadHostsForMode);
@@ -764,6 +803,10 @@ window.pageInit = function() {
         // Let toggleSourceSections handle the state of Step 3
         toggleSourceSections();
 
+        // Enable Step 4
+        const step4Button = document.querySelector('button[aria-controls="collapseFour"]');
+        step4Button.disabled = false;
+
         // Clear previous host's data and show loading states
         allContainers = [];
         imageNameSelect.disabled = true;
@@ -860,6 +903,12 @@ window.pageInit = function() {
     stackNameInput.addEventListener('input', function() {
         // Force stack name to lowercase to match docker-compose project name behavior
         this.value = this.value.toLowerCase();
+    });
+
+    // --- IDE: Auto-populate Traefik router name from stack name ---
+    stackNameInput.addEventListener('input', function() {
+        const routerPrefix = '<?= get_setting('default_router_prefix', 'router-') ?>';
+        traefikRouterNameInput.value = `${routerPrefix}${this.value}`;
     });
 
     stackNameInput.addEventListener('input', updateHostVolumePath);
@@ -1477,6 +1526,25 @@ window.pageInit = function() {
             webhookTimeGroup.style.display = 'none';
         }
     });
+
+    // --- IDE: Logic for Traefik Integration Fields ---
+    if (createTraefikSwitch) {
+        createTraefikSwitch.addEventListener('change', function() {
+            traefikFields.style.display = this.checked ? 'block' : 'none';
+            // Make fields required only when the section is visible
+            traefikRouterNameInput.required = this.checked;
+            traefikRouterRuleInput.required = this.checked;
+        });
+
+        // --- IDE: Add validation check for Traefik fields ---
+        if (traefikRouterRuleInput) {
+            traefikRouterRuleInput.addEventListener('input', checkFormValidity);
+        }
+        if (createTraefikSwitch) {
+            createTraefikSwitch.addEventListener('change', checkFormValidity);
+        }
+
+    }
 
     loadHostsForMode(); // Initial load based on default checked radio
 };

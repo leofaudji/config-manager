@@ -219,7 +219,7 @@ try {
     if (get_setting('auto_deploy_enabled', '1') == '1') {
         trigger_background_deployment($group_id); // Trigger deployment for the specific group
     } else {
-        set_config_dirty();
+        set_group_dirty($group_id);
     }
     echo json_encode(['status' => 'success', 'message' => $message]);
 
